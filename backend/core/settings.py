@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,7 +26,7 @@ SECRET_KEY = 'django-insecure-2c$+nq+t_i*@r=my4g^9r8-qjq8u76#wj0mg7rgk&pkkrii88h
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']#à modifier en production
 
 
 # Application definition
@@ -75,8 +76,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('POSTGRES_DB', 'ocean_db'),
+        'USER': os.environ.get('POSTGRES_USER', 'ocean_user'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'ocean_password'),
+        'HOST': os.environ.get('POSTGRES_HOST', 'db'),  # Le nom du service dans docker-compose
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
     }
 }
 
