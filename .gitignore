@@ -35,3 +35,7 @@ data/media/
 .idea/
 .DS_Store
 Thumbs.db
+
+cvat-core/
+GEMINI.md
+
