@@ -4,7 +4,7 @@
     "strict": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@/components/*": ["src/components/*"],
+      "@/components/*": ["./src/shared/components/*"],
       "@/constants/*": ["./src/core/constants/*"]
     }
   },
