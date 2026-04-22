@@ -18,7 +18,7 @@ public async fetchQueue(): Promise<MediaEntity[]> {
       console.error("Erreur lors de la récupération de la file d'attente:", error);
       throw new Error("Impossible de charger les données du serveur.");
     }
-  }
+}
 
 public async submitAnnotation(mediaId: string, annotation: Annotation): Promise<void> {
     try {
@@ -34,7 +34,7 @@ public async submitAnnotation(mediaId: string, annotation: Annotation): Promise<
       console.error(`Erreur lors de la soumission de l'annotation ${mediaId}:`, error);
       throw error;
     }
-  }
+}
 
 private mapStatus(cvatStatus: string): any {
     const statusMap: Record<string, string> = {
@@ -43,7 +43,24 @@ private mapStatus(cvatStatus: string): any {
       'annotation': 'PENDING'
     };
     return statusMap[cvatStatus] || 'PENDING';
-  }
+}
+
+public async uploadMedia(file: File): Promise<void> {
+		try {
+			const formData = new FormData();
+			formData.append("client_file", file);
+
+			await apiClient.post("/tasks", formData, {
+				headers: {
+					"Content-Type": "multipart/form-data",
+				},
+			});
+		} catch (error) {
+			console.error("Erreur d'upload :", error);
+			throw new Error("L'envoi du média a échoué.");
+		}
+}
+
 }
 
 export const cvatMediaService = new CvatMediaService();
