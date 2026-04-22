@@ -3,7 +3,7 @@ import { apiClient } from './axiosClient';
 
 export class CvatMediaService implements IMediaService {
 
-public async fetchQueue(): Promise<MediaEntity[]> {
+  public async fetchQueue(): Promise<MediaEntity[]> {
     try {
       const response = await apiClient.get('/tasks');
 
@@ -18,12 +18,11 @@ public async fetchQueue(): Promise<MediaEntity[]> {
       console.error("Erreur lors de la récupération de la file d'attente:", error);
       throw new Error("Impossible de charger les données du serveur.");
     }
-}
+  }
 
-public async submitAnnotation(mediaId: string, annotation: Annotation): Promise<void> {
+  public async submitAnnotation(mediaId: string, annotation: Annotation): Promise<void> {
     try {
       await apiClient.post(`/tasks/${mediaId}/annotations`, {
-        // On adapte notre objet Annotation au format attendu par CVAT
         shapes: [{
           label_id: annotation.label,
           points: [annotation.box.x, annotation.box.y, annotation.box.width, annotation.box.height],
@@ -34,23 +33,30 @@ public async submitAnnotation(mediaId: string, annotation: Annotation): Promise<
       console.error(`Erreur lors de la soumission de l'annotation ${mediaId}:`, error);
       throw error;
     }
-}
+  }
 
-private mapStatus(cvatStatus: string): any {
+  private mapStatus(cvatStatus: string): any {
     const statusMap: Record<string, string> = {
       'completed': 'CERTIFIED',
       'validation': 'MODERATED',
       'annotation': 'PENDING'
     };
     return statusMap[cvatStatus] || 'PENDING';
-}
+  }
 
-public async uploadMedia(file: File): Promise<void> {
+  public async uploadMedia(file: File, taskName: string = "Upload_Mobile"): Promise<void> {
 		try {
-			const formData = new FormData();
-			formData.append("client_file", file);
+			const taskResponse = await apiClient.post("/tasks", {
+				name: taskName,
+				labels: []
+			});
+			const taskId = taskResponse.data.id;
 
-			await apiClient.post("/tasks", formData, {
+			const formData = new FormData();
+			formData.append("client_files", file); 
+			formData.append("image_quality", "80"); 
+
+			await apiClient.post(`/tasks/${taskId}/data/`, formData, {
 				headers: {
 					"Content-Type": "multipart/form-data",
 				},
@@ -59,7 +65,7 @@ public async uploadMedia(file: File): Promise<void> {
 			console.error("Erreur d'upload :", error);
 			throw new Error("L'envoi du média a échoué.");
 		}
-}
+	}
 
 }
 

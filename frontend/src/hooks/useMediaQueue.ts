@@ -1,53 +1,59 @@
-import { MediaEntity } from "@/core/types/media";
-import { useState } from "react";
-import { useEffect } from "react";
+import { useState, useEffect } from 'react';
+import { CvatMediaService } from '@/services/api/CvatMediaService';
+import { MediaEntity } from '@/core/types/media';
 
 export interface MediaQueueState {
-    readonly data: MediaEntity[] | null;
-    readonly isLoading: boolean;
-    readonly error: string | null;
+	readonly data: MediaEntity[] | null;
+	readonly isLoading: boolean;
+	readonly error: string | null;
 }
 
 export interface UseMediaQueueReturn {
-    readonly state: MediaQueueState;
-    readonly refreshMedia: ()=> void;
+	readonly state: MediaQueueState;
+	readonly refreshMedia: () => void;
 }
 
 export const useMediaQueue = (): UseMediaQueueReturn => {
-    const [state, setState] = useState<MediaQueueState>({
-        data: null,
-        isLoading: true,
-        error: null,
-    });
+	const [state, setState] = useState<MediaQueueState>({
+		data: null,
+		isLoading: true,
+		error: null,
+	});
 
-    const refreshMedia = () => {
-        setState({ data: null, isLoading: true, error: null });
-    };
+	const refreshMedia = () => {
+		setState((prevState) => ({ ...prevState, isLoading: true, error: null }));
+	};
 
-    useEffect(() => {
-        const loadQueue = async () => {
-            try {
-                // 1. Attends la réponse de mockMediaService.fetchQueue()
-                
-                // 2. Utilise setState pour écraser l'état actuel :
-                // Injecte les données reçues, passe isLoading à false, error à null
-                
-            } catch (err) {
-                // 3. En cas d'échec :
-                // Utilise setState : data à null, capture le message d'erreur, isLoading à false
-                
-            } finally {
-                // 4. Ce bloc s'exécute quoi qu'il arrive. 
-                // Assure-toi que isLoading est forcé à false ici pour éviter le chargement infini.
-            }
-        };
+	useEffect(() => {
+		let isMounted = true;
 
-        loadQueue();
-    }, []);
-    // --- FIN DU BLOC À COMPLÉTER ---
+		const loadQueue = async () => {
+			try {
+				const service = new CvatMediaService();
+				const result = await service.fetchQueue(); 
+				
+				if (isMounted) {
+					setState({ data: result, isLoading: false, error: null });
+				}
+			} catch (error) {
+				if (isMounted) {
+					setState({
+						data: null,
+						isLoading: false,
+						error: error instanceof Error ? error.message : "Erreur de récupération des médias.",
+					});
+				}
+			}
+		};
 
-    return {
-        state,
-        refreshMedia
-    };
-}
+		if (state.isLoading) {
+			loadQueue();
+		}
+
+		return () => {
+			isMounted = false;
+		};
+	}, [state.isLoading]);
+
+	return { state, refreshMedia };
+};

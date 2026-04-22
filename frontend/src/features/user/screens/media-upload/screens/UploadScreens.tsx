@@ -17,8 +17,6 @@ export const UploadScreen: React.FC = () => {
 				{localUri ? (
 					<View style={{ width: '100%', alignItems: 'center' }}>
 						<Image source={{ uri: localUri }} style={styles.previewImage} />
-						
-						{/* Correction du nom de la fonction (clearSelection) */}
 						<Button title="Retirer l'image" onPress={clearSelection} color={COLORS.danger} />
 					</View>
 				) : (
