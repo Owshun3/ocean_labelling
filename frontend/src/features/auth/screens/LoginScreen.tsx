@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
@@ -70,51 +70,27 @@ export const LoginScreen: React.FC = () => {
 				) : (
 					<Button title="Se connecter" onPress={handleLogin} color={COLORS.primary} />
 				)}
+
+				<View style={styles.switchContainer}>
+					<Text style={styles.switchText}>Vous n'avez pas de compte ? </Text>
+					<Pressable onPress={() => router.replace('/(auth)/register' as Href)}>
+						<Text style={styles.link}>Créer un compte</Text>
+					</Pressable>
+				</View>
 			</View>
 		</SafeAreaView>
 	);
 };
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: COLORS.background.main,
-		justifyContent: 'center',
-		padding: SPACING.md,
-	},
-	card: {
-		backgroundColor: COLORS.background.card,
-		padding: SPACING.lg,
-		borderRadius: 8,
-		shadowColor: '#000',
-		shadowOpacity: 0.1,
-		shadowRadius: 4,
-		elevation: 2,
-	},
-	title: {
-		...TYPOGRAPHY.h1,
-		marginBottom: SPACING.lg,
-		textAlign: 'center',
-	},
-	errorText: {
-		color: COLORS.danger,
-		marginBottom: SPACING.md,
-		textAlign: 'center',
-	},
-	inputGroup: {
-		marginBottom: SPACING.md,
-	},
-	label: {
-		...TYPOGRAPHY.caption,
-		color: COLORS.text.secondary,
-		marginBottom: SPACING.xs,
-		fontWeight: '600',
-	},
-	input: {
-		borderWidth: 1,
-		borderColor: COLORS.border,
-		borderRadius: 4,
-		padding: SPACING.md,
-		...TYPOGRAPHY.body,
-	},
+	container: { flex: 1, backgroundColor: COLORS.background.main, justifyContent: 'center', padding: SPACING.md },
+	card: { backgroundColor: COLORS.background.card, padding: SPACING.lg, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, maxWidth: 400, width: '100%', alignSelf: 'center' },
+	title: { ...TYPOGRAPHY.h1, marginBottom: SPACING.lg, textAlign: 'center' },
+	errorText: { color: COLORS.danger, marginBottom: SPACING.md, textAlign: 'center' },
+	inputGroup: { marginBottom: SPACING.md },
+	label: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.xs, fontWeight: '600' },
+	input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 4, padding: SPACING.md, ...TYPOGRAPHY.body },
+	switchContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.xl, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
+	switchText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },
+	link: { ...TYPOGRAPHY.body, color: COLORS.primary, fontWeight: 'bold' }
 });

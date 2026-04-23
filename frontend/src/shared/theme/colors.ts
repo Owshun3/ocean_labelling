@@ -9,11 +9,17 @@ export const COLORS = {
     card: '#FFFFFF',
     imagePlaceholder: '#E5E5EA',
   },
-text: {
+  text: {
 		primary: '#000000',
 		secondary: '#666666',
 		inverse: '#FFFFFF',
 		placeholder: '#A0A0A0',
 	},
   border: '#C6C6C8',
+  status: {
+		pending: '#f59e0b',
+		validated: '#10b981',
+		error: '#ef4444',
+	},
+	overlay: 'rgba(0, 0, 0, 0.5)',
 } as const;

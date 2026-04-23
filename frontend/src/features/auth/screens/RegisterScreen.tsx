@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
@@ -23,17 +23,14 @@ export const RegisterScreen: React.FC = () => {
 			setError("Tous les champs sont obligatoires.");
 			return;
 		}
-
 		if (username.length < 5) {
 			setError("Le nom d'utilisateur doit contenir au moins 5 caractères.");
 			return;
 		}
-
 		if (password.length < 8) {
 			setError("Le mot de passe doit contenir au moins 8 caractères.");
 			return;
 		}
-
 		if (password !== confirmPassword) {
 			setError("Les mots de passe ne correspondent pas.");
 			return;
@@ -45,7 +42,7 @@ export const RegisterScreen: React.FC = () => {
 		try {
 			const authService = new CvatAuthService();
 			await authService.register(username, email, firstName, lastName, password);
-			router.replace('/(main)' as Href);
+			router.replace('/(main)/welcome' as Href);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Erreur lors de l'inscription.");
 		} finally {
@@ -62,73 +59,22 @@ export const RegisterScreen: React.FC = () => {
 				
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Identifiant</Text>
-					<TextInput
-						style={[styles.input, { fontStyle: username === '' ? 'italic' : 'normal' }]}
-						placeholder="ex: Utilisateur123"
-						placeholderTextColor={COLORS.text.placeholder}
-						value={username}
-						onChangeText={setUsername}
-						autoCapitalize="none"
-					/>
-				</View>
-
-				<View style={styles.inputGroup}>
-					<Text style={styles.label}>Nom de famille</Text>
-					<TextInput
-						style={[styles.input, { fontStyle: lastName === '' ? 'italic' : 'normal' }]}
-						placeholder="Dupont"
-						placeholderTextColor={COLORS.text.placeholder}
-						value={lastName}
-						onChangeText={setLastName}
-					/>
-				</View>
-
-				<View style={styles.inputGroup}>
-					<Text style={styles.label}>Prénom</Text>
-					<TextInput
-						style={[styles.input, { fontStyle: firstName === '' ? 'italic' : 'normal' }]}
-						placeholder="Jean"
-						placeholderTextColor={COLORS.text.placeholder}
-						value={firstName}
-						onChangeText={setFirstName}
-					/>
+					<TextInput style={[styles.input, { fontStyle: username === '' ? 'italic' : 'normal' }]} placeholder="ex: Utilisateur123" placeholderTextColor={COLORS.text.placeholder} value={username} onChangeText={setUsername} autoCapitalize="none" />
 				</View>
 
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Adresse email</Text>
-					<TextInput
-						style={[styles.input, { fontStyle: email === '' ? 'italic' : 'normal' }]}
-						placeholder="ex: jean@upf.pf"
-						placeholderTextColor={COLORS.text.placeholder}
-						value={email}
-						onChangeText={setEmail}
-						keyboardType="email-address"
-						autoCapitalize="none"
-					/>
+					<TextInput style={[styles.input, { fontStyle: email === '' ? 'italic' : 'normal' }]} placeholder="ex: jean@upf.pf" placeholderTextColor={COLORS.text.placeholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
 				</View>
 				
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Mot de passe</Text>
-					<TextInput
-						style={[styles.input, { fontStyle: password === '' ? 'italic' : 'normal' }]}
-						placeholder="Min. 8 caractères"
-						placeholderTextColor={COLORS.text.placeholder}
-						value={password}
-						onChangeText={setPassword}
-						secureTextEntry
-					/>
+					<TextInput style={[styles.input, { fontStyle: password === '' ? 'italic' : 'normal' }]} placeholder="Min. 8 caractères" placeholderTextColor={COLORS.text.placeholder} value={password} onChangeText={setPassword} secureTextEntry />
 				</View>
 
 				<View style={styles.inputGroup}>
-					<Text style={styles.label}>Confirmer le mot de passe</Text>
-					<TextInput
-						style={[styles.input, { fontStyle: confirmPassword === '' ? 'italic' : 'normal' }]}
-						placeholder="Min. 8 caractères"
-						placeholderTextColor={COLORS.text.placeholder}
-						value={confirmPassword}
-						onChangeText={setConfirmPassword}
-						secureTextEntry
-					/>
+					<Text style={styles.label}>Confirmer</Text>
+					<TextInput style={[styles.input, { fontStyle: confirmPassword === '' ? 'italic' : 'normal' }]} placeholder="Min. 8 caractères" placeholderTextColor={COLORS.text.placeholder} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
 				</View>
 				
 				{isLoading ? (
@@ -136,51 +82,27 @@ export const RegisterScreen: React.FC = () => {
 				) : (
 					<Button title="S'inscrire" onPress={handleRegister} color={COLORS.primary} />
 				)}
+
+				<View style={styles.switchContainer}>
+					<Text style={styles.switchText}>Vous avez déjà un compte ? </Text>
+					<Pressable onPress={() => router.replace('/(auth)/login' as Href)}>
+						<Text style={styles.link}>S'identifier</Text>
+					</Pressable>
+				</View>
 			</View>
 		</SafeAreaView>
 	);
 };
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: COLORS.background.main,
-		justifyContent: 'center',
-		padding: SPACING.md,
-	},
-	card: {
-		backgroundColor: COLORS.background.card,
-		padding: SPACING.lg,
-		borderRadius: 8,
-		shadowColor: '#000',
-		shadowOpacity: 0.1,
-		shadowRadius: 4,
-		elevation: 2,
-	},
-	title: {
-		...TYPOGRAPHY.h1,
-		marginBottom: SPACING.lg,
-		textAlign: 'center',
-	},
-	errorText: {
-		color: COLORS.danger,
-		marginBottom: SPACING.md,
-		textAlign: 'center',
-	},
-	inputGroup: {
-		marginBottom: SPACING.md,
-	},
-	label: {
-		...TYPOGRAPHY.caption,
-		color: COLORS.text.secondary,
-		marginBottom: SPACING.xs,
-		fontWeight: '600',
-	},
-	input: {
-		borderWidth: 1,
-		borderColor: COLORS.border,
-		borderRadius: 4,
-		padding: SPACING.md,
-		...TYPOGRAPHY.body,
-	},
+	container: { flex: 1, backgroundColor: COLORS.background.main, justifyContent: 'center', padding: SPACING.md },
+	card: { backgroundColor: COLORS.background.card, padding: SPACING.lg, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, maxWidth: 400, width: '100%', alignSelf: 'center' },
+	title: { ...TYPOGRAPHY.h1, marginBottom: SPACING.lg, textAlign: 'center' },
+	errorText: { color: COLORS.danger, marginBottom: SPACING.md, textAlign: 'center' },
+	inputGroup: { marginBottom: SPACING.md },
+	label: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.xs, fontWeight: '600' },
+	input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 4, padding: SPACING.md, ...TYPOGRAPHY.body },
+	switchContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.xl, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
+	switchText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },
+	link: { ...TYPOGRAPHY.body, color: COLORS.primary, fontWeight: 'bold' }
 });

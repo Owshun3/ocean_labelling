@@ -16,8 +16,6 @@ const NAV_ROUTES: NavRoute[] = [
 	{ name: 'Mes Médias', path: '/(main)/media' as Href, roles: ['user', 'curator', 'admin'] },
 	{ name: 'Annoter', path: '/(main)/annotate' as Href, roles: ['user', 'curator', 'admin'] },
 	{ name: 'Mon Profil', path: '/(main)/profile' as Href, roles: ['user', 'curator', 'admin'] },
-	// Exemple de route restreinte pour plus tard :
-	// { name: 'Administration', path: '/(main)/admin' as Href, roles: ['admin'] },
 ];
 
 export const Header: React.FC = () => {

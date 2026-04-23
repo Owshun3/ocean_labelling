@@ -30,5 +30,10 @@ export const TYPOGRAPHY: Record<string, TextStyle> = {
     fontWeight: '400',
     fontFamily: 'Roboto',
     lineHeight: 16,
-  }
+  },
+  badge: {
+		fontSize: 10,
+		fontWeight: '700',
+		textTransform: 'uppercase' as const,
+	},
 } as const;
