@@ -6,6 +6,7 @@ import { AppConfigService } from '@/services/api/AppConfigService';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
+import { Platform } from 'react-native';
 
 export const WelcomeScreen: React.FC = () => {
 	const [message, setMessage] = useState<string>('');
@@ -41,8 +42,10 @@ export const WelcomeScreen: React.FC = () => {
 	}, []);
 
 	const acknowledgeWelcome = () => {
-		localStorage.setItem('has_seen_welcome', 'true');
-		router.replace('/(main)/welcome' as Href);
+		if (Platform.OS === 'web') {
+			localStorage.setItem('has_seen_welcome', 'true');
+		}
+		router.replace('/(main)' as Href);
 	};
 
 	return (

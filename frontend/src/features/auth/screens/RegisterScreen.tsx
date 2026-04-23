@@ -20,7 +20,7 @@ export const RegisterScreen: React.FC = () => {
 
 	const handleRegister = async () => {
 		if (!username || !email || !password || !confirmPassword) {
-			setError("Tous les champs sont obligatoires.");
+			setError("Les champs principaux sont obligatoires.");
 			return;
 		}
 		if (username.length < 5) {
@@ -60,6 +60,16 @@ export const RegisterScreen: React.FC = () => {
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Identifiant</Text>
 					<TextInput style={[styles.input, { fontStyle: username === '' ? 'italic' : 'normal' }]} placeholder="ex: Utilisateur123" placeholderTextColor={COLORS.text.placeholder} value={username} onChangeText={setUsername} autoCapitalize="none" />
+				</View>
+
+				<View style={styles.inputGroup}>
+					<Text style={styles.label}>Prénom</Text>
+					<TextInput style={[styles.input, { fontStyle: firstName === '' ? 'italic' : 'normal' }]} placeholder="Jean" placeholderTextColor={COLORS.text.placeholder} value={firstName} onChangeText={setFirstName} />
+				</View>
+
+				<View style={styles.inputGroup}>
+					<Text style={styles.label}>Nom de famille</Text>
+					<TextInput style={[styles.input, { fontStyle: lastName === '' ? 'italic' : 'normal' }]} placeholder="Dupont" placeholderTextColor={COLORS.text.placeholder} value={lastName} onChangeText={setLastName} />
 				</View>
 
 				<View style={styles.inputGroup}>
