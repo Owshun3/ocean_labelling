@@ -21,5 +21,6 @@ export const COLORS = {
 		validated: '#10b981',
 		error: '#ef4444',
 	},
-	overlay: 'rgba(0, 0, 0, 0.5)',
+	overlay: 'rgba(0, 0, 0, 0.85)',
+  white: '#FFFFFF',
 } as const;

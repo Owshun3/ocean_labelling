@@ -38,8 +38,19 @@ export class CvatMediaService {
 		return taskId;
 	}
 
-	async getTasks() {
-		const response = await apiClient.get('/tasks?page_size=20');
-		return response.data.results;
-	}
+	async getTasks(params?: { sorting?: string; owner?: string }) {
+        let url = '/tasks?page_size=20';
+        if (params?.sorting) url += `&sort=${params.sorting}`;
+        
+        const response = await apiClient.get(url);
+        return response.data.results;
+    }
+
+	async getFirstJobId(taskId: number): Promise<number> {
+        const response = await apiClient.get(`/tasks/${taskId}/jobs`);
+        if (response.data.results && response.data.results.length > 0) {
+            return response.data.results[0].id;
+        }
+        throw new Error("Aucun job d'annotation trouvé pour cette image.");
+    }
 }
