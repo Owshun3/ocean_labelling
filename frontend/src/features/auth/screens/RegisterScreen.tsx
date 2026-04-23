@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter, Href } from 'expo-router';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
@@ -15,6 +16,7 @@ export const RegisterScreen: React.FC = () => {
 	const [confirmPassword, setConfirmPassword] = useState('');
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const router = useRouter();
 
 	const handleRegister = async () => {
 		if (!username || !email || !password || !confirmPassword) {
@@ -43,14 +45,15 @@ export const RegisterScreen: React.FC = () => {
 		try {
 			const authService = new CvatAuthService();
 			await authService.register(username, email, firstName, lastName, password);
-			alert("Inscription réussie. Redirection vers le tableau de bord...");
+			router.replace('/(main)' as Href);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Erreur lors de l'inscription.");
 		} finally {
 			setIsLoading(false);
 		}
 	};
-    return (
+
+	return (
 		<SafeAreaView style={styles.container}>
 			<View style={styles.card}>
 				<Text style={styles.title}>Inscription CVAT</Text>
@@ -59,8 +62,8 @@ export const RegisterScreen: React.FC = () => {
 				
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Identifiant</Text>
-                        <TextInput
-						style={styles.input}
+					<TextInput
+						style={[styles.input, { fontStyle: username === '' ? 'italic' : 'normal' }]}
 						placeholder="ex: Utilisateur123"
 						placeholderTextColor={COLORS.text.placeholder}
 						value={username}
@@ -69,12 +72,12 @@ export const RegisterScreen: React.FC = () => {
 					/>
 				</View>
 
-                <View style={styles.inputGroup}>
+				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Nom de famille</Text>
 					<TextInput
-						style={styles.input}
+						style={[styles.input, { fontStyle: lastName === '' ? 'italic' : 'normal' }]}
 						placeholder="Dupont"
-                        placeholderTextColor={COLORS.text.placeholder}
+						placeholderTextColor={COLORS.text.placeholder}
 						value={lastName}
 						onChangeText={setLastName}
 					/>
@@ -83,20 +86,20 @@ export const RegisterScreen: React.FC = () => {
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Prénom</Text>
 					<TextInput
-						style={styles.input}
+						style={[styles.input, { fontStyle: firstName === '' ? 'italic' : 'normal' }]}
 						placeholder="Jean"
-                        placeholderTextColor={COLORS.text.placeholder}
+						placeholderTextColor={COLORS.text.placeholder}
 						value={firstName}
 						onChangeText={setFirstName}
 					/>
 				</View>
 
-                <View style={styles.inputGroup}>
+				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Adresse email</Text>
 					<TextInput
-						style={styles.input}
+						style={[styles.input, { fontStyle: email === '' ? 'italic' : 'normal' }]}
 						placeholder="ex: jean@upf.pf"
-                        placeholderTextColor={COLORS.text.placeholder}
+						placeholderTextColor={COLORS.text.placeholder}
 						value={email}
 						onChangeText={setEmail}
 						keyboardType="email-address"
@@ -107,9 +110,9 @@ export const RegisterScreen: React.FC = () => {
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Mot de passe</Text>
 					<TextInput
-						style={styles.input}
+						style={[styles.input, { fontStyle: password === '' ? 'italic' : 'normal' }]}
 						placeholder="Min. 8 caractères"
-                        placeholderTextColor={COLORS.text.placeholder}
+						placeholderTextColor={COLORS.text.placeholder}
 						value={password}
 						onChangeText={setPassword}
 						secureTextEntry
@@ -119,9 +122,9 @@ export const RegisterScreen: React.FC = () => {
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Confirmer le mot de passe</Text>
 					<TextInput
-						style={styles.input}
+						style={[styles.input, { fontStyle: confirmPassword === '' ? 'italic' : 'normal' }]}
 						placeholder="Min. 8 caractères"
-                        placeholderTextColor={COLORS.text.placeholder}
+						placeholderTextColor={COLORS.text.placeholder}
 						value={confirmPassword}
 						onChangeText={setConfirmPassword}
 						secureTextEntry
@@ -164,7 +167,7 @@ const styles = StyleSheet.create({
 		marginBottom: SPACING.md,
 		textAlign: 'center',
 	},
-    inputGroup: {
+	inputGroup: {
 		marginBottom: SPACING.md,
 	},
 	label: {

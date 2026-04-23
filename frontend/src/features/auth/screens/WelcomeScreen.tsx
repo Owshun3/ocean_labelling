@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Button, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter, Href } from 'expo-router';
 import { AppConfigService } from '@/services/api/AppConfigService';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -9,6 +10,7 @@ import { SPACING } from '@/shared/theme/spacing';
 export const WelcomeScreen: React.FC = () => {
 	const [message, setMessage] = useState<string>('');
 	const [isLoading, setIsLoading] = useState<boolean>(true);
+	const router = useRouter();
 
 	useEffect(() => {
 		let isMounted = true;
@@ -40,7 +42,7 @@ export const WelcomeScreen: React.FC = () => {
 
 	const acknowledgeWelcome = () => {
 		localStorage.setItem('has_seen_welcome', 'true');
-		window.location.reload();
+		router.replace('/(main)/welcome' as Href);
 	};
 
 	return (

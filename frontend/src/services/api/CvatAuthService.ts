@@ -23,7 +23,6 @@ export class CvatAuthService {
 
     private async ensureCsrfToken(): Promise<void> {
 		try {
-			// Requête inoffensive pour forcer l'attribution du cookie csrftoken
 			await apiClient.get('/server/about');
 		} catch (error) {
 			console.warn("Avertissement : Impossible de récupérer le jeton CSRF préliminaire.");
