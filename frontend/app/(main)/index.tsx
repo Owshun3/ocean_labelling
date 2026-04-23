@@ -1,5 +1,2 @@
-import { UserDashboardScreen } from '@/features/user/screens/UserDashBoardScreen';
-
-export default function DashboardRoute() {
-    return <UserDashboardScreen />;
-}
+import { DashboardScreen } from '@/features/dashboard/screens/DashboardScreen';
+export default function DashboardRoute() { return <DashboardScreen />; }
