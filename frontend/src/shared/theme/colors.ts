@@ -9,10 +9,11 @@ export const COLORS = {
     card: '#FFFFFF',
     imagePlaceholder: '#E5E5EA',
   },
-  text: {
-    primary: '#000000',
-    secondary: '#666666',
-    inverse: '#FFFFFF',
-  },
+text: {
+		primary: '#000000',
+		secondary: '#666666',
+		inverse: '#FFFFFF',
+		placeholder: '#A0A0A0',
+	},
   border: '#C6C6C8',
 } as const;
