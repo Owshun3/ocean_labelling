@@ -29,11 +29,7 @@ export class CvatMediaService {
 				} as any);
 			}
 		}
-		await apiClient.post(`/tasks/${taskId}/data`, formData, {
-			headers: { 
-				'Content-Type': 'multipart/form-data',
-			}
-		});
+		await apiClient.post(`/tasks/${taskId}/data`, formData);
 
 		return taskId;
 	}

@@ -30,7 +30,7 @@ export const useMediaQueue = (): UseMediaQueueReturn => {
 		const loadQueue = async () => {
 			try {
 				const service = new CvatMediaService();
-				const result = await service.fetchQueue(); 
+				const result = await service.getTasks();
 				
 				if (isMounted) {
 					setState({ data: result, isLoading: false, error: null });

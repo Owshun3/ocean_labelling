@@ -21,18 +21,8 @@ export class CvatAuthService {
 		}
 	}
 
-    private async ensureCsrfToken(): Promise<void> {
-		try {
-			await apiClient.get('/server/about');
-		} catch (error) {
-			console.warn("Avertissement : Impossible de récupérer le jeton CSRF préliminaire.");
-		}
-	}
-
 	public async login(username: string, password: string): Promise<void> {
 		try {
-			await this.ensureCsrfToken();
-			
 			const response = await apiClient.post('/auth/login', {
 				username,
 				password
@@ -54,8 +44,6 @@ export class CvatAuthService {
 		password: string
 	): Promise<void> {
 		try {
-			await this.ensureCsrfToken();
-
 			await apiClient.post('/auth/register', {
 				username,
 				email,

@@ -26,7 +26,9 @@ export const AnnotationHubScreen: React.FC = () => {
         setIsProcessing(true);
         try {
             const jobId = await mediaService.getFirstJobId(selectedId);
-            const cvatUrl = `http://localhost:8080/tasks/${selectedId}/jobs/${jobId}`;
+            const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api';
+            const baseUrl = apiUrl.replace(/\/api\/?$/, '');
+            const cvatUrl = `${baseUrl}/tasks/${selectedId}/jobs/${jobId}`;
             window.open(cvatUrl, '_blank');
         } catch (error) {
             Alert.alert("Erreur", "Impossible de charger le studio.");

@@ -1,0 +1,15 @@
+services:
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - default
+      - cvat_cvat
+    restart: unless-stopped
+
+networks:
+  cvat_cvat:
+    external: true
