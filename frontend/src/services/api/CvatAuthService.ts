@@ -2,6 +2,21 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { apiClient } from './axiosClient';
 
+const CVAT_ERROR_FR: Record<string, string> = {
+	'Unable to log in with provided credentials.': 'Identifiants incorrects.',
+	'A user with that username already exists.': 'Ce nom d\'utilisateur est déjà pris.',
+	'Enter a valid email address.': 'Adresse e-mail invalide.',
+	'This field may not be blank.': 'Ce champ est obligatoire.',
+	'This field is required.': 'Ce champ est obligatoire.',
+	'This password is too common.': 'Ce mot de passe est trop courant.',
+	'This password is too short. It must contain at least 8 characters.': 'Mot de passe trop court (8 caractères minimum).',
+	'This password is entirely numeric.': 'Le mot de passe ne peut pas être uniquement numérique.',
+	'The two password fields didn\'t match.': 'Les mots de passe ne correspondent pas.',
+	'The password is too similar to the username.': 'Le mot de passe est trop similaire au nom d\'utilisateur.',
+};
+
+const tr = (msg: string) => CVAT_ERROR_FR[msg] ?? msg;
+
 export class CvatAuthService {
 	private readonly TOKEN_KEY = 'cvat_token';
 
@@ -21,26 +36,45 @@ export class CvatAuthService {
 		}
 	}
 
+	private extractLoginError(error: any): never {
+		if (!error?.response) {
+			throw new Error('Serveur inaccessible. Vérifiez que le service est démarré (port 8888).');
+		}
+		const { status, data } = error.response;
+		const detail = data?.non_field_errors?.[0] ?? data?.detail;
+		if (status === 400 || status === 401) {
+			throw new Error(tr(detail ?? 'Unable to log in with provided credentials.'));
+		}
+		throw new Error(`Erreur serveur (${status})${detail ? ' : ' + tr(detail) : ''}.`);
+	}
+
+	private extractRegisterError(error: any): never {
+		if (!error?.response) {
+			throw new Error('Serveur inaccessible. Vérifiez que le service est démarré (port 8888).');
+		}
+		const { status, data } = error.response;
+		if (data?.username) throw new Error(`Identifiant : ${tr(data.username[0])}`);
+		if (data?.email) throw new Error(`Email : ${tr(data.email[0])}`);
+		if (data?.password1) throw new Error(`Mot de passe : ${tr(data.password1[0])}`);
+		if (data?.non_field_errors) throw new Error(tr(data.non_field_errors[0]));
+		if (typeof data === 'string') throw new Error(tr(data));
+		throw new Error(`Erreur ${status} lors de la création du compte.`);
+	}
+
 	public async login(username: string, password: string): Promise<void> {
 		try {
-			const response = await apiClient.post('/auth/login', {
-				username,
-				password
-			});
-			
-			const token = response.data.key;
-			await this.saveTokenLocally(token);
-		} catch (error) {
-			console.error("Erreur de connexion :", error);
-			throw new Error("L'authentification a échoué. Vérifiez vos identifiants ou l'état du serveur.");
+			const response = await apiClient.post('/auth/login', { username, password });
+			await this.saveTokenLocally(response.data.key);
+		} catch (error: any) {
+			this.extractLoginError(error);
 		}
 	}
 
 	public async register(
-		username: string, 
+		username: string,
 		email: string,
-		firstName: string, 
-		lastName: string, 
+		firstName: string,
+		lastName: string,
 		password: string
 	): Promise<void> {
 		try {
@@ -50,23 +84,17 @@ export class CvatAuthService {
 				first_name: firstName,
 				last_name: lastName,
 				password1: password,
-				password2: password
+				password2: password,
 			});
-			
-			await this.login(username, password);
 		} catch (error: any) {
-			const serverData = error.response?.data;
-			let errorMessage = "La création du compte a échoué.";
-			
-			if (serverData) {
-				if (serverData.username) errorMessage = `Nom d'utilisateur : ${serverData.username[0]}`;
-				else if (serverData.email) errorMessage = `Email : ${serverData.email[0]}`;
-				else if (serverData.password1) errorMessage = `Mot de passe : ${serverData.password1[0]}`;
-				else if (serverData.non_field_errors) errorMessage = serverData.non_field_errors[0];
-				else if (typeof serverData === 'string') errorMessage = serverData;
-			}
-			
-			throw new Error(errorMessage);
+			this.extractRegisterError(error);
+		}
+
+		// Séparé du try/catch register : si le login auto échoue, message distinct
+		try {
+			await this.login(username, password);
+		} catch {
+			throw new Error('Compte créé, mais connexion automatique échouée. Connectez-vous manuellement.');
 		}
 	}
 

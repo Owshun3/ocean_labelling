@@ -64,6 +64,8 @@ Il est nécessaire de définir le moteur de routage interne de l'application cli
 * **Intégration du Studio :** Le routage vers le studio d'annotation s'effectuera via le reverse proxy NGINX. 
 * **Phase de transition :** L'intégration débutera par une phase de test technique utilisant une `<iframe>` pour encapsuler le studio dans l'UI React. Une bascule vers une redirection native (via NGINX ou `window.open`) est planifiée en cas de blocages persistants liés aux politiques de sécurité des navigateurs (X-Frame-Options).
 
+---
+
 # ADR-005 : Déploiement d'une Base de Données Annexe (RBAC & Configurations)
 
 * **Statut :** Accepté
