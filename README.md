@@ -42,10 +42,10 @@ src/
 
 ## 5. Contrôle d'Accès Basé sur les Rôles (RBAC)
 Le flux de données est conditionné par une hiérarchie stricte :
-1.  **Administrateur :** Paramétrage global, CRUD utilisateur, accès exclusif à l'export des données, assignation manuelle des tâches.
+1.  **Administrateur :** Paramétrage global, CRUD utilisateur, accès exclusif à l'export des données, assignation manuelle ou algorithmique des tâches de curation.
 2.  **Modérateur :** Vue globale sur la file d'attente, validation/refus d'annotations en lot.
-3.  **Curateur :** Action circonscrite aux assignations explicites de l'Admin. 
-4.  **Utilisateur Lambda :** Téléversement, suivi personnel (En attente/Validé/Refusé), annotation de données publiques, signalement de validation.
+3.  **Curateur :** Reçoit un set d'images déjà annotées (potentiellement plusieurs fois par des annotateurs différents), assigné manuellement par un admin ou via algorithme. Son rôle est d'assurer la **qualité de l'annotation** : il voit l'ensemble des labels et étiquettes (noms d'espèces) proposés sur chaque image, et peut fusionner les annotations, choisir la meilleure proposition, ou réannoter lui-même. Valide les annotations pour usage et export. Son studio est distinct du studio annotateur — il s'appuie sur les API CVAT `/consensus/` et `/quality/` (fusion IoU multi-jobs, rapports de conflits) combinées à une interface custom à construire.
+4.  **Annotateur :** Annotation d'images publiques assignées, suivi personnel de ses contributions (En attente / Validé / Refusé).
 
 ## 6. Déploiement Local (Environnement de Développement)
 Pré-requis : Node.js (v20 LTS), Docker Engine (v24+).
