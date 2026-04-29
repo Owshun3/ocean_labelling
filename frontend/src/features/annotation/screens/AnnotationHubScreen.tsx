@@ -33,7 +33,8 @@ export const AnnotationHubScreen: React.FC = () => {
             await mediaService.assignJob(jobId, self.id);
 
             const cvatUiUrl = process.env.EXPO_PUBLIC_CVAT_UI_URL || 'http://localhost:8080';
-            window.open(`${cvatUiUrl}/tasks/${selectedId}/jobs/${jobId}`, '_blank');
+            const returnUrl = encodeURIComponent(window.location.href);
+            window.open(`${cvatUiUrl}/tasks/${selectedId}/jobs/${jobId}?appReturn=${returnUrl}`, '_blank');
         } catch (error) {
             Alert.alert('Erreur', "Impossible de charger le studio d'annotation.");
         } finally {
