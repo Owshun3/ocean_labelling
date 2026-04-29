@@ -53,7 +53,7 @@ Adoption d'une architecture à 3 conteneurs principaux :
 
 # ADR-004 : Stratégie de Navigation et Encapsulation du Studio
 
-* **Statut :** Accepté
+* **Statut :** Supersédé par ADR-006
 * **Date :** 2026-04-28
 
 ## Contexte
@@ -63,6 +63,8 @@ Il est nécessaire de définir le moteur de routage interne de l'application cli
 * **Navigation Interne :** Utilisation stricte d'`expo-router` pour la gestion des vues React et du cycle de vie de la navigation au sein de la plateforme.
 * **Intégration du Studio :** Le routage vers le studio d'annotation s'effectuera via le reverse proxy NGINX. 
 * **Phase de transition :** L'intégration débutera par une phase de test technique utilisant une `<iframe>` pour encapsuler le studio dans l'UI React. Une bascule vers une redirection native (via NGINX ou `window.open`) est planifiée en cas de blocages persistants liés aux politiques de sécurité des navigateurs (X-Frame-Options).
+
+> **Note (2026-04-29) :** La phase iframe a été évaluée et abandonnée. Voir ADR-006 pour la décision finale et sa justification complète.
 
 ---
 
@@ -85,3 +87,30 @@ Mise en place d'une base de données applicative légère et externe à CVAT. Ce
 * **Positives :** Découple la logique applicative spécifique de l'infrastructure CVAT, permettant de conserver un moteur d'annotation standard et facile à mettre à jour. Fournit un contrôle total sur l'interface d'administration.
 * **Négatives (Risque Architecturaux) :** Rupture partielle de l'ADR-002. Cela induit un risque de corruption relationnelle. 
 * **Mesure d'atténuation :** Il est impératif d'implémenter un mécanisme de jointure stricte où notre base annexe utilise l'`ID utilisateur` natif de CVAT comme clé étrangère irréfutable. Aucune donnée d'annotation ne doit transiter par cette base.
+
+---
+
+# ADR-006 : Injection NGINX comme stratégie d'encapsulation du studio CVAT (supersède ADR-004)
+
+* **Statut :** Accepté
+* **Date :** 2026-04-29
+* **Supersède :** ADR-004
+
+## Contexte
+ADR-004 prévoyait une phase de test via `<iframe>` avant une éventuelle bascule vers NGINX. Cette phase a été évaluée et conclut en faveur d'une injection NGINX directe. Voir le fichier détaillé : [`docs/ADR/ADR-006.md`](ADR/ADR-006.md).
+
+## Décision
+Le studio d'annotation CVAT est intégré via injection NGINX (`sub_filter`) : le HTML retourné par `cvat_ui:8000` est enrichi côté serveur avant d'atteindre le navigateur, sur la même origine.
+
+## Pourquoi pas l'iframe
+CVAT émet des headers `X-Frame-Options` et `CSP frame-ancestors` qui bloquent l'embedding cross-origin. Les contourner nécessiterait de modifier CVAT — interdit. De plus, la Same-Origin Policy empêche toute injection CSS/JS dans une iframe cross-origin, rendant impossible le masquage du header et le bouton de validation.
+
+## Avantages de l'injection NGINX
+* Même origine → accès DOM complet, cookies partagés, aucune restriction navigateur.
+* CSS injectée pour masquer le header CVAT natif.
+* JS injecté pour le bouton "Valider et terminer", le blocage de navigation SPA, et les extensions futures.
+* **Création de labels en live** : un panneau latéral injecté pourra appeler `PATCH /api/tasks/{id}` pour ajouter des labels à la volée sans toucher à CVAT.
+* **Studio curateur** : une UI de comparaison multi-annotateurs injectable via la même mécanique, s'appuyant sur `/api/consensus/` et `/api/quality/`.
+
+## Maintenabilité
+Bonne séparation des responsabilités : toute la logique d'injection est isolée dans `nginx/nginx.conf`, sans dépendance dans le frontend ni dans app-api. Dette identifiée : le JS est actuellement inline dans nginx.conf — à externaliser en fichiers statiques versionnés pour permettre lint et tests unitaires.
