@@ -1,0 +1,130 @@
+/* ── Masquage du header CVAT natif ─────────────────────────────────────────── */
+[class*="cvat-header"],
+header.ant-layout-header {
+  display: none !important;
+}
+
+/* ── Décalage du contenu CVAT sous notre barre ─────────────────────────────── */
+body {
+  padding-top: 48px !important;
+}
+
+/* ── Barre Ocean ────────────────────────────────────────────────────────────── */
+#ocean-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: #1f2329;
+  border-bottom: 1px solid #2d3139;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 10px;
+  z-index: 9999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .4);
+}
+
+/* ── Formulaire ajout de label ─────────────────────────────────────────────── */
+#ocean-label-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+#ocean-label-icon {
+  font-size: 15px;
+  opacity: .75;
+}
+
+#ocean-label-input {
+  width: 220px;
+  height: 30px;
+  background: #141414;
+  border: 1px solid #424242;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, .85);
+  font-size: 13px;
+  padding: 0 10px;
+  outline: none;
+  transition: border-color .15s;
+}
+
+#ocean-label-input::placeholder {
+  color: rgba(255, 255, 255, .3);
+}
+
+#ocean-label-input:focus {
+  border-color: #1890ff;
+}
+
+#ocean-label-add {
+  height: 30px;
+  padding: 0 14px;
+  background: #1890ff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s;
+  white-space: nowrap;
+}
+
+#ocean-label-add:hover {
+  background: #40a9ff;
+}
+
+#ocean-label-add:disabled {
+  background: #424242;
+  cursor: not-allowed;
+}
+
+#ocean-label-status {
+  font-size: 12px;
+  color: rgba(255, 255, 255, .45);
+  min-width: 120px;
+}
+
+#ocean-label-status.success {
+  color: #52c41a;
+}
+
+#ocean-label-status.error {
+  color: #ff4d4f;
+}
+
+/* ── Spacer ────────────────────────────────────────────────────────────────── */
+#ocean-spacer {
+  flex: 1;
+}
+
+/* ── Bouton de validation ───────────────────────────────────────────────────── */
+#ocean-val-btn {
+  height: 32px;
+  padding: 0 18px;
+  background: #10b981;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#ocean-val-btn:hover {
+  background: #059669;
+}
+
+#ocean-val-btn:disabled {
+  background: #424242;
+  cursor: not-allowed;
+}
