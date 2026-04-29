@@ -255,13 +255,33 @@
         headers: apiHeaders(),
         body: JSON.stringify({ labels: [{ name: name }] }),
       });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+      if (!resp.ok) {
+        var errMsg = 'HTTP ' + resp.status;
+        if (resp.status === 400) {
+          try {
+            var bodyText = await resp.text();
+            if (/already exist/i.test(bodyText)) {
+              errMsg = 'Le label "' + name + '" existe déjà';
+            } else {
+              /* Extraire le premier message lisible du JSON si possible */
+              try {
+                var body = JSON.parse(bodyText);
+                var flat = [].concat.apply([], Object.values(body || {}));
+                var first = flat.find(function (v) { return typeof v === 'string'; });
+                if (first) errMsg = first;
+              } catch (_) { /* corps non JSON */ }
+            }
+          } catch (_) { /* lecture impossible */ }
+        }
+        throw new Error(errMsg);
+      }
 
       setStatus('✓ Rechargement…', 'success');
       await sleep(1800); /* laisser le Ctrl+S se terminer (2 s depuis le début) */
       location.reload();
     } catch (e) {
-      setStatus('Erreur : ' + e.message, 'error');
+      setStatus(e.message, 'error');
       addBtn.disabled = false;
       css(addBtn, { background: getVar('--ocean-primary', '#007AFF'), cursor: 'pointer' });
     }
