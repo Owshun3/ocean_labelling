@@ -12,7 +12,8 @@ export const useMediaUpload = () => {
 		try {
 			const service = new CvatMediaService();
 			const taskName = `Upload_${new Date().getTime()}`;
-			await service.uploadMedia(taskName, files);
+			const taskId = await service.uploadMedia(taskName, files);
+			await service.waitForTaskData(taskId);
 			return true;
 		} catch (error) {
 			console.error("Upload failed", error);

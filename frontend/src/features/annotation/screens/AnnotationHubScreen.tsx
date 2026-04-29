@@ -25,13 +25,17 @@ export const AnnotationHubScreen: React.FC = () => {
         if (!selectedId) return;
         setIsProcessing(true);
         try {
-            const jobId = await mediaService.getFirstJobId(selectedId);
-            const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api';
-            const baseUrl = apiUrl.replace(/\/api\/?$/, '');
-            const cvatUrl = `${baseUrl}/tasks/${selectedId}/jobs/${jobId}`;
-            window.open(cvatUrl, '_blank');
+            const [jobId, self] = await Promise.all([
+                mediaService.getFirstJobId(selectedId),
+                mediaService.getSelf(),
+            ]);
+
+            await mediaService.assignJob(jobId, self.id);
+
+            const cvatUiUrl = process.env.EXPO_PUBLIC_CVAT_UI_URL || 'http://localhost:8080';
+            window.open(`${cvatUiUrl}/tasks/${selectedId}/jobs/${jobId}`, '_blank');
         } catch (error) {
-            Alert.alert("Erreur", "Impossible de charger le studio.");
+            Alert.alert('Erreur', "Impossible de charger le studio d'annotation.");
         } finally {
             setIsProcessing(false);
         }
@@ -45,13 +49,13 @@ export const AnnotationHubScreen: React.FC = () => {
                 numColumns={3}
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={({ item }) => (
-                    <Pressable 
+                    <Pressable
                         style={[styles.card, selectedId === item.id && styles.selectedCard]}
                         onPress={() => setSelectedId(item.id)}
                     >
-                        <AuthenticatedImage 
-                            url={`/tasks/${item.id}/data/0/preview`} 
-                            style={styles.thumbnail} 
+                        <AuthenticatedImage
+                            url={`/tasks/${item.id}/preview`}
+                            style={styles.thumbnail}
                         />
                         <Text numberOfLines={1} style={styles.imageName}>{item.name}</Text>
                     </Pressable>
@@ -59,8 +63,8 @@ export const AnnotationHubScreen: React.FC = () => {
             />
             {selectedId && (
                 <View style={styles.footer}>
-                    <Button 
-                        title={isProcessing ? "Chargement..." : "Lancer l'Annotation"} 
+                    <Button
+                        title={isProcessing ? 'Chargement...' : "Lancer l'Annotation"}
                         onPress={handleAnnotate}
                         disabled={isProcessing}
                     />
@@ -77,5 +81,5 @@ const styles = StyleSheet.create({
     selectedCard: { borderColor: COLORS.primary },
     thumbnail: { width: '100%', aspectRatio: 1, borderRadius: 4 },
     imageName: { ...TYPOGRAPHY.caption, marginTop: SPACING.xs },
-    footer: { padding: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border }
+    footer: { padding: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
 });

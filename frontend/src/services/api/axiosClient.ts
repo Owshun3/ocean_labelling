@@ -13,7 +13,6 @@ export const apiClient = axios.create({
 	baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api',
 	headers: {
 		'Accept': 'application/vnd.cvat+json, application/json, text/plain, */*',
-		'Content-Type': 'application/json',
 	},
 });
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Button, Image, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Button, Image, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useMediaUpload } from '../hooks/useMediaUpload';
@@ -24,9 +24,11 @@ export const UploadScreen: React.FC = () => {
 	};
 
 	const handleUpload = async () => {
-		const success = await upload(selectedImages);
-		if (success) {
-			router.replace('/(main)/media');
+		try {
+			const success = await upload(selectedImages);
+			if (success) router.replace('/(main)/media');
+		} catch (error: any) {
+			Alert.alert('Erreur', error?.message || "L'envoi a échoué. Vérifiez la connexion.");
 		}
 	};
 
