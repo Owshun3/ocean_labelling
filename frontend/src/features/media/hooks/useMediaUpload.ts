@@ -11,8 +11,13 @@ export const useMediaUpload = () => {
 		setIsUploading(true);
 		try {
 			const service = new CvatMediaService();
-			const taskName = `Upload_${new Date().getTime()}`;
-			const taskId = await service.uploadMedia(taskName, files);
+			const [self, uploadNum] = await Promise.all([
+				service.getSelf(),
+				service.getNextUploadNumber(),
+			]);
+			const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+			const baseName = `${self.username}_${date}_${String(uploadNum).padStart(4, '0')}`;
+			const taskId = await service.uploadMedia(baseName, files);
 			await service.waitForTaskData(taskId);
 			return true;
 		} catch (error) {

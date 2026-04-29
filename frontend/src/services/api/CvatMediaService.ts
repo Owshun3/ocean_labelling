@@ -1,10 +1,26 @@
 import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { apiClient } from './axiosClient';
 
 export class CvatMediaService {
-	async uploadMedia(name: string, files: any[]): Promise<number> {
+	private readonly COUNTER_KEY = 'media_upload_counter';
+
+	async getNextUploadNumber(): Promise<number> {
+		let current = 0;
+		if (Platform.OS === 'web') {
+			current = parseInt(localStorage.getItem(this.COUNTER_KEY) ?? '0', 10);
+			localStorage.setItem(this.COUNTER_KEY, String(current + 1));
+		} else {
+			const stored = await SecureStore.getItemAsync(this.COUNTER_KEY);
+			current = parseInt(stored ?? '0', 10);
+			await SecureStore.setItemAsync(this.COUNTER_KEY, String(current + 1));
+		}
+		return current + 1;
+	}
+
+	async uploadMedia(baseName: string, files: any[]): Promise<number> {
 		const taskResponse = await apiClient.post('/tasks', {
-			name: name,
+			name: baseName,
 			labels: [{ name: 'item' }],
 		});
 
@@ -15,12 +31,14 @@ export class CvatMediaService {
 
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
-			const fileName = file.fileName || file.name || `image_${i}.jpg`;
+			const originalName = file.fileName || file.name || 'image.jpg';
+			const ext = originalName.match(/\.[^.]+$/)?.[0] ?? '.jpg';
+			const fileName = `${baseName}_${String(i + 1).padStart(2, '0')}${ext}`;
 			const key = `client_files[${i}]`;
 
 			if (Platform.OS === 'web') {
 				if (file.file instanceof File) {
-					formData.append(key, file.file, file.file.name || fileName);
+					formData.append(key, file.file, fileName);
 				} else {
 					const response = await fetch(file.uri);
 					const blob = await response.blob();
