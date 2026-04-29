@@ -28,6 +28,11 @@ export interface UserWithRole {
 }
 
 export class AppApiService {
+	async getMyRole(): Promise<{ id: number; role: AppRole }> {
+		const resp = await appApiClient.get<{ id: number; role: AppRole }>('/users/me');
+		return resp.data;
+	}
+
 	async listUsers(): Promise<UserWithRole[]> {
 		const resp = await appApiClient.get<{ results: UserWithRole[] }>('/users');
 		return resp.data.results;

@@ -13,21 +13,21 @@ interface NavRoute {
 }
 
 const NAV_ROUTES: NavRoute[] = [
-	{ name: 'Accueil',         path: '/(main)'         as Href, roles: ['user', 'curator', 'moderator', 'admin'] },
-	{ name: 'Mes Médias',      path: '/(main)/media'   as Href, roles: ['user', 'curator', 'moderator', 'admin'] },
-	{ name: 'Annoter',         path: '/(main)/annotate' as Href, roles: ['user', 'curator', 'moderator', 'admin'] },
-	{ name: 'Mon Profil',      path: '/(main)/profile' as Href, roles: ['user', 'curator', 'moderator', 'admin'] },
-	{ name: 'Administration',  path: '/(main)/admin'   as Href, roles: ['admin'] },
+	{ name: 'Accueil',         path: '/(main)'          as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },
+	{ name: 'Mes Médias',      path: '/(main)/media'    as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
+	{ name: 'Annoter',         path: '/(main)/annotate' as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
+	{ name: 'Mon Profil',      path: '/(main)/profile'  as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },
+	{ name: 'Administration',  path: '/(main)/admin'    as Href, roles: ['admin'] },
 ];
 
 export const Header: React.FC = () => {
 	const router = useRouter();
-	const [userRole, setUserRole] = useState<string>('user');
+	const [userRole, setUserRole] = useState<string>('annotator');
 
 	useEffect(() => {
 		const profile = getUserProfile();
-		if (profile?.is_superuser) setUserRole('admin');
-		else if (profile) setUserRole('user');
+		if (!profile) return;
+		setUserRole(profile.appRole ?? (profile.is_superuser ? 'admin' : 'annotator'));
 	}, []);
 
 	const authorizedRoutes = NAV_ROUTES.filter(route => route.roles.includes(userRole));

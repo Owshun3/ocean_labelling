@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
 	ActivityIndicator,
-	Alert,
 	FlatList,
 	Platform,
 	StyleSheet,
@@ -34,25 +33,37 @@ const ROLE_COLORS: Record<AppRole, string> = {
 
 function RoleSelect({ user, onSave }: { user: UserWithRole; onSave: (role: AppRole) => Promise<void> }) {
 	const [saving, setSaving] = useState(false);
+	const [localRole, setLocalRole] = useState<AppRole>(user.role);
+
+	useEffect(() => { setLocalRole(user.role); }, [user.role]);
 
 	if (Platform.OS !== 'web') return <Text style={{ color: COLORS.text.secondary }}>Web only</Text>;
 
 	return (
 		<View style={styles.roleCell}>
 			<select
-				value={user.role}
+				value={localRole}
 				disabled={saving}
 				onChange={async (e) => {
+					const newRole = e.target.value as AppRole;
+					const prevRole = localRole;
+					setLocalRole(newRole);
 					setSaving(true);
-					await onSave(e.target.value as AppRole);
-					setSaving(false);
+					try {
+						await onSave(newRole);
+					} catch (err: any) {
+						setLocalRole(prevRole);
+						window.alert(err?.response?.data?.error ?? 'Impossible de modifier le rôle.');
+					} finally {
+						setSaving(false);
+					}
 				}}
 				style={{
 					padding: '4px 8px',
 					borderRadius: 4,
 					border: `1px solid ${COLORS.border}`,
 					backgroundColor: COLORS.background.card,
-					color: ROLE_COLORS[user.role],
+					color: ROLE_COLORS[localRole],
 					fontWeight: '600',
 					cursor: saving ? 'wait' : 'pointer',
 				} as any}
@@ -80,14 +91,8 @@ export const AdminScreen: React.FC = () => {
 	}, []);
 
 	const handleRoleChange = async (userId: number, role: AppRole) => {
-		try {
-			await service.setUserRole(userId, role);
-			setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
-		} catch (err: any) {
-			const msg = err?.response?.data?.error ?? 'Impossible de modifier le rôle.';
-			if (Platform.OS === 'web') window.alert(msg);
-			else Alert.alert('Erreur', msg);
-		}
+		await service.setUserRole(userId, role);
+		setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
 	};
 
 	if (loading) {
@@ -115,12 +120,13 @@ export const AdminScreen: React.FC = () => {
 				<Text style={[styles.colUsername, styles.headerCell]}>Identifiant</Text>
 				<Text style={[styles.colEmail, styles.headerCell]}>Email</Text>
 				<Text style={[styles.colRole, styles.headerCell]}>Rôle</Text>
-				<Text style={[styles.colStatus, styles.headerCell]}>Statut</Text>
+				<Text style={[styles.colStatus, styles.headerCell]}>Compte</Text>
 			</View>
 
 			<FlatList
 				data={users}
 				keyExtractor={u => String(u.id)}
+				extraData={users}
 				renderItem={({ item }) => (
 					<View style={[
 						styles.row,
@@ -142,7 +148,7 @@ export const AdminScreen: React.FC = () => {
 								styles.statusDot,
 								{ backgroundColor: item.is_active ? COLORS.status?.success ?? '#16a34a' : '#9ca3af' },
 							]} />
-							<Text style={styles.cell}>{item.is_active ? 'Actif' : 'Inactif'}</Text>
+							<Text style={styles.cell}>{item.is_active ? 'Activé' : 'Désactivé'}</Text>
 						</View>
 					</View>
 				)}

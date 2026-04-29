@@ -66,6 +66,7 @@ export interface StoredUserProfile {
 	username: string;
 	is_superuser: boolean;
 	is_staff: boolean;
+	appRole: string;
 }
 
 const USER_PROFILE_KEY = 'cvat_user_profile';

@@ -1,4 +1,5 @@
 const express = require('express');
+const { init } = require('./db');
 
 const app = express();
 app.use(express.json());
@@ -13,4 +14,7 @@ app.use((_err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`[app-api] listening on :${PORT}`));
+
+init()
+  .then(() => app.listen(PORT, () => console.log(`[app-api] listening on :${PORT}`)))
+  .catch(err => { console.error('[app-api] DB init failed:', err.message); process.exit(1); });
