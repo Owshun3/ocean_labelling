@@ -13,11 +13,12 @@ interface NavRoute {
 }
 
 const NAV_ROUTES: NavRoute[] = [
-	{ name: 'Accueil',         path: '/(main)'          as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },
-	{ name: 'Mes Médias',      path: '/(main)/media'    as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
-	{ name: 'Annoter',         path: '/(main)/annotate' as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
-	{ name: 'Mon Profil',      path: '/(main)/profile'  as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },
-	{ name: 'Administration',  path: '/(main)/admin'    as Href, roles: ['admin'] },
+	{ name: 'Accueil',         path: '/(main)'           as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },
+	{ name: 'Mes Médias',      path: '/(main)/media'     as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
+	{ name: 'Annoter',         path: '/(main)/annotate'  as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
+	{ name: 'Curation',        path: '/(main)/curator'   as Href, roles: ['admin', 'moderator', 'curator'] },
+	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },
+	{ name: 'Administration',  path: '/(main)/admin'     as Href, roles: ['admin'] },
 ];
 
 export const Header: React.FC = () => {
