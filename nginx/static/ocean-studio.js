@@ -1,14 +1,14 @@
 (function () {
   'use strict';
 
-  /* ── Contexte extrait de l'URL ──────────────────────────────────────────── */
+  /* ── Contexte URL ────────────────────────────────────────────────────────── */
   var m = location.pathname.match(/\/tasks\/([0-9]+)\/jobs\/([0-9]+)/);
   if (!m) return;
-  var taskId = m[1];
-  var jobId  = m[2];
+  var taskId    = m[1];
+  var jobId     = m[2];
   var appReturn = new URLSearchParams(location.search).get('appReturn');
 
-  /* ── Helpers ────────────────────────────────────────────────────────────── */
+  /* ── Helpers généraux ────────────────────────────────────────────────────── */
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
   function csrf() {
@@ -16,179 +16,308 @@
     return c ? c[1] : '';
   }
 
-  function setStatus(text, cls) {
-    var el = document.getElementById('ocean-label-status');
-    if (!el) return;
-    el.textContent = text;
-    el.className = cls || '';
+  function apiHeaders() {
+    return { 'Content-Type': 'application/json', 'Accept': 'application/vnd.cvat+json', 'X-CSRFToken': csrf() };
   }
 
-  function cvat_headers() {
-    return {
-      'Content-Type':  'application/json',
-      'Accept':        'application/vnd.cvat+json',
-      'X-CSRFToken':   csrf(),
-    };
+  function cvatSave() {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true }));
   }
 
-  /* ── Sauvegarde CVAT (Ctrl+S) ───────────────────────────────────────────── */
-  async function cvatSave() {
-    window.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 's', code: 'KeyS', ctrlKey: true, bubbles: true,
-    }));
-    await sleep(2000);
+  /* ── Lecture des CSS custom properties du thème Ocean ───────────────────── */
+  /* Appelée une seule fois après que ocean-theme.css est chargé.             */
+  /* getComputedStyle lit les variables définies sur :root.                   */
+  function getVar(name, fallback) {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (_) { return fallback; }
   }
 
-  /* ── Injection de la barre ─────────────────────────────────────────────── */
+  /* ── Application de styles inline avec priorité maximale ────────────────── */
+  /* element.style.setProperty(p, v, 'important') écrase tout CSS externe,   */
+  /* y compris les !important injectés après coup par le bundle CVAT.         */
+  function css(el, props) {
+    Object.keys(props).forEach(function (p) {
+      el.style.setProperty(p, props[p], 'important');
+    });
+  }
+
+  /* ── Masquage du header CVAT ─────────────────────────────────────────────── */
+  var HEADER_SEL = ['.cvat-header', '.ant-layout-header', '[class*="cvat-header"]'];
+
+  function hideHeader() {
+    HEADER_SEL.forEach(function (sel) {
+      document.querySelectorAll(sel).forEach(function (el) {
+        css(el, { display: 'none', height: '0', 'min-height': '0', overflow: 'hidden' });
+      });
+    });
+  }
+
+  /* ── Construction et stylisation de la barre ────────────────────────────── */
+  var BAR_H = '52px';
+
+  function styledEl(tag, id) {
+    var el = document.createElement(tag);
+    if (id) el.id = id;
+    return el;
+  }
+
   function injectBar() {
     if (document.getElementById('ocean-bar')) return;
 
-    var bar = document.createElement('div');
-    bar.id = 'ocean-bar';
+    /* Lecture des tokens thème (ocean-theme.css déjà chargé à ce stade) */
+    var T = {
+      bgCard:     getVar('--ocean-background-card', '#FFFFFF'),
+      bgMain:     getVar('--ocean-background-main', '#F2F2F7'),
+      border:     getVar('--ocean-border',           '#C6C6C8'),
+      primary:    getVar('--ocean-primary',           '#007AFF'),
+      success:    getVar('--ocean-success',           '#34C759'),
+      textPri:    getVar('--ocean-text-primary',      '#000000'),
+      textSec:    getVar('--ocean-text-secondary',    '#666666'),
+      textInv:    getVar('--ocean-text-inverse',      '#FFFFFF'),
+      textPh:     getVar('--ocean-text-placeholder',  '#A0A0A0'),
+      font:       getVar('--ocean-font-family',       'Roboto, sans-serif'),
+      sizeBody:   getVar('--ocean-font-size-body',    '14px'),
+      sizeCap:    getVar('--ocean-font-size-caption', '12px'),
+      wMedium:    getVar('--ocean-font-weight-h2',    '600'),
+      spSm:       getVar('--ocean-spacing-sm',        '8px'),
+      spMd:       getVar('--ocean-spacing-md',        '16px'),
+      radius:     getVar('--ocean-spacing-sm',        '8px'),
+    };
 
-    /* Formulaire d'ajout de label */
-    var form = document.createElement('div');
-    form.id = 'ocean-label-form';
+    /* ── Barre principale ── */
+    var bar = styledEl('div', 'ocean-bar');
+    css(bar, {
+      position:        'fixed',
+      top:             '0',
+      left:            '0',
+      right:           '0',
+      height:          BAR_H,
+      'min-height':    BAR_H,
+      'z-index':       '99999',
+      display:         'flex',
+      'align-items':   'center',
+      'flex-direction':'row',
+      'flex-wrap':     'nowrap',
+      gap:             T.spSm,
+      padding:         '0 ' + T.spMd,
+      'box-sizing':    'border-box',
+      background:      T.bgCard,
+      'border-bottom': '1px solid ' + T.border,
+      'box-shadow':    '0 2px 8px rgba(0,0,0,0.10)',
+      'font-family':   T.font,
+      'font-size':     T.sizeBody,
+      color:           T.textPri,
+      margin:          '0',
+    });
 
-    var icon = document.createElement('span');
-    icon.id = 'ocean-label-icon';
+    /* ── Formulaire ajout de label ── */
+    var form = styledEl('div', 'ocean-label-form');
+    css(form, { display: 'flex', 'align-items': 'center', gap: T.spSm, 'flex-shrink': '0', margin: '0', padding: '0' });
+
+    var icon = styledEl('span', 'ocean-label-icon');
     icon.textContent = '🏷';
+    css(icon, { 'font-size': T.sizeBody, color: T.primary, 'flex-shrink': '0', 'line-height': '1' });
 
-    var input = document.createElement('input');
-    input.id          = 'ocean-label-input';
+    var input = styledEl('input', 'ocean-label-input');
     input.type        = 'text';
     input.placeholder = 'Nouveau label (espèce…)';
     input.autocomplete = 'off';
+    css(input, {
+      width:          '200px',
+      height:         '32px',
+      padding:        '0 ' + T.spSm,
+      margin:         '0',
+      background:     T.bgMain,
+      border:         '1px solid ' + T.border,
+      'border-radius': T.radius,
+      color:          T.textPri,
+      'font-size':    T.sizeBody,
+      'font-family':  T.font,
+      outline:        'none',
+      'box-shadow':   'none',
+      'box-sizing':   'border-box',
+      appearance:     'none',
+    });
+    /* Placeholder via feuille de style dynamique (setProperty ne gère pas ::placeholder) */
+    var placeholderStyle = document.createElement('style');
+    placeholderStyle.textContent = '#ocean-label-input::placeholder { color: ' + T.textPh + ' !important; }' +
+      '#ocean-label-input:focus { border-color: ' + T.primary + ' !important; background: ' + T.bgCard + ' !important; }';
+    document.head.appendChild(placeholderStyle);
 
-    var addBtn = document.createElement('button');
-    addBtn.id        = 'ocean-label-add';
+    var addBtn = styledEl('button', 'ocean-label-add');
+    addBtn.type        = 'button';
     addBtn.textContent = '+ Ajouter';
+    css(addBtn, {
+      height:          '32px',
+      padding:         '0 ' + T.spMd,
+      margin:          '0',
+      background:      T.primary,
+      color:           T.textInv,
+      border:          'none',
+      'border-radius': T.radius,
+      'font-size':     T.sizeBody,
+      'font-weight':   T.wMedium,
+      'font-family':   T.font,
+      cursor:          'pointer',
+      'white-space':   'nowrap',
+      display:         'inline-flex',
+      'align-items':   'center',
+      'box-sizing':    'border-box',
+      'box-shadow':    'none',
+    });
+    addBtn.addEventListener('mouseenter', function () { if (!addBtn.disabled) css(addBtn, { opacity: '0.85' }); });
+    addBtn.addEventListener('mouseleave', function () { css(addBtn, { opacity: '1' }); });
 
-    var status = document.createElement('span');
-    status.id = 'ocean-label-status';
+    var status = styledEl('span', 'ocean-label-status');
+    css(status, {
+      'font-size':   T.sizeCap,
+      color:         T.textSec,
+      'font-family': T.font,
+      'min-width':   '130px',
+      margin:        '0',
+      padding:       '0',
+    });
 
-    form.appendChild(icon);
-    form.appendChild(input);
-    form.appendChild(addBtn);
-    form.appendChild(status);
+    form.append(icon, input, addBtn, status);
 
-    /* Spacer */
-    var spacer = document.createElement('div');
-    spacer.id = 'ocean-spacer';
+    /* ── Spacer ── */
+    var spacer = styledEl('div', 'ocean-spacer');
+    css(spacer, { flex: '1' });
 
-    /* Bouton de validation */
-    var valBtn = document.createElement('button');
-    valBtn.id          = 'ocean-val-btn';
+    /* ── Bouton validation ── */
+    var valBtn = styledEl('button', 'ocean-val-btn');
+    valBtn.type        = 'button';
     valBtn.textContent = 'Valider et terminer';
+    css(valBtn, {
+      height:          '32px',
+      padding:         '0 ' + T.spMd,
+      margin:          '0',
+      background:      T.success,
+      color:           T.textInv,
+      border:          'none',
+      'border-radius': T.radius,
+      'font-size':     T.sizeBody,
+      'font-weight':   T.wMedium,
+      'font-family':   T.font,
+      cursor:          'pointer',
+      'white-space':   'nowrap',
+      'flex-shrink':   '0',
+      display:         'inline-flex',
+      'align-items':   'center',
+      'box-sizing':    'border-box',
+      'box-shadow':    'none',
+    });
+    valBtn.addEventListener('mouseenter', function () { if (!valBtn.disabled) css(valBtn, { opacity: '0.85' }); });
+    valBtn.addEventListener('mouseleave', function () { css(valBtn, { opacity: '1' }); });
 
-    bar.appendChild(form);
-    bar.appendChild(spacer);
-    bar.appendChild(valBtn);
+    bar.append(form, spacer, valBtn);
     document.body.insertBefore(bar, document.body.firstChild);
 
-    /* Événements */
+    /* Décaler le contenu CVAT sous la barre */
+    css(document.body, { 'padding-top': BAR_H, 'padding-bottom': '0' });
+
     addBtn.addEventListener('click', handleAddLabel);
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') handleAddLabel();
-    });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') handleAddLabel(); });
     valBtn.addEventListener('click', handleValidate);
   }
 
-  /* ── Ajout de label en live ─────────────────────────────────────────────── */
+  /* ── Gestion du statut ───────────────────────────────────────────────────── */
+  function setStatus(text, state) {
+    var el = document.getElementById('ocean-label-status');
+    if (!el) return;
+    el.textContent = text;
+    var T = {
+      success: getVar('--ocean-success', '#34C759'),
+      error:   getVar('--ocean-danger',  '#FF3B30'),
+      neutral: getVar('--ocean-text-secondary', '#666666'),
+    };
+    css(el, { color: state === 'success' ? T.success : state === 'error' ? T.error : T.neutral });
+  }
+
+  /* ── Ajout de label ──────────────────────────────────────────────────────── */
   async function handleAddLabel() {
     var input  = document.getElementById('ocean-label-input');
     var addBtn = document.getElementById('ocean-label-add');
-    var name   = input.value.trim();
+    var name   = (input.value || '').trim();
     if (!name) { input.focus(); return; }
 
     addBtn.disabled = true;
-    setStatus('Sauvegarde en cours…');
+    css(addBtn, { background: getVar('--ocean-border', '#C6C6C8'), cursor: 'not-allowed' });
+    setStatus('Sauvegarde + ajout…');
 
-    /* 1. Sauvegarder les annotations courantes avant le rechargement */
-    await cvatSave();
-    setStatus('Ajout du label…');
+    cvatSave(); /* en parallèle */
 
     try {
-      /* 2. Ajouter le label via PATCH /api/tasks/{id}
-            CVAT fait un merge : les labels sans ID sont créés,
-            les existants (identifiés par ID) sont conservés. */
       var resp = await fetch('/api/tasks/' + taskId, {
-        method:      'PATCH',
-        credentials: 'include',
-        headers:     cvat_headers(),
-        body:        JSON.stringify({ labels: [{ name: name }] }),
+        method: 'PATCH', credentials: 'include',
+        headers: apiHeaders(),
+        body: JSON.stringify({ labels: [{ name: name }] }),
       });
-
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
-      setStatus('✓ Label ajouté — rechargement…', 'success');
-      await sleep(900);
-      /* 3. Recharger la page pour que CVAT intègre le nouveau label */
+      setStatus('✓ Rechargement…', 'success');
+      await sleep(1800); /* laisser le Ctrl+S se terminer (2 s depuis le début) */
       location.reload();
-
     } catch (e) {
       setStatus('Erreur : ' + e.message, 'error');
       addBtn.disabled = false;
+      css(addBtn, { background: getVar('--ocean-primary', '#007AFF'), cursor: 'pointer' });
     }
   }
 
-  /* ── Validation du job ──────────────────────────────────────────────────── */
+  /* ── Validation du job ───────────────────────────────────────────────────── */
   async function handleValidate() {
     var btn = document.getElementById('ocean-val-btn');
-    btn.disabled      = true;
-    btn.textContent   = 'Sauvegarde…';
+    btn.disabled = true;
+    css(btn, { background: getVar('--ocean-border', '#C6C6C8'), cursor: 'not-allowed' });
+    btn.textContent = 'Sauvegarde…';
 
-    /* 1. Sauvegarder */
-    await cvatSave();
+    cvatSave();
+    await sleep(2000);
 
-    /* 2. Marquer le job "completed" */
     try {
       await fetch('/api/jobs/' + jobId, {
-        method:      'PATCH',
-        credentials: 'include',
-        headers:     cvat_headers(),
-        body:        JSON.stringify({ state: 'completed' }),
+        method: 'PATCH', credentials: 'include',
+        headers: apiHeaders(),
+        body: JSON.stringify({ state: 'completed' }),
       });
-    } catch (e) {
-      console.warn('[ocean] job state update failed:', e);
-    }
+    } catch (e) { console.warn('[ocean] job update failed:', e); }
 
-    /* 3. Retour à l'application */
     btn.textContent = 'Terminé !';
     await sleep(700);
-    if (appReturn) {
-      window.location.href = decodeURIComponent(appReturn);
-    } else {
-      window.close();
-    }
+    if (appReturn) window.location.href = decodeURIComponent(appReturn);
+    else window.close();
   }
 
-  /* ── Blocage de la navigation SPA hors du studio ────────────────────────── */
+  /* ── Blocage navigation SPA ──────────────────────────────────────────────── */
   var studioPattern = /^\/tasks\/[0-9]+\/jobs\/[0-9]+/;
   var _push    = history.pushState.bind(history);
   var _replace = history.replaceState.bind(history);
   history.pushState    = function (s, t, u) { if (!u || studioPattern.test(String(u))) _push(s, t, u); };
   history.replaceState = function (s, t, u) { if (!u || studioPattern.test(String(u))) _replace(s, t, u); };
 
-  /* ── Attente du rendu CVAT (canvas visible) ─────────────────────────────── */
-  var canvasSelectors = ['.cvat-canvas-container', '[class*=cvat-canvas]'];
+  /* ── Attente canvas + masquage header continu ───────────────────────────── */
+  var CANVAS_SEL  = ['.cvat-canvas-container', '[class*=cvat-canvas]'];
+  var canvasReady = false;
 
-  var observer = new MutationObserver(function () {
-    var ready = canvasSelectors.some(function (sel) { return document.querySelector(sel); });
-    if (ready) {
+  var mainObs = new MutationObserver(function () {
+    hideHeader();
+    if (canvasReady) return;
+    if (CANVAS_SEL.some(function (s) { return !!document.querySelector(s); })) {
+      canvasReady = true;
+      mainObs.disconnect();
       injectBar();
-      observer.disconnect();
+      /* Observer permanent pour masquer le header lors des re-rendus CVAT */
+      new MutationObserver(hideHeader)
+        .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
     }
   });
 
-  if (document.body) {
-    observer.observe(document.body, { childList: true, subtree: true });
-  } else {
-    document.addEventListener('DOMContentLoaded', function () {
-      observer.observe(document.body, { childList: true, subtree: true });
-    });
-  }
+  var start = function () { mainObs.observe(document.body, { childList: true, subtree: true }); };
+  if (document.body) start();
+  else document.addEventListener('DOMContentLoaded', start);
 
-  /* Fallback si le canvas n'est pas détecté dans les 8 s */
-  setTimeout(injectBar, 8000);
+  setTimeout(function () { injectBar(); hideHeader(); }, 8000);
 })();

@@ -48,6 +48,21 @@ Services frontend :
 - `Header.tsx` — lit `appRole` au mount, affiche selon hiérarchie des rôles
 - Gardes de route : `admin.tsx` (admin only), `media/annotate/upload.tsx` (pas guest)
 
+## Studio d'annotation — fichiers injectés via NGINX
+```
+nginx/static/
+  ocean-theme.css   # AUTO-GÉNÉRÉ — ne pas éditer. Source : frontend/src/shared/theme/
+  ocean-studio.css  # Layout barre bas, sélecteurs masquage header CVAT — utilise var(--ocean-*)
+  ocean-studio.js   # IIFE : barre top/validation/label live/nav blocker
+scripts/
+  generate-studio-theme.js  # Génère ocean-theme.css depuis les thèmes TS
+```
+**⚠ Après toute modification de `frontend/src/shared/theme/*.ts` :**
+```bash
+node scripts/generate-studio-theme.js
+```
+`ocean-theme.css` est commité (volume NGINX), pas de build step nécessaire en prod.
+
 ## Structure frontend (fichiers clés)
 ```
 app/(main)/media.tsx → MediaListScreen    app/(main)/upload.tsx → UploadScreen

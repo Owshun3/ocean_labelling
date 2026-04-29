@@ -1,0 +1,47 @@
+/* AUTO-GÉNÉRÉ — ne pas modifier manuellement.
+ * Source : frontend/src/shared/theme/{colors,spacing,typography}.ts
+ * Régénérer : node scripts/generate-studio-theme.js
+ */
+:root {
+  --ocean-primary: #007AFF;
+  --ocean-secondary: #5856D6;
+  --ocean-success: #34C759;
+  --ocean-warning: #FF9500;
+  --ocean-danger: #FF3B30;
+  --ocean-background-main: #F2F2F7;
+  --ocean-background-card: #FFFFFF;
+  --ocean-background-image-placeholder: #E5E5EA;
+  --ocean-text-primary: #000000;
+  --ocean-text-secondary: #666666;
+  --ocean-text-inverse: #FFFFFF;
+  --ocean-text-placeholder: #A0A0A0;
+  --ocean-border: #C6C6C8;
+  --ocean-status-pending: #f59e0b;
+  --ocean-status-validated: #10b981;
+  --ocean-status-error: #ef4444;
+  --ocean-overlay: rgba(0, 0, 0, 0.85);
+  --ocean-white: #FFFFFF;
+  --ocean-spacing-xs: 4px;
+  --ocean-spacing-sm: 8px;
+  --ocean-spacing-md: 16px;
+  --ocean-spacing-lg: 24px;
+  --ocean-spacing-xl: 32px;
+  --ocean-font-size-title: 28px;
+  --ocean-font-weight-title: 700;
+  --ocean-line-height-title: 34px;
+  --ocean-font-size-h1: 22px;
+  --ocean-font-weight-h1: 700;
+  --ocean-line-height-h1: 28px;
+  --ocean-font-size-h2: 18px;
+  --ocean-font-weight-h2: 600;
+  --ocean-line-height-h2: 24px;
+  --ocean-font-size-body: 14px;
+  --ocean-font-weight-body: 400;
+  --ocean-line-height-body: 20px;
+  --ocean-font-size-caption: 12px;
+  --ocean-font-weight-caption: 400;
+  --ocean-line-height-caption: 16px;
+  --ocean-font-size-badge: 10px;
+  --ocean-font-weight-badge: 700;
+  --ocean-font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+}
