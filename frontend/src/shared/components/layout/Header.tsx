@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
+import { getUserProfile } from '@/services/api/authStorage';
 
 interface NavRoute {
 	name: string;
@@ -12,15 +13,22 @@ interface NavRoute {
 }
 
 const NAV_ROUTES: NavRoute[] = [
-	{ name: 'Accueil', path: '/(main)' as Href, roles: ['user', 'curator', 'admin'] },
-	{ name: 'Mes Médias', path: '/(main)/media' as Href, roles: ['user', 'curator', 'admin'] },
-	{ name: 'Annoter', path: '/(main)/annotate' as Href, roles: ['user', 'curator', 'admin'] },
-	{ name: 'Mon Profil', path: '/(main)/profile' as Href, roles: ['user', 'curator', 'admin'] },
+	{ name: 'Accueil',         path: '/(main)'         as Href, roles: ['user', 'curator', 'moderator', 'admin'] },
+	{ name: 'Mes Médias',      path: '/(main)/media'   as Href, roles: ['user', 'curator', 'moderator', 'admin'] },
+	{ name: 'Annoter',         path: '/(main)/annotate' as Href, roles: ['user', 'curator', 'moderator', 'admin'] },
+	{ name: 'Mon Profil',      path: '/(main)/profile' as Href, roles: ['user', 'curator', 'moderator', 'admin'] },
+	{ name: 'Administration',  path: '/(main)/admin'   as Href, roles: ['admin'] },
 ];
 
 export const Header: React.FC = () => {
 	const router = useRouter();
-	const userRole = 'user';
+	const [userRole, setUserRole] = useState<string>('user');
+
+	useEffect(() => {
+		const profile = getUserProfile();
+		if (profile?.is_superuser) setUserRole('admin');
+		else if (profile) setUserRole('user');
+	}, []);
 
 	const authorizedRoutes = NAV_ROUTES.filter(route => route.roles.includes(userRole));
 

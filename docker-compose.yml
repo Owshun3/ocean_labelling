@@ -9,7 +9,24 @@ services:
       - default
       - cvat_cvat
     restart: unless-stopped
+    depends_on:
+      - app-api
+
+  app-api:
+    build: ./app-api
+    environment:
+      - CVAT_API_URL=http://cvat_server:8080/api
+      - DATA_DIR=/app/data
+    volumes:
+      - app_api_data:/app/data
+    networks:
+      - default
+      - cvat_cvat
+    restart: unless-stopped
 
 networks:
   cvat_cvat:
     external: true
+
+volumes:
+  app_api_data:

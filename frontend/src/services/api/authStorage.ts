@@ -59,6 +59,37 @@ export async function clearCsrfToken(): Promise<void> {
 	await deleteStoredValue(CSRF_TOKEN_KEY);
 }
 
+// ─── User profile (web-only, used for nav role-gating) ───────────────────────
+
+export interface StoredUserProfile {
+	id: number;
+	username: string;
+	is_superuser: boolean;
+	is_staff: boolean;
+}
+
+const USER_PROFILE_KEY = 'cvat_user_profile';
+
+export function saveUserProfile(profile: StoredUserProfile): void {
+	if (typeof window !== 'undefined') {
+		localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
+	}
+}
+
+export function getUserProfile(): StoredUserProfile | null {
+	if (typeof window !== 'undefined') {
+		const raw = localStorage.getItem(USER_PROFILE_KEY);
+		try { return raw ? JSON.parse(raw) : null; } catch { return null; }
+	}
+	return null;
+}
+
+export function clearUserProfile(): void {
+	if (typeof window !== 'undefined') {
+		localStorage.removeItem(USER_PROFILE_KEY);
+	}
+}
+
 export function extractCsrfTokenFromHeaders(
 	headers: Record<string, unknown> | undefined
 ): string | null {

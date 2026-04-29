@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { apiClient } from './axiosClient';
+import { saveUserProfile, clearUserProfile } from './authStorage';
 
 const CVAT_ERROR_FR: Record<string, string> = {
 	'Unable to log in with provided credentials.': 'Identifiants incorrects.',
@@ -65,6 +66,13 @@ export class CvatAuthService {
 		try {
 			const response = await apiClient.post('/auth/login', { username, password });
 			await this.saveTokenLocally(response.data.key);
+			const selfResp = await apiClient.get('/users/self');
+			saveUserProfile({
+				id: selfResp.data.id,
+				username: selfResp.data.username,
+				is_superuser: selfResp.data.is_superuser ?? false,
+				is_staff: selfResp.data.is_staff ?? false,
+			});
 		} catch (error: any) {
 			this.extractLoginError(error);
 		}
@@ -107,6 +115,7 @@ export class CvatAuthService {
 			} else {
 				await SecureStore.deleteItemAsync(this.TOKEN_KEY);
 			}
+			clearUserProfile();
 		}
 	}
 }
