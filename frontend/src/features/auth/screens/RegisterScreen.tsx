@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
@@ -16,6 +17,7 @@ export const RegisterScreen: React.FC = () => {
 	const [confirmPassword, setConfirmPassword] = useState('');
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [showPassword, setShowPassword] = useState(false);
 	const router = useRouter();
 
 	const handleRegister = async () => {
@@ -79,12 +81,22 @@ export const RegisterScreen: React.FC = () => {
 				
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Mot de passe</Text>
-					<TextInput style={[styles.input, { fontStyle: password === '' ? 'italic' : 'normal' }]} placeholder="Min. 8 caractères" placeholderTextColor={COLORS.text.placeholder} value={password} onChangeText={setPassword} secureTextEntry />
+					<View style={styles.passwordRow}>
+						<TextInput style={[styles.input, styles.passwordInput, { fontStyle: password === '' ? 'italic' : 'normal' }]} placeholder="Min. 8 caractères" placeholderTextColor={COLORS.text.placeholder} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} />
+						<Pressable onPress={() => setShowPassword(v => !v)} style={styles.eyeButton}>
+							<Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={COLORS.text.secondary} />
+						</Pressable>
+					</View>
 				</View>
 
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Confirmer</Text>
-					<TextInput style={[styles.input, { fontStyle: confirmPassword === '' ? 'italic' : 'normal' }]} placeholder="Min. 8 caractères" placeholderTextColor={COLORS.text.placeholder} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
+					<View style={styles.passwordRow}>
+						<TextInput style={[styles.input, styles.passwordInput, { fontStyle: confirmPassword === '' ? 'italic' : 'normal' }]} placeholder="Min. 8 caractères" placeholderTextColor={COLORS.text.placeholder} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showPassword} />
+						<Pressable onPress={() => setShowPassword(v => !v)} style={styles.eyeButton}>
+							<Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={COLORS.text.secondary} />
+						</Pressable>
+					</View>
 				</View>
 				
 				{isLoading ? (
@@ -112,6 +124,9 @@ const styles = StyleSheet.create({
 	inputGroup: { marginBottom: SPACING.md },
 	label: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.xs, fontWeight: '600' },
 	input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 4, padding: SPACING.md, ...TYPOGRAPHY.body },
+	passwordRow: { flexDirection: 'row', alignItems: 'center' },
+	passwordInput: { flex: 1, borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 },
+	eyeButton: { borderWidth: 1, borderColor: COLORS.border, borderLeftWidth: 0, borderTopRightRadius: 4, borderBottomRightRadius: 4, paddingHorizontal: SPACING.sm, justifyContent: 'center', alignSelf: 'stretch' },
 	switchContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.xl, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
 	switchText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },
 	link: { ...TYPOGRAPHY.body, color: COLORS.primary, fontWeight: 'bold' }
