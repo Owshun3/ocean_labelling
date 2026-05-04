@@ -1,3 +1,10 @@
+name: cvat
+
+include:
+  - path:
+      - cvat-core/docker-compose.yml
+      - cvat-core/docker-compose.override.yml
+
 services:
   postgres:
     image: postgres:15-alpine
@@ -25,11 +32,13 @@ services:
       - CVAT_ADMIN_PASS=${CVAT_ADMIN_PASS:?Créer un fichier .env avec CVAT_ADMIN_PASS (voir .env.example)}
     networks:
       - default
-      - cvat_cvat
+      - cvat
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+      cvat_server:
+        condition: service_started
 
   gateway:
     image: nginx:alpine
@@ -40,14 +49,10 @@ services:
       - ./nginx/static:/etc/nginx/ocean-static:ro
     networks:
       - default
-      - cvat_cvat
+      - cvat
     restart: unless-stopped
     depends_on:
       - app-api
-
-networks:
-  cvat_cvat:
-    external: true
 
 volumes:
   pg_data:

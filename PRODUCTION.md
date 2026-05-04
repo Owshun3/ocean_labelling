@@ -16,9 +16,8 @@ git pull
 #    (l'image est buildée, il n'y a pas de volume source en prod)
 docker compose build app-api
 
-# 3. Redémarrer les services applicatifs
-#    Ne pas toucher aux services CVAT sauf si explicitement demandé
-docker compose up -d app-api gateway
+# 3. Redémarrer tous les services (CVAT inclus via include)
+docker compose up -d
 
 # 4. Vérifier que tout est opérationnel
 docker compose ps
@@ -26,8 +25,11 @@ docker compose logs app-api --tail 30
 ./scripts/test-appapi.sh admin <CVAT_ADMIN_PASS>
 ```
 
-> Si `docker-compose.yml` a changé (nouveau service, volume, réseau) :
-> `docker compose up -d` pour appliquer l'intégralité du fichier.
+> Pour ne redémarrer que les services applicatifs (CVAT déjà opérationnel) :
+> `docker compose up -d app-api gateway`
+
+> Si une migration SQL est nécessaire (ALTER TABLE, nouvelle table) :
+> exécuter le script avant le `docker compose up` — voir section Base de données.
 
 > Si une migration SQL est nécessaire (ALTER TABLE, nouvelle table) :
 > exécuter le script avant le `docker compose up` — voir section Base de données.
@@ -111,4 +113,4 @@ docker exec -i $(docker compose ps -q postgres) \
 
 ---
 
-*Dernière mise à jour : 2026-05-04 — Suppression des mots de passe en clair, procédure de déploiement ajoutée*
+*Dernière mise à jour : 2026-05-04 — Docker Compose unifié (include CVAT + nos services), start.sh supprimé*

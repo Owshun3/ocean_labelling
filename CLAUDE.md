@@ -19,7 +19,8 @@ App-API (Node/Express/SQLite) → port interne 3000, proxy via gateway `/app-api
 
 **Routage nginx/nginx.conf :** `/api/` → `cvat_server:8080` | `/static/` → `cvat_server:8080` | `/` → `cvat_ui:8000` (SPA + WebSocket)
 
-Démarrage : `./start.sh` (ordre obligatoire : CVAT avant gateway, le réseau `cvat_cvat` n'existe qu'après)
+Démarrage : `docker compose up -d` — lance CVAT + postgres + app-api + gateway en un seul appel. `depends_on` gère l'ordre (CVAT d'abord, puis app-api, puis gateway).
+⚠ WSL2/Docker Desktop : le port 8080 (Traefik CVAT) reste accessible côté Windows malgré `iptables`. Pour bloquer : règle "Inbound" Windows Defender Firewall, port 8080, action Block.
 
 ## App-API (RBAC)
 Service : `app-api/` — Node.js + Express + **PostgreSQL** (pg pool).

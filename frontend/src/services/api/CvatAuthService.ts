@@ -108,7 +108,6 @@ export class CvatAuthService {
 			this.extractRegisterError(error);
 		}
 
-		// Séparé du try/catch register : si le login auto échoue, message distinct
 		try {
 			await this.login(username, password);
 		} catch {
