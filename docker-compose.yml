@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: ocean_labelling
       POSTGRES_USER: ocean
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-OceanLabel2026!}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Créer un fichier .env avec POSTGRES_PASSWORD (voir .env.example)}
     volumes:
       - pg_data:/var/lib/postgresql/data
     networks:
@@ -20,9 +20,9 @@ services:
     build: ./app-api
     environment:
       - CVAT_API_URL=http://cvat_server:8080/api
-      - DATABASE_URL=postgres://ocean:${POSTGRES_PASSWORD:-OceanLabel2026!}@postgres:5432/ocean_labelling
+      - DATABASE_URL=postgres://ocean:${POSTGRES_PASSWORD}@postgres:5432/ocean_labelling
       - CVAT_ADMIN_USER=${CVAT_ADMIN_USER:-admin}
-      - CVAT_ADMIN_PASS=${CVAT_ADMIN_PASS:-Admin2026!}
+      - CVAT_ADMIN_PASS=${CVAT_ADMIN_PASS:?Créer un fichier .env avec CVAT_ADMIN_PASS (voir .env.example)}
     networks:
       - default
       - cvat_cvat

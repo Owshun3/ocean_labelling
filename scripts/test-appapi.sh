@@ -2,8 +2,8 @@
 # Usage: ./scripts/test-appapi.sh <admin_user> <admin_password>
 set -e
 
-ADMIN_USER="${1:-admin}"
-ADMIN_PASS="${2:-Admin2026!}"
+ADMIN_USER="${1:?Usage: $0 <admin_user> <admin_password>}"
+ADMIN_PASS="${2:?Usage: $0 <admin_user> <admin_password>}"
 BASE="http://localhost:8888"
 PASS=true
 

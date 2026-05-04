@@ -26,5 +26,10 @@ Thumbs.db
 cvat-core/
 
 # --- Claude AI (état local, non partageable) ---
-.claude
+.claude/
 GEMINI.md
+
+# --- Fichiers générés localement ---
+*.pptx
+*.sqlite
+*.sqlite3

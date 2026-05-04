@@ -13,7 +13,7 @@ async function getAdminToken(forceRefresh = false) {
   if (cachedAdminToken && !forceRefresh) return cachedAdminToken;
   const resp = await axios.post(`${CVAT}/auth/login`, {
     username: process.env.CVAT_ADMIN_USER || 'admin',
-    password: process.env.CVAT_ADMIN_PASS || 'Admin2026!',
+    password: process.env.CVAT_ADMIN_PASS,
   }, { headers: { Host: 'localhost' } });
   cachedAdminToken = resp.data.key;
   return cachedAdminToken;

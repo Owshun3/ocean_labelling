@@ -24,11 +24,11 @@ Démarrage : `./start.sh` (ordre obligatoire : CVAT avant gateway, le réseau `c
 ## App-API (RBAC)
 Service : `app-api/` — Node.js + Express + **PostgreSQL** (pg pool).
 DB : service `postgres:15-alpine`, volume nommé `pg_data`, base `ocean_labelling`, user `ocean`.
-`DATABASE_URL=postgres://ocean:<POSTGRES_PASSWORD>@postgres:5432/ocean_labelling` (env, défaut `OceanLabel2026!`).
+`DATABASE_URL=postgres://ocean:<POSTGRES_PASSWORD>@postgres:5432/ocean_labelling` (env, défini dans `.env`).
 Proxy NGINX : `/app-api/` → `http://app-api:3000/` (strip prefix via trailing slash).
 `app-api` démarre seulement après healthcheck postgres (`pg_isready`).
 
-Compte admin : `username=admin` `password=Admin2026!` (CVAT superuser → rôle 'admin' automatique).
+Compte admin : `username=admin`, mot de passe défini dans `.env` → `CVAT_ADMIN_PASS` (CVAT superuser → rôle 'admin' automatique).
 
 Hiérarchie des rôles (haut → bas) : `admin` > `moderator` > `curator` > `annotator` > `guest`.
 Stockage : table `user_roles(cvat_user_id PK, role)`. Utilisateurs non présents = `annotator` par défaut.
@@ -39,7 +39,7 @@ Son travail : vérifier la qualité, voir tous les labels et étiquettes (noms d
 CVAT propose nativement : `POST /api/consensus/merges` (fusion IoU multi-jobs, async), `PATCH /api/consensus/settings/{id}` (seuil IoU par tâche), `POST /api/quality/reports` + `GET /api/quality/conflicts` (rapport qualité et conflits entre annotateurs).
 Le studio curator custom (UI pour comparer/choisir/fusionner) est **à construire** par-dessus ces endpoints — il n'existe pas nativement dans notre app.
 
-Env app-api : `CVAT_ADMIN_USER` / `CVAT_ADMIN_PASS` (défauts `admin`/`Admin2026!`) — utilisés pour fetcher la liste complète des users CVAT (seul un superuser CVAT peut le faire). Token caché en mémoire avec refresh auto sur 401.
+Env app-api : `CVAT_ADMIN_USER` / `CVAT_ADMIN_PASS` (définis dans `.env`) — utilisés pour fetcher la liste complète des users CVAT (seul un superuser CVAT peut le faire). Token caché en mémoire avec refresh auto sur 401.
 
 Services frontend :
 - `AppApiService.ts` — client app-api (axios séparé, lit token localStorage)
