@@ -98,4 +98,13 @@ export class CvatMediaService {
 	async assignJob(jobId: number, userId: number): Promise<void> {
 		await apiClient.patch(`/jobs/${jobId}`, { assignee: userId });
 	}
+
+	async ensureJobEditable(jobId: number): Promise<void> {
+		try {
+			const response = await apiClient.get(`/jobs/${jobId}`);
+			if (response.data.state === 'completed') {
+				await apiClient.patch(`/jobs/${jobId}`, { state: 'in progress' });
+			}
+		} catch {}
+	}
 }

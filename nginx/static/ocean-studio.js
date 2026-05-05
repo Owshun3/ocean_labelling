@@ -20,8 +20,19 @@
     return { 'Content-Type': 'application/json', 'Accept': 'application/vnd.cvat+json', 'X-CSRFToken': csrf() };
   }
 
-  function cvatSave() {
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true }));
+  async function cvatSave() {
+    if (window.cvat && window.cvat.jobs && window.cvat.jobs.get) {
+      try {
+        var jobs = await window.cvat.jobs.get({ jobID: parseInt(jobId, 10) });
+        if (jobs && jobs[0] && jobs[0].annotations && jobs[0].annotations.save) {
+          await jobs[0].annotations.save();
+          return;
+        }
+      } catch (e) { console.warn('[ocean] cvat.jobs.save failed, falling back to keyboard:', e); }
+    }
+    var opts = { key: 's', code: 'KeyS', keyCode: 83, which: 83, ctrlKey: true, bubbles: true, cancelable: true };
+    document.body.dispatchEvent(new KeyboardEvent('keydown', opts));
+    await sleep(2000);
   }
 
   /* ── Lecture des CSS custom properties du thème Ocean ───────────────────── */
@@ -245,40 +256,44 @@
 
     addBtn.disabled = true;
     css(addBtn, { background: getVar('--ocean-border', '#C6C6C8'), cursor: 'not-allowed' });
-    setStatus('Sauvegarde + ajout…');
+    setStatus('Application du label…');
 
-    cvatSave(); /* en parallèle */
+    var savePromise = cvatSave();
 
     try {
+      var labelsResp = await fetch('/api/labels?task_id=' + taskId + '&page_size=100', {
+        credentials: 'include',
+        headers: { Accept: 'application/vnd.cvat+json', 'X-CSRFToken': csrf() },
+      });
+      if (!labelsResp.ok) throw new Error('HTTP ' + labelsResp.status + ' (lecture labels)');
+      var labelsData = await labelsResp.json();
+      var existingLabels = labelsData.results || [];
+
+      if (existingLabels.some(function (l) { return l.name === name; })) {
+        setStatus('Le label "' + name + '" existe déjà', 'error');
+        addBtn.disabled = false;
+        css(addBtn, { background: getVar('--ocean-primary', '#007AFF'), cursor: 'pointer' });
+        return;
+      }
+
+      var itemLabel = existingLabels.find(function (l) { return l.name === 'item'; });
+      var patchBody = itemLabel
+        ? { labels: [{ id: itemLabel.id, name: name }] }
+        : { labels: [{ name: name }] };
+
       var resp = await fetch('/api/tasks/' + taskId, {
         method: 'PATCH', credentials: 'include',
         headers: apiHeaders(),
-        body: JSON.stringify({ labels: [{ name: name }] }),
+        body: JSON.stringify(patchBody),
       });
 
       if (!resp.ok) {
-        var errMsg = 'HTTP ' + resp.status;
-        if (resp.status === 400) {
-          try {
-            var bodyText = await resp.text();
-            if (/already exist/i.test(bodyText)) {
-              errMsg = 'Le label "' + name + '" existe déjà';
-            } else {
-              /* Extraire le premier message lisible du JSON si possible */
-              try {
-                var body = JSON.parse(bodyText);
-                var flat = [].concat.apply([], Object.values(body || {}));
-                var first = flat.find(function (v) { return typeof v === 'string'; });
-                if (first) errMsg = first;
-              } catch (_) { /* corps non JSON */ }
-            }
-          } catch (_) { /* lecture impossible */ }
-        }
-        throw new Error(errMsg);
+        var errText = await resp.text().catch(function () { return ''; });
+        throw new Error('HTTP ' + resp.status + (errText ? ' : ' + errText.slice(0, 80) : ''));
       }
 
       setStatus('✓ Rechargement…', 'success');
-      await sleep(1800); /* laisser le Ctrl+S se terminer (2 s depuis le début) */
+      await savePromise;
       location.reload();
     } catch (e) {
       setStatus(e.message, 'error');
@@ -294,8 +309,8 @@
     css(btn, { background: getVar('--ocean-border', '#C6C6C8'), cursor: 'not-allowed' });
     btn.textContent = 'Sauvegarde…';
 
-    cvatSave();
-    await sleep(2000);
+    await cvatSave();
+    await pruneUnusedLabels();
 
     try {
       await fetch('/api/jobs/' + jobId, {
@@ -309,6 +324,81 @@
     await sleep(700);
     if (appReturn) window.location.href = decodeURIComponent(appReturn);
     else window.close();
+  }
+
+  /* ── Contrainte : 1 annotation max par frame ─────────────────────────────── */
+  async function getJob() {
+    if (!window.cvat || !window.cvat.jobs || !window.cvat.jobs.get) return null;
+    try {
+      var jobs = await window.cvat.jobs.get({ jobID: parseInt(jobId, 10) });
+      return (jobs && jobs[0]) || null;
+    } catch (_) { return null; }
+  }
+
+  var enforceRunning = false;
+  async function enforceMaxOneAnnotation() {
+    if (enforceRunning) return;
+    enforceRunning = true;
+    try {
+      var job = await getJob();
+      if (!job) return;
+      var startFrame = job.startFrame != null ? job.startFrame : job.start_frame;
+      var stopFrame  = job.stopFrame  != null ? job.stopFrame  : job.stop_frame;
+      if (startFrame == null || stopFrame == null) return;
+      var deleted = false;
+      for (var f = startFrame; f <= stopFrame; f++) {
+        var states = await job.annotations.get(f);
+        if (!states || states.length <= 1) continue;
+        states.sort(function (a, b) { return (b.clientID || 0) - (a.clientID || 0); });
+        var toRemove = states.slice(1);
+        for (var i = 0; i < toRemove.length; i++) {
+          try {
+            if (typeof toRemove[i].delete === 'function') {
+              await toRemove[i].delete(f, true);
+              deleted = true;
+            }
+          } catch (_) {}
+        }
+      }
+      if (deleted) {
+        try { await job.annotations.save(); } catch (_) {}
+        try { await job.annotations.clear(true); } catch (_) {}
+      }
+    } catch (_) {} finally {
+      enforceRunning = false;
+    }
+  }
+
+  async function pruneUnusedLabels() {
+    var job = await getJob();
+    if (!job) return;
+    try {
+      var startFrame = job.startFrame != null ? job.startFrame : job.start_frame;
+      var stopFrame  = job.stopFrame  != null ? job.stopFrame  : job.stop_frame;
+      if (startFrame == null || stopFrame == null) return;
+      var usedLabelIds = new Set();
+      for (var f = startFrame; f <= stopFrame; f++) {
+        var states = await job.annotations.get(f);
+        for (var i = 0; i < states.length; i++) {
+          if (states[i].label && states[i].label.id != null) usedLabelIds.add(states[i].label.id);
+        }
+      }
+      if (usedLabelIds.size === 0) return;
+      var resp = await fetch('/api/labels?task_id=' + taskId + '&page_size=100', {
+        credentials: 'include',
+        headers: { Accept: 'application/vnd.cvat+json', 'X-CSRFToken': csrf() },
+      });
+      if (!resp.ok) return;
+      var data = await resp.json();
+      var unused = (data.results || []).filter(function (l) { return !usedLabelIds.has(l.id); });
+      if (unused.length === 0) return;
+      var body = { labels: unused.map(function (l) { return { id: l.id, deleted: true }; }) };
+      await fetch('/api/tasks/' + taskId, {
+        method: 'PATCH', credentials: 'include',
+        headers: apiHeaders(),
+        body: JSON.stringify(body),
+      });
+    } catch (e) { console.warn('[ocean] prune labels failed:', e); }
   }
 
   /* ── Blocage navigation SPA ──────────────────────────────────────────────── */
@@ -329,6 +419,7 @@
       canvasReady = true;
       mainObs.disconnect();
       injectBar();
+      setInterval(enforceMaxOneAnnotation, 500);
       /* Observer permanent pour masquer le header lors des re-rendus CVAT */
       new MutationObserver(hideHeader)
         .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });

@@ -2,6 +2,20 @@
 
 **Règle:** Ne lire que les fichiers nécessaires à la tâche courante. Mettre à jour ce fichier ET `PRODUCTION.md` après chaque changement majeur.
 
+## Vocabulaire : Ocean ↔ CVAT
+
+La plateforme Ocean **renomme et aplatit** la hiérarchie CVAT côté UI :
+
+| Concept CVAT | Concept Ocean (UI) | Ce qu'on utilise |
+|---|---|---|
+| Organization | (ignoré, mono-tenant) | aucun |
+| Project | (ignoré) | aucun |
+| Task | « mon média » / « lot uploadé » | 1 upload = 1 task |
+| Job | « ce que j'annote » | 1 task = 1 job (`getFirstJobId`) |
+| Label | « étiquette d'espèce » | initialisé à `[{name:'item'}]` |
+
+Les mots CVAT (task, project, job) ne doivent **jamais** apparaître dans l'UI utilisateur. Les routes `/tasks`, `/projects`, `/organizations` sont d'ailleurs bloquées par NGINX (`nginx/nginx.conf:82-85`).
+
 ## Stack
 Expo Web (RN/TS) → NGINX Gateway :8888 → cvat_server:8080 (NGINX→uvicorn→Django) → réseau Docker `cvat_cvat`. CVAT v2.62.1.
 App-API (Node/Express/SQLite) → port interne 3000, proxy via gateway `/app-api/`.
@@ -38,7 +52,17 @@ Stockage : table `user_roles(cvat_user_id PK, role)`. Utilisateurs non présents
 Reçoit un set d'images déjà annotées (potentiellement par plusieurs annotateurs), assigné par admin ou algorithme.
 Son travail : vérifier la qualité, voir tous les labels et étiquettes (noms d'espèces) proposés, puis fusionner les annotations, choisir la meilleure, ou réannoter lui-même. Valide pour usage/export.
 CVAT propose nativement : `POST /api/consensus/merges` (fusion IoU multi-jobs, async), `PATCH /api/consensus/settings/{id}` (seuil IoU par tâche), `POST /api/quality/reports` + `GET /api/quality/conflicts` (rapport qualité et conflits entre annotateurs).
-Le studio curator custom (UI pour comparer/choisir/fusionner) est **à construire** par-dessus ces endpoints — il n'existe pas nativement dans notre app.
+Fonctionnalités attendues du studio curator (UI custom à construire) :
+- Affichage simultané des annotations de plusieurs annotateurs sur la même image, avec opacité variable au survol pour distinguer les sources.
+- Sélection d'un label et d'un encadrement existants parmi ceux proposés par les annotateurs sources.
+- Fusion des annotations sélectionnées OU création d'une nouvelle annotation par-dessus.
+- Validation de l'annotation finale (= passage du job en `stage:'accepted'` côté CVAT).
+Le studio curator custom est **à construire** par-dessus ces endpoints — il n'existe pas nativement dans notre app.
+
+**Rôle moderator — détail :**
+Modère le contenu uploadé sur la plateforme : retire les médias hors-sujet, choquants, publicitaires ou postés par des bots. Peut bannir des utilisateurs.
+N'intervient **pas** sur les annotations elles-mêmes (ce rôle revient au curator).
+Aucune fonctionnalité native CVAT ne couvre la modération de contenu : ni queue de validation pré-publication, ni signalement, ni workflow de bannissement avec motif/durée. Le seul levier proche est le flag Django `is_active=false`, qui n'est pas un outil de modération mais un interrupteur admin. Toute la logique est donc **à construire** côté app-api (tables de signalements et bannissements, endpoints dédiés).
 
 Env app-api : `CVAT_ADMIN_USER` / `CVAT_ADMIN_PASS` (définis dans `.env`) — utilisés pour fetcher la liste complète des users CVAT (seul un superuser CVAT peut le faire). Token caché en mémoire avec refresh auto sur 401.
 

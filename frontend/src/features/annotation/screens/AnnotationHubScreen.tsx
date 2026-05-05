@@ -30,6 +30,7 @@ export const AnnotationHubScreen: React.FC = () => {
                 mediaService.getSelf(),
             ]);
 
+            await mediaService.ensureJobEditable(jobId);
             await mediaService.assignJob(jobId, self.id);
 
             const cvatUiUrl = process.env.EXPO_PUBLIC_CVAT_UI_URL || 'http://localhost:8080';
