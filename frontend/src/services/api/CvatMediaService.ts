@@ -2,6 +2,9 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { apiClient } from './axiosClient';
 
+const CONSENSUS_REPLICAS_MAX = 50;
+const CONSENSUS_REPLICAS = Math.min(2, CONSENSUS_REPLICAS_MAX);
+
 export class CvatMediaService {
 	private readonly COUNTER_KEY = 'media_upload_counter';
 
@@ -22,6 +25,7 @@ export class CvatMediaService {
 		const taskResponse = await apiClient.post('/tasks', {
 			name: baseName,
 			labels: [{ name: 'item' }],
+			...(CONSENSUS_REPLICAS >= 2 ? { consensus_replicas: CONSENSUS_REPLICAS } : {}),
 		});
 
 		const taskId = taskResponse.data.id;

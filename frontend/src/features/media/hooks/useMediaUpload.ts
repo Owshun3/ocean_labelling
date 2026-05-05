@@ -7,7 +7,7 @@ export const useMediaUpload = () => {
 
 	const upload = async (files: any[]) => {
 		if (files.length === 0) return;
-		
+
 		setIsUploading(true);
 		try {
 			const service = new CvatMediaService();

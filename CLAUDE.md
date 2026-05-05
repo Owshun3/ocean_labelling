@@ -49,8 +49,14 @@ Hiérarchie des rôles (haut → bas) : `admin` > `moderator` > `curator` > `ann
 Stockage : table `user_roles(cvat_user_id PK, role)`. Utilisateurs non présents = `annotator` par défaut.
 
 **Rôle curator — détail :**
-Reçoit un set d'images déjà annotées (potentiellement par plusieurs annotateurs), assigné par admin ou algorithme.
-Son travail : vérifier la qualité, voir tous les labels et étiquettes (noms d'espèces) proposés, puis fusionner les annotations, choisir la meilleure, ou réannoter lui-même. Valide pour usage/export.
+Reçoit un **batch de médias annotés à valider, fourni individuellement** à chaque curator par l'admin ou par un algorithme d'assignation (à construire).
+Son travail : vérifier la qualité, voir tous les labels et étiquettes (noms d'espèces) proposés par les différents annotateurs, puis fusionner les annotations, choisir la meilleure, ou réannoter lui-même. Valide pour usage/export.
+
+**Prérequis technique du curator (Consensus Replicas) :**
+Pour qu'une tâche puisse être curée, elle DOIT avoir été créée avec `consensus_replicas >= 2` au moment du `POST /api/tasks`. Ce paramètre ne peut PAS être ajouté rétroactivement (contrainte CVAT — source : docs.cvat.ai/docs/qa-analytics/consensus/).
+Paramétrage actif : constantes globales en tête de `src/services/api/CvatMediaService.ts` — `CONSENSUS_REPLICAS = 2` (valeur effective, clampée par `CONSENSUS_REPLICAS_MAX = 50`). Le paramètre est intentionnellement **non exposé dans l'UI** — c'est une donnée de configuration commune à tous les uploads, pas un choix par utilisateur. La borne haute (50) est arbitraire fonctionnelle, pas une contrainte CVAT — elle existe pour cadrer une future page admin de paramètres globaux.
+Évolution prévue : si admin doit pouvoir ajuster sans redéploiement, créer une page de paramètres globaux + table `app_settings` postgres et remplacer la constante par un fetch au démarrage. Tant que cette page n'existe pas, modifier la valeur = changement de code + redéploiement.
+Les tâches créées avec `consensus_replicas = 1` (avant cette feature) sont mono-annotateur et hors du périmètre du curator — pas de rétro-compat possible, elles doivent être ré-uploadées.
 CVAT propose nativement : `POST /api/consensus/merges` (fusion IoU multi-jobs, async), `PATCH /api/consensus/settings/{id}` (seuil IoU par tâche), `POST /api/quality/reports` + `GET /api/quality/conflicts` (rapport qualité et conflits entre annotateurs).
 Fonctionnalités attendues du studio curator (UI custom à construire) :
 - Affichage simultané des annotations de plusieurs annotateurs sur la même image, avec opacité variable au survol pour distinguer les sources.

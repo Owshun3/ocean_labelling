@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Button, Image, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Button, Image, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useMediaUpload } from '../hooks/useMediaUpload';
@@ -35,7 +35,7 @@ export const UploadScreen: React.FC = () => {
 	return (
 		<ScrollView contentContainerStyle={styles.container}>
 			<Button title="Sélectionner des photos" onPress={pickImage} />
-			
+
 			<View style={styles.grid}>
 				{selectedImages.map((img, idx) => (
 					<Image key={idx} source={{ uri: img.uri }} style={styles.thumbnail} />
@@ -47,10 +47,10 @@ export const UploadScreen: React.FC = () => {
 					{isUploading ? (
 						<ActivityIndicator color={COLORS.primary} />
 					) : (
-						<Button 
-							title={`Téléverser ${selectedImages.length} fichier(s)`} 
-							onPress={handleUpload} 
-							color={COLORS.primary} 
+						<Button
+							title={`Téléverser ${selectedImages.length} fichier(s)`}
+							onPress={handleUpload}
+							color={COLORS.primary}
 						/>
 					)}
 				</View>
@@ -63,5 +63,5 @@ const styles = StyleSheet.create({
 	container: { padding: SPACING.lg },
 	grid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, marginVertical: SPACING.xl },
 	thumbnail: { width: 100, height: 100, borderRadius: 4 },
-	footer: { marginTop: SPACING.xl, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.md }
+	footer: { marginTop: SPACING.xl, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.md },
 });
