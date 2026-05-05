@@ -21,15 +21,6 @@
   }
 
   async function cvatSave() {
-    if (window.cvat && window.cvat.jobs && window.cvat.jobs.get) {
-      try {
-        var jobs = await window.cvat.jobs.get({ jobID: parseInt(jobId, 10) });
-        if (jobs && jobs[0] && jobs[0].annotations && jobs[0].annotations.save) {
-          await jobs[0].annotations.save();
-          return;
-        }
-      } catch (e) { console.warn('[ocean] cvat.jobs.save failed, falling back to keyboard:', e); }
-    }
     var opts = { key: 's', code: 'KeyS', keyCode: 83, which: 83, ctrlKey: true, bubbles: true, cancelable: true };
     document.body.dispatchEvent(new KeyboardEvent('keydown', opts));
     await sleep(2000);
@@ -63,6 +54,81 @@
         css(el, { display: 'none', height: '0', 'min-height': '0', overflow: 'hidden' });
       });
     });
+  }
+
+  var KEEP_CONTROLS = ['cvat-cursor-control', 'cvat-draw-rectangle-control'];
+
+  function customizeStudioUI() {
+    var sidebar = document.querySelector('aside.cvat-canvas-controls-sidebar');
+    if (sidebar) {
+      sidebar.style.setProperty('flex', '0 0 72px', 'important');
+      sidebar.style.setProperty('max-width', '72px', 'important');
+      sidebar.style.setProperty('min-width', '72px', 'important');
+      sidebar.style.setProperty('width', '72px', 'important');
+    }
+
+    document.querySelectorAll('aside.cvat-canvas-controls-sidebar .ant-layout-sider-children > div').forEach(function (div) {
+      var span = div.querySelector(':scope > span.anticon');
+      var keep = span && KEEP_CONTROLS.some(function (cls) { return span.classList.contains(cls); });
+      if (!keep) {
+        div.style.setProperty('display', 'none', 'important');
+        return;
+      }
+      div.style.setProperty('display', 'flex', 'important');
+      div.style.setProperty('align-items', 'center', 'important');
+      div.style.setProperty('justify-content', 'center', 'important');
+      div.style.setProperty('margin', '8px', 'important');
+      div.style.setProperty('padding', '12px', 'important');
+      div.style.setProperty('border-radius', '10px', 'important');
+      div.style.setProperty('background', getVar('--ocean-background-card', '#FFFFFF'), 'important');
+      div.style.setProperty('border', '1px solid ' + getVar('--ocean-border', '#C6C6C8'), 'important');
+      div.style.setProperty('box-shadow', '0 1px 3px rgba(0,0,0,0.08)', 'important');
+      div.style.setProperty('cursor', 'pointer', 'important');
+      div.style.setProperty('transition', 'all 0.15s ease', 'important');
+      if (span.classList.contains('cvat-active-canvas-control')) {
+        div.style.setProperty('background', getVar('--ocean-primary', '#007AFF'), 'important');
+        div.style.setProperty('border-color', getVar('--ocean-primary', '#007AFF'), 'important');
+        div.style.setProperty('box-shadow', '0 2px 6px rgba(0,122,255,0.3)', 'important');
+      }
+    });
+
+    document.querySelectorAll('aside.cvat-canvas-controls-sidebar .ant-layout-sider-children > hr, aside.cvat-canvas-controls-sidebar .ant-layout-sider-children > .cvat-extra-controls-control').forEach(function (el) {
+      el.style.setProperty('display', 'none', 'important');
+    });
+    document.querySelectorAll('.ant-tabs-tab[data-node-key="labels"], .ant-tabs-tab[data-node-key="issues"], [role="tabpanel"][id$="-panel-labels"], [role="tabpanel"][id$="-panel-issues"]').forEach(function (el) {
+      el.style.setProperty('display', 'none', 'important');
+    });
+
+    document.querySelectorAll('aside.cvat-canvas-controls-sidebar span.cvat-cursor-control').forEach(function (span) {
+      span.style.setProperty('font-size', '26px', 'important');
+      var active = span.classList.contains('cvat-active-canvas-control');
+      var color = active ? getVar('--ocean-text-inverse', '#FFFFFF') : getVar('--ocean-text-primary', '#000000');
+      var svg = span.querySelector('svg path');
+      if (svg) svg.setAttribute('fill', color);
+    });
+
+    var rectBtn = document.querySelector('aside.cvat-canvas-controls-sidebar span.cvat-draw-rectangle-control');
+    if (rectBtn) {
+      rectBtn.style.setProperty('position', 'relative', 'important');
+      rectBtn.style.setProperty('display', 'inline-block', 'important');
+      rectBtn.style.setProperty('width', '32px', 'important');
+      rectBtn.style.setProperty('height', '32px', 'important');
+      var svg = rectBtn.querySelector('svg');
+      if (svg) svg.style.setProperty('visibility', 'hidden', 'important');
+      if (!rectBtn.dataset.oceanIconified) {
+        rectBtn.dataset.oceanIconified = '1';
+        var pen = document.createElement('span');
+        pen.id = 'ocean-rect-icon';
+        pen.textContent = '✎';
+        pen.style.cssText = 'position:absolute !important;top:50% !important;left:50% !important;transform:translate(-50%,-50%) !important;font-size:26px !important;pointer-events:none !important;line-height:1 !important;';
+        rectBtn.appendChild(pen);
+      }
+      var pen = rectBtn.querySelector('#ocean-rect-icon');
+      if (pen) {
+        var active = rectBtn.classList.contains('cvat-active-canvas-control');
+        pen.style.setProperty('color', active ? getVar('--ocean-text-inverse', '#FFFFFF') : getVar('--ocean-primary', '#007AFF'), 'important');
+      }
+    }
   }
 
   /* ── Construction et stylisation de la barre ────────────────────────────── */
@@ -292,8 +358,8 @@
         throw new Error('HTTP ' + resp.status + (errText ? ' : ' + errText.slice(0, 80) : ''));
       }
 
-      setStatus('✓ Rechargement…', 'success');
       await savePromise;
+      setStatus('✓ Rechargement…', 'success');
       location.reload();
     } catch (e) {
       setStatus(e.message, 'error');
@@ -362,7 +428,7 @@
       }
       if (deleted) {
         try { await job.annotations.save(); } catch (_) {}
-        try { await job.annotations.clear(true); } catch (_) {}
+        try { await job.annotations.clear({ reload: true }); } catch (_) {}
       }
     } catch (_) {} finally {
       enforceRunning = false;
@@ -420,9 +486,22 @@
       mainObs.disconnect();
       injectBar();
       setInterval(enforceMaxOneAnnotation, 500);
-      /* Observer permanent pour masquer le header lors des re-rendus CVAT */
-      new MutationObserver(hideHeader)
-        .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+
+      var customizeScheduled = false;
+      function scheduleCustomize() {
+        if (customizeScheduled) return;
+        customizeScheduled = true;
+        requestAnimationFrame(function () {
+          customizeScheduled = false;
+          try { customizeStudioUI(); } catch (e) { console.warn('[ocean] customize failed:', e); }
+        });
+      }
+
+      scheduleCustomize();
+      new MutationObserver(function () {
+        hideHeader();
+        scheduleCustomize();
+      }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
     }
   });
 

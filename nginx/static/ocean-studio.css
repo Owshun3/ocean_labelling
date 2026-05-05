@@ -42,3 +42,38 @@ body {
   box-sizing:  border-box !important;
   line-height: normal     !important;
 }
+
+aside.cvat-canvas-controls-sidebar .ant-layout-sider-children > div:has(> span.anticon):not(:has(> span.cvat-draw-rectangle-control)),
+aside.cvat-canvas-controls-sidebar .ant-layout-sider-children > div:not(:has(> span.anticon)),
+aside.cvat-canvas-controls-sidebar .ant-layout-sider-children > hr,
+aside.cvat-canvas-controls-sidebar .ant-layout-sider-children > span.cvat-extra-controls-control {
+  display: none !important;
+}
+
+aside.cvat-canvas-controls-sidebar span.cvat-draw-rectangle-control {
+  position: relative !important;
+  display: inline-block !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+aside.cvat-canvas-controls-sidebar span.cvat-draw-rectangle-control > svg {
+  visibility: hidden !important;
+}
+aside.cvat-canvas-controls-sidebar span.cvat-draw-rectangle-control::after {
+  content: '✎' !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  font-size: 22px !important;
+  color: var(--ocean-primary, #007AFF) !important;
+  pointer-events: none !important;
+  line-height: 1 !important;
+}
+
+.ant-tabs-tab[data-node-key="labels"],
+.ant-tabs-tab[data-node-key="issues"],
+[role="tabpanel"][id$="-panel-labels"],
+[role="tabpanel"][id$="-panel-issues"] {
+  display: none !important;
+}
