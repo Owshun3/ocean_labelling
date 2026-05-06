@@ -15,7 +15,7 @@ export const AnnotationHubScreen: React.FC = () => {
 
     useEffect(() => {
         const fetchImages = async () => {
-            const data = await mediaService.getTasks();
+            const data = await mediaService.getTasks({ ownedByMe: true });
             setImages(data);
         };
         fetchImages();

@@ -62,11 +62,24 @@ export class CvatMediaService {
 		return taskId;
 	}
 
-	async getTasks(params?: { sorting?: string }) {
-		let url = '/tasks?page_size=20';
-		if (params?.sorting) url += `&sort=${params.sorting}`;
-		const response = await apiClient.get(url);
-		return response.data.results;
+	async getTasks(params?: { sorting?: string; ownedByMe?: boolean }): Promise<any[]> {
+		const query: string[] = ['page_size=50'];
+		if (params?.sorting) query.push(`sort=${encodeURIComponent(params.sorting)}`);
+		if (params?.ownedByMe) {
+			const self = await this.getSelf();
+			query.push(`owner=${encodeURIComponent(self.username)}`);
+		}
+		const baseQuery = query.join('&');
+
+		const all: any[] = [];
+		let page = 1;
+		while (true) {
+			const response = await apiClient.get(`/tasks?${baseQuery}&page=${page}`);
+			all.push(...response.data.results);
+			if (!response.data.next) break;
+			page += 1;
+		}
+		return all;
 	}
 
 	async deleteTask(taskId: number): Promise<void> {

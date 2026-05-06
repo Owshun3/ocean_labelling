@@ -15,7 +15,7 @@ export const MediaListScreen: React.FC = () => {
 	const service = new CvatMediaService();
 
 	const loadTasks = async () => {
-		const data = await service.getTasks();
+		const data = await service.getTasks({ ownedByMe: true });
 		setTasks(data);
 	};
 
