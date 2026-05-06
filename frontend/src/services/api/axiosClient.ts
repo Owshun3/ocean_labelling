@@ -31,3 +31,6 @@ apiClient.interceptors.request.use(
 		return Promise.reject(error);
 	}
 );
+
+import { attachBanInterceptor } from './banInterceptor';
+attachBanInterceptor(apiClient);

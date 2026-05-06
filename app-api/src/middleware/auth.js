@@ -8,7 +8,6 @@ async function resolveCvatUser(authHeader) {
     headers: {
       Authorization: authHeader,
       Accept: 'application/vnd.cvat+json',
-      // cvat_server's internal nginx requires Host: localhost to avoid 400
       Host: 'localhost',
     },
     timeout: 5000,
@@ -16,68 +15,99 @@ async function resolveCvatUser(authHeader) {
   return resp.data;
 }
 
-async function requireAuth(req, res, next) {
-  const auth = req.headers['authorization'];
-  if (!auth) return res.status(401).json({ error: 'Authorization header required' });
+async function getActiveBan(cvatUserId) {
   try {
-    req.cvatUser = await resolveCvatUser(auth);
-    next();
+    const { rows } = await pool.query(`
+      SELECT reason, expires_at, banned_at
+      FROM user_bans
+      WHERE cvat_user_id = $1
+        AND banned_at <= NOW()
+        AND (expires_at IS NULL OR expires_at > NOW())
+      ORDER BY banned_at DESC
+      LIMIT 1
+    `, [cvatUserId]);
+    return rows[0] || null;
+  } catch (err) {
+    console.warn(`[auth] ban check failed for user ${cvatUserId}:`, err.message);
+    return null;
+  }
+}
+
+function denyBanned(res, ban) {
+  return res.status(403).json({
+    error: 'Compte banni',
+    reason: ban.reason || null,
+    expires_at: ban.expires_at,
+    banned_at: ban.banned_at,
+  });
+}
+
+async function authenticate(req, res) {
+  const auth = req.headers['authorization'];
+  if (!auth) {
+    res.status(401).json({ error: 'Authorization header required' });
+    return null;
+  }
+  try {
+    const cvatUser = await resolveCvatUser(auth);
+    const isStaff = cvatUser.is_superuser || cvatUser.is_staff;
+    if (!isStaff) {
+      const ban = await getActiveBan(cvatUser.id);
+      if (ban) {
+        denyBanned(res, ban);
+        return null;
+      }
+    }
+    return cvatUser;
   } catch {
     res.status(401).json({ error: 'Invalid or expired CVAT token' });
+    return null;
   }
+}
+
+async function fetchAppRole(cvatUserId) {
+  const { rows } = await pool.query(
+    'SELECT role FROM user_roles WHERE cvat_user_id = $1',
+    [cvatUserId]
+  );
+  return rows[0]?.role ?? 'annotator';
+}
+
+async function requireAuth(req, res, next) {
+  const cvatUser = await authenticate(req, res);
+  if (!cvatUser) return;
+  req.cvatUser = cvatUser;
+  next();
 }
 
 async function requireAdmin(req, res, next) {
-  const auth = req.headers['authorization'];
-  if (!auth) return res.status(401).json({ error: 'Authorization header required' });
-  try {
-    req.cvatUser = await resolveCvatUser(auth);
-    if (req.cvatUser.is_superuser || req.cvatUser.is_staff) return next();
-    const { rows } = await pool.query(
-      'SELECT role FROM user_roles WHERE cvat_user_id = $1',
-      [req.cvatUser.id]
-    );
-    if (rows[0]?.role === 'admin') return next();
-    return res.status(403).json({ error: 'Admin access required' });
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired CVAT token' });
-  }
+  const cvatUser = await authenticate(req, res);
+  if (!cvatUser) return;
+  req.cvatUser = cvatUser;
+  if (cvatUser.is_superuser || cvatUser.is_staff) return next();
+  const role = await fetchAppRole(cvatUser.id);
+  if (role === 'admin') return next();
+  return res.status(403).json({ error: 'Admin access required' });
 }
 
 async function requireCuratorOrAbove(req, res, next) {
-  const auth = req.headers['authorization'];
-  if (!auth) return res.status(401).json({ error: 'Authorization header required' });
-  try {
-    req.cvatUser = await resolveCvatUser(auth);
-    if (req.cvatUser.is_superuser || req.cvatUser.is_staff) return next();
-    const { rows } = await pool.query(
-      'SELECT role FROM user_roles WHERE cvat_user_id = $1',
-      [req.cvatUser.id]
-    );
-    const role = rows[0]?.role ?? 'annotator';
-    if (['admin', 'moderator', 'curator'].includes(role)) return next();
-    return res.status(403).json({ error: 'Curator access required' });
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired CVAT token' });
-  }
+  const cvatUser = await authenticate(req, res);
+  if (!cvatUser) return;
+  req.cvatUser = cvatUser;
+  if (cvatUser.is_superuser || cvatUser.is_staff) return next();
+  const role = await fetchAppRole(cvatUser.id);
+  if (['admin', 'moderator', 'curator'].includes(role)) return next();
+  return res.status(403).json({ error: 'Curator access required' });
 }
 
 async function requireModeratorOrAbove(req, res, next) {
-  const auth = req.headers['authorization'];
-  if (!auth) return res.status(401).json({ error: 'Authorization header required' });
-  try {
-    req.cvatUser = await resolveCvatUser(auth);
-    if (req.cvatUser.is_superuser || req.cvatUser.is_staff) return next();
-    const { rows } = await pool.query(
-      'SELECT role FROM user_roles WHERE cvat_user_id = $1',
-      [req.cvatUser.id]
-    );
-    const role = rows[0]?.role ?? 'annotator';
-    if (['admin', 'moderator'].includes(role)) return next();
-    return res.status(403).json({ error: 'Moderator access required' });
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired CVAT token' });
-  }
+  const cvatUser = await authenticate(req, res);
+  if (!cvatUser) return;
+  req.cvatUser = cvatUser;
+  if (cvatUser.is_superuser || cvatUser.is_staff) return next();
+  const role = await fetchAppRole(cvatUser.id);
+  if (['admin', 'moderator'].includes(role)) return next();
+  return res.status(403).json({ error: 'Moderator access required' });
 }
 
 module.exports = { requireAuth, requireAdmin, requireCuratorOrAbove, requireModeratorOrAbove };

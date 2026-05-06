@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
+import { attachBanInterceptor } from './banInterceptor';
 
 const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
 
@@ -12,6 +13,8 @@ appApiClient.interceptors.request.use((config) => {
 	if (token) config.headers.Authorization = `Token ${token}`;
 	return config;
 });
+
+attachBanInterceptor(appApiClient);
 
 export type AppRole = 'admin' | 'curator' | 'moderator' | 'annotator' | 'guest';
 

@@ -64,6 +64,38 @@ async function fetchAppRoles(userIds) {
   return map;
 }
 
+router.get('/bans/check', async (req, res) => {
+  const username = String(req.query.username || '').trim();
+  if (!username) return res.status(400).json({ error: 'username required' });
+  try {
+    const token = await getAdminToken();
+    const usersResp = await cvatGet(`/users?search=${encodeURIComponent(username)}&page_size=20`, token);
+    const user = (usersResp.data.results || []).find((u) => u.username === username);
+    if (!user) return res.json({ banned: false });
+
+    const { rows } = await pool.query(`
+      SELECT reason, expires_at, banned_at
+      FROM user_bans
+      WHERE cvat_user_id = $1
+        AND banned_at <= NOW()
+        AND (expires_at IS NULL OR expires_at > NOW())
+      ORDER BY banned_at DESC
+      LIMIT 1
+    `, [user.id]);
+
+    if (rows.length === 0) return res.json({ banned: false });
+
+    res.json({
+      banned: true,
+      reason: rows[0].reason,
+      expires_at: rows[0].expires_at,
+      banned_at: rows[0].banned_at,
+    });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
   try {
     const { rows: entries } = await pool.query(`

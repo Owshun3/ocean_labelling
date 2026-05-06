@@ -1,12 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
+import axios from 'axios';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
+import { consumeBanInfo, formatRemaining, BanSessionInfo } from '@/services/api/banInterceptor';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
+
+const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+
+interface BanState {
+	username: string | null;
+	reason: string | null;
+	expires_at: string | null;
+}
 
 export const LoginScreen: React.FC = () => {
 	const [username, setUsername] = useState('');
@@ -14,7 +24,33 @@ export const LoginScreen: React.FC = () => {
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [showPassword, setShowPassword] = useState(false);
+	const [ban, setBan] = useState<BanState | null>(null);
+	const [, forceRerender] = useState(0);
 	const router = useRouter();
+
+	useEffect(() => {
+		const info: BanSessionInfo | null = consumeBanInfo();
+		if (info) setBan({ username: null, reason: info.reason, expires_at: info.expires_at });
+	}, []);
+
+	useEffect(() => {
+		if (!ban || !ban.expires_at) return;
+		const id = setInterval(() => forceRerender((n) => n + 1), 30_000);
+		return () => clearInterval(id);
+	}, [ban]);
+
+	const checkBanForUsername = async (uname: string): Promise<BanSessionInfo | null> => {
+		try {
+			const resp = await axios.get<{ banned: boolean; reason: string | null; expires_at: string | null; banned_at: string | null }>(
+				`${APP_API_BASE}/moderation/bans/check`,
+				{ params: { username: uname } }
+			);
+			if (resp.data.banned) {
+				return { reason: resp.data.reason, expires_at: resp.data.expires_at, banned_at: resp.data.banned_at };
+			}
+		} catch {}
+		return null;
+	};
 
 	const handleLogin = async () => {
 		if (!username || !password) {
@@ -24,13 +60,19 @@ export const LoginScreen: React.FC = () => {
 
 		setIsLoading(true);
 		setError(null);
+		setBan(null);
 
 		try {
 			const authService = new CvatAuthService();
 			await authService.login(username, password);
 			router.replace('/(main)' as Href);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Échec de la connexion.");
+			const banInfo = await checkBanForUsername(username);
+			if (banInfo) {
+				setBan({ username, reason: banInfo.reason, expires_at: banInfo.expires_at });
+			} else {
+				setError(err instanceof Error ? err.message : "Échec de la connexion.");
+			}
 		} finally {
 			setIsLoading(false);
 		}
@@ -40,7 +82,19 @@ export const LoginScreen: React.FC = () => {
 		<SafeAreaView style={styles.container}>
 			<View style={styles.card}>
 				<Text style={styles.title}>Connexion</Text>
-				
+
+				{ban ? (
+					<View style={styles.banBox}>
+						<Text style={styles.banTitle}>Compte banni</Text>
+						<Text style={styles.banLine}>
+							{ban.expires_at
+								? `Bannissement actif — temps restant : ${formatRemaining(ban.expires_at)}`
+								: 'Bannissement permanent'}
+						</Text>
+						{ban.reason ? <Text style={styles.banReason}>Motif : {ban.reason}</Text> : null}
+					</View>
+				) : null}
+
 				{error ? <Text style={styles.errorText}>{error}</Text> : null}
 				
 				<View style={styles.inputGroup}>
@@ -94,6 +148,17 @@ const styles = StyleSheet.create({
 	card: { backgroundColor: COLORS.background.card, padding: SPACING.lg, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, maxWidth: 400, width: '100%', alignSelf: 'center' },
 	title: { ...TYPOGRAPHY.h1, marginBottom: SPACING.lg, textAlign: 'center' },
 	errorText: { color: COLORS.danger, marginBottom: SPACING.md, textAlign: 'center' },
+	banBox: {
+		backgroundColor: COLORS.background.main,
+		borderWidth: 1,
+		borderColor: COLORS.danger,
+		borderRadius: 6,
+		padding: SPACING.md,
+		marginBottom: SPACING.md,
+	},
+	banTitle: { ...TYPOGRAPHY.body, fontWeight: 'bold', color: COLORS.danger, marginBottom: SPACING.xs },
+	banLine: { ...TYPOGRAPHY.body, color: COLORS.text.primary },
+	banReason: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginTop: SPACING.xs, fontStyle: 'italic' },
 	inputGroup: { marginBottom: SPACING.md },
 	label: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.xs, fontWeight: '600' },
 	input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 4, padding: SPACING.md, ...TYPOGRAPHY.body },
