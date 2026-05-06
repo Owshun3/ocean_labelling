@@ -8,7 +8,10 @@ include:
 services:
   cvat_server:
     environment:
+      DJANGO_SETTINGS_MODULE: 'cvat.settings.ocean'
       CSRF_TRUSTED_ORIGINS: 'http://localhost:8081,http://127.0.0.1:8081,http://localhost:8888,http://127.0.0.1:8888'
+    volumes:
+      - ./cvat-extras/ocean.py:/home/django/cvat/settings/ocean.py:ro
 
   postgres:
     image: postgres:15-alpine

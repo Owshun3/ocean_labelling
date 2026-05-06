@@ -1,9 +1,10 @@
 import { AxiosInstance } from 'axios';
 import { Platform } from 'react-native';
-import { clearAuthToken, clearUserProfile } from './authStorage';
+import { clearAuthToken, clearUserProfile, getAuthToken } from './authStorage';
 
-const BAN_SESSION_KEY = 'ocean_ban_info';
-const LOGIN_PATH = '/login';
+const BAN_SESSION_KEY      = 'ocean_ban_info';
+const SESSION_EXPIRED_KEY  = 'ocean_session_expired';
+const LOGIN_PATH           = '/login';
 
 export interface BanSessionInfo {
 	reason: string | null;
@@ -11,27 +12,73 @@ export interface BanSessionInfo {
 	banned_at: string | null;
 }
 
+export type SessionExpiredReason = 'token_invalid' | 'cvat_unreachable';
+
+export interface SessionExpiredInfo {
+	reason: SessionExpiredReason;
+	detail: string | null;
+}
+
+function isBanResponse(status: number, data: any): boolean {
+	return status === 403 && data?.error === 'Compte banni';
+}
+
+function detectSessionExpired(status: number, data: any): SessionExpiredInfo | null {
+	if (status !== 401) return null;
+	if (data?.hint === 'no_token_sent') return null;
+	if (data?.hint === 'cvat_returned_401') return { reason: 'token_invalid', detail: data?.error || null };
+	if (data?.hint === 'cvat_unreachable')  return { reason: 'cvat_unreachable', detail: data?.error || null };
+	if (data?.detail === 'Invalid token.')  return { reason: 'token_invalid', detail: 'Invalid token' };
+	if (data?.error === 'Invalid or expired CVAT token') return { reason: 'token_invalid', detail: data.error };
+	return null;
+}
+
+async function clearAndRedirect(): Promise<boolean> {
+	if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+	try { await clearAuthToken(); } catch {}
+	clearUserProfile();
+	if (window.location.pathname !== LOGIN_PATH) {
+		window.location.href = LOGIN_PATH;
+		return true;
+	}
+	return false;
+}
+
+const NEVER_RESOLVING: Promise<never> = new Promise(() => {});
+
 export function attachBanInterceptor(client: AxiosInstance): void {
 	client.interceptors.response.use(
 		(resp) => resp,
 		async (error) => {
-			const status  = error?.response?.status;
-			const errKey  = error?.response?.data?.error;
-			const isBan   = status === 403 && errKey === 'Compte banni';
-			if (isBan && Platform.OS === 'web' && typeof window !== 'undefined') {
+			const status = error?.response?.status;
+			const data   = error?.response?.data;
+
+			if (isBanResponse(status, data)) {
 				try {
 					sessionStorage.setItem(BAN_SESSION_KEY, JSON.stringify({
-						reason:     error.response.data.reason     ?? null,
-						expires_at: error.response.data.expires_at ?? null,
-						banned_at:  error.response.data.banned_at  ?? null,
+						reason:     data.reason     ?? null,
+						expires_at: data.expires_at ?? null,
+						banned_at:  data.banned_at  ?? null,
 					}));
 				} catch {}
-				try { await clearAuthToken(); } catch {}
-				clearUserProfile();
-				if (window.location.pathname !== LOGIN_PATH) {
-					window.location.href = LOGIN_PATH;
+				const redirected = await clearAndRedirect();
+				if (redirected) return NEVER_RESOLVING;
+				return Promise.reject(error);
+			}
+
+			const expired = detectSessionExpired(status, data);
+			if (expired) {
+				let hadToken = false;
+				try { hadToken = (await getAuthToken()) !== null; } catch {}
+				if (hadToken) {
+					try {
+						sessionStorage.setItem(SESSION_EXPIRED_KEY, JSON.stringify(expired));
+					} catch {}
+					const redirected = await clearAndRedirect();
+					if (redirected) return NEVER_RESOLVING;
 				}
 			}
+
 			return Promise.reject(error);
 		}
 	);
@@ -44,6 +91,18 @@ export function consumeBanInfo(): BanSessionInfo | null {
 		if (!raw) return null;
 		sessionStorage.removeItem(BAN_SESSION_KEY);
 		return JSON.parse(raw) as BanSessionInfo;
+	} catch {
+		return null;
+	}
+}
+
+export function consumeSessionExpired(): SessionExpiredInfo | null {
+	if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+	try {
+		const raw = sessionStorage.getItem(SESSION_EXPIRED_KEY);
+		if (!raw) return null;
+		sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+		return JSON.parse(raw) as SessionExpiredInfo;
 	} catch {
 		return null;
 	}

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import axios from 'axios';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
-import { consumeBanInfo, formatRemaining, BanSessionInfo } from '@/services/api/banInterceptor';
+import { consumeBanInfo, consumeSessionExpired, formatRemaining, BanSessionInfo, SessionExpiredInfo } from '@/services/api/banInterceptor';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -25,12 +25,18 @@ export const LoginScreen: React.FC = () => {
 	const [error, setError] = useState<string | null>(null);
 	const [showPassword, setShowPassword] = useState(false);
 	const [ban, setBan] = useState<BanState | null>(null);
+	const [sessionExpired, setSessionExpired] = useState<SessionExpiredInfo | null>(null);
 	const [, forceRerender] = useState(0);
 	const router = useRouter();
 
 	useEffect(() => {
-		const info: BanSessionInfo | null = consumeBanInfo();
-		if (info) setBan({ username: null, reason: info.reason, expires_at: info.expires_at });
+		const banInfo: BanSessionInfo | null = consumeBanInfo();
+		if (banInfo) {
+			setBan({ username: null, reason: banInfo.reason, expires_at: banInfo.expires_at });
+			return;
+		}
+		const expiredInfo = consumeSessionExpired();
+		if (expiredInfo) setSessionExpired(expiredInfo);
 	}, []);
 
 	useEffect(() => {
@@ -92,6 +98,17 @@ export const LoginScreen: React.FC = () => {
 								: 'Bannissement permanent'}
 						</Text>
 						{ban.reason ? <Text style={styles.banReason}>Motif : {ban.reason}</Text> : null}
+					</View>
+				) : null}
+
+				{sessionExpired ? (
+					<View style={styles.sessionExpiredBox}>
+						<Text style={styles.sessionExpiredTitle}>Session expirée</Text>
+						<Text style={styles.sessionExpiredLine}>
+							{sessionExpired.reason === 'cvat_unreachable'
+								? 'Le serveur d\'authentification n\'a pas pu être joint. Reconnectez-vous.'
+								: 'Votre session n\'est plus valide. Veuillez vous reconnecter.'}
+						</Text>
 					</View>
 				) : null}
 
@@ -159,6 +176,16 @@ const styles = StyleSheet.create({
 	banTitle: { ...TYPOGRAPHY.body, fontWeight: 'bold', color: COLORS.danger, marginBottom: SPACING.xs },
 	banLine: { ...TYPOGRAPHY.body, color: COLORS.text.primary },
 	banReason: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginTop: SPACING.xs, fontStyle: 'italic' },
+	sessionExpiredBox: {
+		backgroundColor: COLORS.background.main,
+		borderWidth: 1,
+		borderColor: COLORS.warning,
+		borderRadius: 6,
+		padding: SPACING.md,
+		marginBottom: SPACING.md,
+	},
+	sessionExpiredTitle: { ...TYPOGRAPHY.body, fontWeight: 'bold', color: COLORS.warning, marginBottom: SPACING.xs },
+	sessionExpiredLine: { ...TYPOGRAPHY.body, color: COLORS.text.primary },
 	inputGroup: { marginBottom: SPACING.md },
 	label: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.xs, fontWeight: '600' },
 	input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 4, padding: SPACING.md, ...TYPOGRAPHY.body },

@@ -17,12 +17,23 @@ export const apiClient = axios.create({
 	},
 });
 
+function readCsrfFromCookie(): string | null {
+	if (typeof document === 'undefined') return null;
+	const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+	return m ? m[1] : null;
+}
+
 apiClient.interceptors.request.use(
 	async (config) => {
 		const token = await getLocalToken();
 
 		if (config.headers && token) {
 			config.headers.Authorization = `Token ${token}`;
+		}
+
+		if (config.headers) {
+			const csrf = readCsrfFromCookie();
+			if (csrf) config.headers['X-CSRFToken'] = csrf;
 		}
 
 		return config;

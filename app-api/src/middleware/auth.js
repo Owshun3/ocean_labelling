@@ -45,7 +45,7 @@ function denyBanned(res, ban) {
 async function authenticate(req, res) {
   const auth = req.headers['authorization'];
   if (!auth) {
-    res.status(401).json({ error: 'Authorization header required' });
+    res.status(401).json({ error: 'Authorization header required', hint: 'no_token_sent' });
     return null;
   }
   try {
@@ -59,8 +59,15 @@ async function authenticate(req, res) {
       }
     }
     return cvatUser;
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired CVAT token' });
+  } catch (err) {
+    const cvatStatus = err?.response?.status;
+    const cvatPayload = err?.response?.data;
+    console.warn('[auth] resolveCvatUser failed:', { cvatStatus, cvatPayload, message: err?.message });
+    res.status(401).json({
+      error: 'Invalid or expired CVAT token',
+      hint: cvatStatus ? `cvat_returned_${cvatStatus}` : 'cvat_unreachable',
+      cvat_status: cvatStatus ?? null,
+    });
     return null;
   }
 }
