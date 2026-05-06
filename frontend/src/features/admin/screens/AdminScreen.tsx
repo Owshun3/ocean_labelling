@@ -7,8 +7,10 @@ import {
 	Text,
 	View,
 } from 'react-native';
-import { AppApiService, AppRole, UserWithRole } from '@/services/api/AppApiService';
+import { AppApiService, AppRole, AccountState, UserWithRole } from '@/services/api/AppApiService';
 import { getUserProfile } from '@/services/api/authStorage';
+import { BanModal } from '@/features/moderation/components/BanModal';
+import { formatRemaining } from '@/services/api/banInterceptor';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -30,6 +32,75 @@ const ROLE_COLORS: Record<AppRole, string> = {
 	annotator: '#16a34a',
 	guest: '#9ca3af',
 };
+
+const STATES: AccountState[] = ['active', 'disabled', 'banned'];
+
+const STATE_LABELS: Record<AccountState, string> = {
+	active: 'Activé',
+	disabled: 'Désactivé',
+	banned: 'Banni',
+};
+
+const STATE_COLORS: Record<AccountState, string> = {
+	active: '#16a34a',
+	disabled: '#9ca3af',
+	banned: '#dc2626',
+};
+
+interface StateSelectProps {
+	user: UserWithRole;
+	onSetActive: (isActive: boolean) => Promise<void>;
+	onRequestBan: () => void;
+}
+
+function StateSelect({ user, onSetActive, onRequestBan }: StateSelectProps) {
+	const [saving, setSaving] = useState(false);
+
+	if (Platform.OS !== 'web') return <Text style={{ color: COLORS.text.secondary }}>Web only</Text>;
+
+	return (
+		<View style={styles.stateCell}>
+			<select
+				value={user.state}
+				disabled={saving}
+				onChange={async (e) => {
+					const next = e.target.value as AccountState;
+					if (next === user.state) return;
+					if (next === 'banned') {
+						onRequestBan();
+						return;
+					}
+					setSaving(true);
+					try {
+						await onSetActive(next === 'active');
+					} catch (err: any) {
+						window.alert(err?.response?.data?.error ?? 'Impossible de modifier l\'état du compte.');
+					} finally {
+						setSaving(false);
+					}
+				}}
+				style={{
+					padding: '4px 8px',
+					borderRadius: 4,
+					border: `1px solid ${COLORS.border}`,
+					backgroundColor: COLORS.background.card,
+					color: STATE_COLORS[user.state],
+					fontWeight: '600',
+					cursor: saving ? 'wait' : 'pointer',
+				} as any}
+			>
+				{STATES.map((s) => (
+					<option key={s} value={s}>{STATE_LABELS[s]}</option>
+				))}
+			</select>
+			{user.state === 'banned' && user.ban ? (
+				<Text style={styles.banSubLine}>
+					{user.ban.expires_at ? `restant : ${formatRemaining(user.ban.expires_at)}` : 'permanent'}
+				</Text>
+			) : null}
+		</View>
+	);
+}
 
 function RoleSelect({ user, onSave }: { user: UserWithRole; onSave: (role: AppRole) => Promise<void> }) {
 	const [saving, setSaving] = useState(false);
@@ -80,8 +151,12 @@ export const AdminScreen: React.FC = () => {
 	const [users, setUsers] = useState<UserWithRole[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [banTarget, setBanTarget] = useState<UserWithRole | null>(null);
+	const [banSubmitting, setBanSubmitting] = useState(false);
 	const service = useMemo(() => new AppApiService(), []);
 	const currentProfile = getUserProfile();
+
+	const reload = () => service.listUsers().then(setUsers);
 
 	useEffect(() => {
 		service.listUsers()
@@ -93,6 +168,25 @@ export const AdminScreen: React.FC = () => {
 	const handleRoleChange = async (userId: number, role: AppRole) => {
 		await service.setUserRole(userId, role);
 		setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
+	};
+
+	const handleSetActive = async (userId: number, isActive: boolean) => {
+		await service.setUserActive(userId, isActive);
+		await reload();
+	};
+
+	const handleConfirmBan = async (durationDays: number | null, reason: string) => {
+		if (!banTarget) return;
+		setBanSubmitting(true);
+		try {
+			await service.banUser(banTarget.id, durationDays, reason);
+			setBanTarget(null);
+			await reload();
+		} catch (err: any) {
+			window.alert(err?.response?.data?.error ?? 'Bannissement impossible.');
+		} finally {
+			setBanSubmitting(false);
+		}
 	};
 
 	if (loading) {
@@ -143,16 +237,22 @@ export const AdminScreen: React.FC = () => {
 							user={item}
 							onSave={(role) => handleRoleChange(item.id, role)}
 						/>
-						<View style={styles.colStatus}>
-							<View style={[
-								styles.statusDot,
-								{ backgroundColor: item.is_active ? COLORS.status?.success ?? '#16a34a' : '#9ca3af' },
-							]} />
-							<Text style={styles.cell}>{item.is_active ? 'Activé' : 'Désactivé'}</Text>
-						</View>
+						<StateSelect
+							user={item}
+							onSetActive={(isActive) => handleSetActive(item.id, isActive)}
+							onRequestBan={() => setBanTarget(item)}
+						/>
 					</View>
 				)}
 				ItemSeparatorComponent={() => <View style={styles.separator} />}
+			/>
+
+			<BanModal
+				visible={!!banTarget}
+				userLabel={banTarget ? `${banTarget.username}#${banTarget.id}` : ''}
+				submitting={banSubmitting}
+				onCancel={() => setBanTarget(null)}
+				onConfirm={handleConfirmBan}
 			/>
 		</View>
 	);
@@ -189,8 +289,10 @@ const styles = StyleSheet.create({
 	colUsername: { flex: 2 },
 	colEmail: { flex: 3 },
 	colRole: { flex: 2 },
-	colStatus: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+	colStatus: { flex: 2 },
 	roleCell: { flex: 2 },
+	stateCell: { flex: 2 },
+	banSubLine: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginTop: 2 },
 
 	username: { ...TYPOGRAPHY.body, fontWeight: '600' },
 	cell: { ...TYPOGRAPHY.body, color: COLORS.text.primary },

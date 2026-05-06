@@ -17,6 +17,13 @@ appApiClient.interceptors.request.use((config) => {
 attachBanInterceptor(appApiClient);
 
 export type AppRole = 'admin' | 'curator' | 'moderator' | 'annotator' | 'guest';
+export type AccountState = 'active' | 'disabled' | 'banned';
+
+export interface BanInfo {
+	reason: string | null;
+	expires_at: string | null;
+	banned_at: string | null;
+}
 
 export interface UserWithRole {
 	id: number;
@@ -28,6 +35,8 @@ export interface UserWithRole {
 	is_active: boolean;
 	date_joined: string | null;
 	role: AppRole;
+	state: AccountState;
+	ban: BanInfo | null;
 }
 
 export class AppApiService {
@@ -43,6 +52,17 @@ export class AppApiService {
 
 	async setUserRole(userId: number, role: AppRole): Promise<void> {
 		await appApiClient.patch(`/users/${userId}/role`, { role });
+	}
+
+	async setUserActive(userId: number, isActive: boolean): Promise<void> {
+		await appApiClient.patch(`/users/${userId}/active`, { is_active: isActive });
+	}
+
+	async banUser(userId: number, durationDays: number | null, reason: string): Promise<void> {
+		await appApiClient.post(`/moderation/users/${userId}/ban`, {
+			duration_days: durationDays,
+			reason,
+		});
 	}
 
 	async recordUpload(cvat_task_id: number, batch_name: string, file_count: number): Promise<void> {

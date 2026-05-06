@@ -21,6 +21,7 @@ async function getActiveBan(cvatUserId) {
       SELECT reason, expires_at, banned_at
       FROM user_bans
       WHERE cvat_user_id = $1
+        AND released_at IS NULL
         AND banned_at <= NOW()
         AND (expires_at IS NULL OR expires_at > NOW())
       ORDER BY banned_at DESC

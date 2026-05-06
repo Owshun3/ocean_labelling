@@ -71,6 +71,8 @@ async function _createSchema() {
       banned_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       expires_at    TIMESTAMPTZ
     );
+    ALTER TABLE user_bans ADD COLUMN IF NOT EXISTS released_at TIMESTAMPTZ;
+    ALTER TABLE user_bans ADD COLUMN IF NOT EXISTS released_by INTEGER;
     CREATE INDEX IF NOT EXISTS idx_user_bans_user    ON user_bans(cvat_user_id);
     CREATE INDEX IF NOT EXISTS idx_user_bans_expires ON user_bans(expires_at);
   `);

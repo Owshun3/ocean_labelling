@@ -73,24 +73,39 @@ router.get('/bans/check', async (req, res) => {
     const user = (usersResp.data.results || []).find((u) => u.username === username);
     if (!user) return res.json({ banned: false });
 
-    const { rows } = await pool.query(`
-      SELECT reason, expires_at, banned_at
+    const { rows: bans } = await pool.query(`
+      SELECT reason, expires_at, banned_at, released_at
       FROM user_bans
       WHERE cvat_user_id = $1
-        AND banned_at <= NOW()
-        AND (expires_at IS NULL OR expires_at > NOW())
       ORDER BY banned_at DESC
       LIMIT 1
     `, [user.id]);
 
-    if (rows.length === 0) return res.json({ banned: false });
+    const lastBan = bans[0] || null;
+    const now = new Date();
+    const isActive = lastBan
+      && !lastBan.released_at
+      && new Date(lastBan.banned_at) <= now
+      && (!lastBan.expires_at || new Date(lastBan.expires_at) > now);
 
-    res.json({
-      banned: true,
-      reason: rows[0].reason,
-      expires_at: rows[0].expires_at,
-      banned_at: rows[0].banned_at,
-    });
+    if (isActive) {
+      return res.json({
+        banned: true,
+        reason: lastBan.reason,
+        expires_at: lastBan.expires_at,
+        banned_at: lastBan.banned_at,
+      });
+    }
+
+    if (!user.is_active && lastBan && !lastBan.released_at && lastBan.expires_at && new Date(lastBan.expires_at) <= now) {
+      try {
+        await cvatPatch(`/users/${user.id}`, { is_active: true }, token);
+      } catch (err) {
+        console.warn(`[moderation] lazy reactivate ${user.id} failed:`, err.response?.data ?? err.message);
+      }
+    }
+
+    res.json({ banned: false });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
@@ -105,6 +120,7 @@ router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
         AND NOT EXISTS (
           SELECT 1 FROM user_bans ub
           WHERE ub.cvat_user_id = mm.uploader_id
+            AND ub.released_at IS NULL
             AND ub.banned_at <= NOW()
             AND (ub.expires_at IS NULL OR ub.expires_at > NOW())
         )
