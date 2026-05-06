@@ -28,8 +28,10 @@ function detectSessionExpired(status: number, data: any): SessionExpiredInfo | n
 	if (data?.hint === 'no_token_sent') return null;
 	if (data?.hint === 'cvat_returned_401') return { reason: 'token_invalid', detail: data?.error || null };
 	if (data?.hint === 'cvat_unreachable')  return { reason: 'cvat_unreachable', detail: data?.error || null };
-	if (data?.detail === 'Invalid token.')  return { reason: 'token_invalid', detail: 'Invalid token' };
 	if (data?.error === 'Invalid or expired CVAT token') return { reason: 'token_invalid', detail: data.error };
+	if (typeof data?.detail === 'string' && data.detail !== 'Authentication credentials were not provided.') {
+		return { reason: 'token_invalid', detail: data.detail };
+	}
 	return null;
 }
 
