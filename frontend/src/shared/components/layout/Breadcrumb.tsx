@@ -14,6 +14,7 @@ const STATIC_LABELS: Record<string, string> = {
 	upload:     'Nouveau Dépôt',
 	annotate:   'Annoter',
 	curator:    'Curation',
+	done:       'Validation enregistrée',
 	moderation: 'Modération',
 	profile:    'Mon Profil',
 	admin:      'Administration',

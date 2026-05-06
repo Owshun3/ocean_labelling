@@ -92,6 +92,22 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
   }
 });
 
+router.get('/tasks/:taskId/preview', requireCuratorOrAbove, async (req, res) => {
+  const taskId = Number(req.params.taskId);
+  if (!Number.isFinite(taskId)) return res.status(400).json({ error: 'invalid taskId' });
+  try {
+    const token = await getAdminToken();
+    const cvatResp = await axios.get(`${CVAT}/tasks/${taskId}/preview`, {
+      headers: adminHeaders(token),
+      responseType: 'arraybuffer',
+    });
+    res.setHeader('Content-Type', cvatResp.headers['content-type'] || 'image/jpeg');
+    res.send(Buffer.from(cvatResp.data));
+  } catch (err) {
+    res.status(err.response?.status ?? 502).json({ error: err.message });
+  }
+});
+
 /* ── GET /curator/tasks/:id/jobs
  * Détail des jobs d'une tâche avec assignations.
  */

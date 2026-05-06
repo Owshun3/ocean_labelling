@@ -4,7 +4,7 @@ import { attachBanInterceptor } from './banInterceptor';
 
 const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
 
-const curatorClient = axios.create({ baseURL: `${APP_API_BASE}/curator` });
+export const curatorClient = axios.create({ baseURL: `${APP_API_BASE}/curator` });
 
 curatorClient.interceptors.request.use((config) => {
   const token = Platform.OS === 'web'
