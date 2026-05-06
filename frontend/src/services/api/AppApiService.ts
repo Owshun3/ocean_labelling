@@ -81,4 +81,12 @@ export class AppApiService {
 		const resp = await appApiClient.get<{ results: ModerationStatusEntry[] }>('/moderation/my-statuses');
 		return resp.data.results;
 	}
+
+	async contestRejection(ids: number[], message: string): Promise<{ created: number; ignored: number }> {
+		const resp = await appApiClient.post<{ created: number; ignored: number }>(
+			'/moderation/contest',
+			{ ids, message },
+		);
+		return resp.data;
+	}
 }

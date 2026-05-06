@@ -1,11 +1,12 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Button, Pressable, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Platform } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { CvatMediaService } from '@/services/api/CvatMediaService';
 import { AppApiService, ModerationStatus, ModerationStatusEntry } from '@/services/api/AppApiService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { ImageLightbox } from '@/shared/components/images/ImageLightbox';
+import { ContestModal } from '../components/ContestModal';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -15,15 +16,14 @@ interface TaskWithStatus {
 	name: string;
 	status: ModerationStatus;
 	review_comment: string | null;
-	reviewed_at: string | null;
 }
 
 const SECTION_ORDER: ModerationStatus[] = ['validated', 'pending', 'rejected'];
 
 const SECTION_LABELS: Record<ModerationStatus, string> = {
 	validated: 'Validé',
-	pending: 'En attente',
-	rejected: 'Rejeté',
+	pending:   'En attente',
+	rejected:  'Rejeté',
 };
 
 const SECTION_COLORS: Record<ModerationStatus, string> = {
@@ -32,20 +32,21 @@ const SECTION_COLORS: Record<ModerationStatus, string> = {
 	rejected:  COLORS.status.error,
 };
 
-const SECTION_BADGE_LABEL: Record<ModerationStatus, string> = {
-	validated: 'VALIDÉ',
-	pending:   'EN ATTENTE',
-	rejected:  'REJETÉ',
-};
-
 const POLL_INTERVAL_MS = 15_000;
+const DOUBLE_CLICK_MS  = 400;
 
 export const MediaListScreen: React.FC = () => {
-	const [tasks, setTasks] = useState<TaskWithStatus[]>([]);
-	const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 	const router = useRouter();
 	const cvatService = useRef(new CvatMediaService()).current;
 	const appService  = useRef(new AppApiService()).current;
+
+	const [tasks,        setTasks]        = useState<TaskWithStatus[]>([]);
+	const [selected,     setSelected]     = useState<Set<number>>(new Set());
+	const [lastClicked,  setLastClicked]  = useState<number | null>(null);
+	const [lightboxUrl,  setLightboxUrl]  = useState<string | null>(null);
+	const [submitting,   setSubmitting]   = useState(false);
+	const [contestOpen,  setContestOpen]  = useState(false);
+	const lastClickRef = useRef<{ id: number; time: number } | null>(null);
 
 	const loadTasks = useCallback(async () => {
 		const [cvatTasks, moderationEntries] = await Promise.all([
@@ -62,10 +63,15 @@ export const MediaListScreen: React.FC = () => {
 				name: t.name,
 				status: entry?.status ?? 'pending',
 				review_comment: entry?.review_comment ?? null,
-				reviewed_at: entry?.reviewed_at ?? null,
 			};
 		});
 		setTasks(merged);
+		setSelected((prev) => {
+			const stillExisting = new Set<number>();
+			const validIds = new Set(merged.map((m) => m.id));
+			prev.forEach((id) => { if (validIds.has(id)) stillExisting.add(id); });
+			return stillExisting;
+		});
 	}, [cvatService, appService]);
 
 	useFocusEffect(useCallback(() => {
@@ -76,98 +82,198 @@ export const MediaListScreen: React.FC = () => {
 		return () => { cancelled = true; clearInterval(id); };
 	}, [loadTasks]));
 
-	const handleDelete = (taskId: number, taskName: string) => {
-		const doDelete = async () => {
-			try {
-				await cvatService.deleteTask(taskId);
-				setTasks((prev) => prev.filter((t) => t.id !== taskId));
-			} catch {
-				Alert.alert('Erreur', 'Impossible de supprimer ce média.');
-			}
-		};
-
-		if (Platform.OS === 'web') {
-			if (window.confirm(`Supprimer "${taskName}" ? Cette action est irréversible.`)) {
-				doDelete();
-			}
-		} else {
-			Alert.alert(
-				'Supprimer le média',
-				`Supprimer "${taskName}" ? Cette action est irréversible.`,
-				[
-					{ text: 'Annuler', style: 'cancel' },
-					{ text: 'Supprimer', style: 'destructive', onPress: doDelete },
-				]
-			);
-		}
-	};
-
 	const grouped: Record<ModerationStatus, TaskWithStatus[]> = {
 		validated: [],
 		pending:   [],
 		rejected:  [],
 	};
 	tasks.forEach((t) => grouped[t.status].push(t));
+	const orderedIds = SECTION_ORDER.flatMap((s) => grouped[s].map((t) => t.id));
 
-	const renderTask = (item: TaskWithStatus) => {
-		const previewUrl = `/tasks/${item.id}/preview`;
-		const showRejectComment = item.status === 'rejected' && !!item.review_comment;
+	const handleClick = (taskId: number, evt: any) => {
+		const now = Date.now();
+		const last = lastClickRef.current;
+		if (last && last.id === taskId && now - last.time < DOUBLE_CLICK_MS) {
+			lastClickRef.current = null;
+			setLightboxUrl(`/tasks/${taskId}/preview`);
+			return;
+		}
+		lastClickRef.current = { id: taskId, time: now };
+
+		const native = evt?.nativeEvent || {};
+		const shift = !!native.shiftKey;
+		const ctrlOrMeta = !!native.ctrlKey || !!native.metaKey;
+
+		if (shift && lastClicked !== null) {
+			const a = orderedIds.indexOf(lastClicked);
+			const b = orderedIds.indexOf(taskId);
+			if (a >= 0 && b >= 0) {
+				const [start, end] = a < b ? [a, b] : [b, a];
+				setSelected(new Set(orderedIds.slice(start, end + 1)));
+			}
+			return;
+		}
+		if (ctrlOrMeta) {
+			const next = new Set(selected);
+			if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
+			setSelected(next);
+			setLastClicked(taskId);
+			return;
+		}
+		setSelected(new Set([taskId]));
+		setLastClicked(taskId);
+	};
+
+	const selectionCount = selected.size;
+	const selectedStatuses = new Set<ModerationStatus>();
+	tasks.forEach((t) => { if (selected.has(t.id)) selectedStatuses.add(t.status); });
+	const canContest = selectionCount > 0
+		&& selectedStatuses.size === 1
+		&& selectedStatuses.has('rejected');
+
+	const handleDeleteSelected = () => {
+		if (selectionCount === 0 || submitting) return;
+		const ids = Array.from(selected);
+		const confirmMsg = `Supprimer ${ids.length} média${ids.length > 1 ? 's' : ''} ? Cette action est irréversible.`;
+		const doDelete = async () => {
+			setSubmitting(true);
+			try {
+				await Promise.all(ids.map((id) => cvatService.deleteTask(id)));
+				setSelected(new Set());
+				await loadTasks();
+			} catch {
+				Alert.alert('Erreur', 'Impossible de supprimer la sélection.');
+			} finally {
+				setSubmitting(false);
+			}
+		};
+		if (Platform.OS === 'web') {
+			if (window.confirm(confirmMsg)) doDelete();
+		} else {
+			Alert.alert('Supprimer la sélection', confirmMsg, [
+				{ text: 'Annuler', style: 'cancel' },
+				{ text: 'Supprimer', style: 'destructive', onPress: doDelete },
+			]);
+		}
+	};
+
+	const handleConfirmContest = async (message: string) => {
+		if (!canContest || submitting) return;
+		setSubmitting(true);
+		try {
+			await appService.contestRejection(Array.from(selected), message);
+			setContestOpen(false);
+			setSelected(new Set());
+		} catch (err: any) {
+			Alert.alert('Erreur', err?.response?.data?.error || err?.message || 'Contestation impossible.');
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
+	const renderTile = (item: TaskWithStatus) => {
+		const isSelected = selected.has(item.id);
 		return (
-			<View key={item.id} style={styles.taskCard}>
-				<Pressable onPress={() => setLightboxUrl(previewUrl)}>
-					<AuthenticatedImage url={previewUrl} style={styles.thumbnail} />
-				</Pressable>
-				<View style={styles.info}>
-					<Text style={TYPOGRAPHY.body}>{item.name}</Text>
-					<View style={[styles.badge, { backgroundColor: SECTION_COLORS[item.status] }]}>
-						<Text style={styles.badgeText}>{SECTION_BADGE_LABEL[item.status]}</Text>
-					</View>
-					{showRejectComment ? (
-						<Text style={styles.rejectComment}>Motif : {item.review_comment}</Text>
-					) : null}
+			<Pressable
+				key={item.id}
+				onPress={(e) => handleClick(item.id, e)}
+				style={[styles.tile, isSelected && styles.tileSelected]}
+			>
+				<AuthenticatedImage url={`/tasks/${item.id}/preview`} style={styles.tileImage} />
+				<Text style={styles.tileName} numberOfLines={1}>{item.name}</Text>
+				<View style={[styles.tileBadge, { backgroundColor: SECTION_COLORS[item.status] }]}>
+					<Text style={styles.tileBadgeText}>{SECTION_LABELS[item.status]}</Text>
 				</View>
-				<Pressable
-					style={styles.deleteButton}
-					onPress={() => handleDelete(item.id, item.name)}
-				>
-					<Text style={styles.deleteText}>✕</Text>
-				</Pressable>
-			</View>
+				{item.status === 'rejected' && item.review_comment ? (
+					<Text style={styles.tileComment} numberOfLines={2}>{item.review_comment}</Text>
+				) : null}
+			</Pressable>
 		);
 	};
 
 	return (
 		<View style={styles.container}>
-			<View style={styles.header}>
+			<View style={styles.topBar}>
 				<Text style={styles.title}>Mes Médias</Text>
-				<Button
-					title="+ Nouveau Dépôt"
+				<Pressable
 					onPress={() => router.push('/(main)/upload' as Href)}
-					color={COLORS.primary}
-				/>
+					style={styles.uploadBtn}
+				>
+					<Text style={styles.uploadBtnText}>+ Nouveau Dépôt</Text>
+				</Pressable>
 			</View>
 
-			<ScrollView contentContainerStyle={styles.scrollContent}>
-				{tasks.length === 0 ? (
-					<View style={styles.emptyState}>
-						<Text style={styles.emptyText}>Aucun média trouvé.</Text>
-					</View>
-				) : SECTION_ORDER.map((status) => {
-					const list = grouped[status];
-					return (
-						<View key={status} style={styles.section}>
-							<View style={styles.sectionHeader}>
-								<View style={[styles.sectionDot, { backgroundColor: SECTION_COLORS[status] }]} />
-								<Text style={styles.sectionTitle}>{SECTION_LABELS[status]}</Text>
-								<Text style={styles.sectionCount}>{list.length}</Text>
-							</View>
-							{list.length === 0 ? (
-								<Text style={styles.sectionEmpty}>Aucun média dans cette catégorie.</Text>
-							) : list.map(renderTask)}
-						</View>
-					);
-				})}
-			</ScrollView>
+			<View style={styles.toolbar}>
+				<Text style={styles.toolbarText}>
+					{tasks.length} média{tasks.length > 1 ? 's' : ''} · {selectionCount} sélectionné{selectionCount > 1 ? 's' : ''}
+				</Text>
+				<View style={styles.toolbarActions}>
+					<Pressable
+						onPress={handleDeleteSelected}
+						disabled={selectionCount === 0 || submitting}
+						style={[styles.actionBtn, styles.deleteBtn, (selectionCount === 0 || submitting) && styles.btnDisabled]}
+					>
+						<Text style={styles.actionBtnText}>Supprimer ({selectionCount})</Text>
+					</Pressable>
+					<Pressable
+						onPress={() => setContestOpen(true)}
+						disabled={!canContest || submitting}
+						style={[styles.actionBtn, styles.contestBtn, (!canContest || submitting) && styles.btnDisabled]}
+					>
+						<Text style={styles.actionBtnText}>Contester le rejet ({canContest ? selectionCount : 0})</Text>
+					</Pressable>
+				</View>
+			</View>
+
+			<View style={styles.legendRow}>
+				<Text style={styles.legendItem}>Clic → choisir un média</Text>
+				<Text style={styles.legendDot}>·</Text>
+				<Text style={styles.legendItem}>Maj + clic → plage</Text>
+				<Text style={styles.legendDot}>·</Text>
+				<Text style={styles.legendItem}>Ctrl/Cmd + clic → ajouter/retirer</Text>
+				<Text style={styles.legendDot}>·</Text>
+				<Text style={styles.legendItem}>Double-clic → aperçu</Text>
+			</View>
+
+			{tasks.length === 0 ? (
+				<View style={styles.emptyState}>
+					<Text style={styles.emptyText}>Aucun média trouvé.</Text>
+				</View>
+			) : (
+				<View style={styles.columns}>
+					{SECTION_ORDER.map((status, idx) => {
+						const list = grouped[status];
+						return (
+							<React.Fragment key={status}>
+								<View style={styles.column}>
+									<View style={styles.columnHeader}>
+										<View style={[styles.columnDot, { backgroundColor: SECTION_COLORS[status] }]} />
+										<Text style={styles.columnTitle}>{SECTION_LABELS[status]}</Text>
+										<View style={styles.columnCountWrap}>
+											<Text style={styles.columnCount}>{list.length}</Text>
+										</View>
+									</View>
+									<View style={[styles.columnAccent, { backgroundColor: SECTION_COLORS[status] }]} />
+									<ScrollView contentContainerStyle={styles.tileGrid}>
+										{list.length === 0 ? (
+											<Text style={styles.columnEmpty}>Aucun média.</Text>
+										) : list.map(renderTile)}
+									</ScrollView>
+								</View>
+								{idx < SECTION_ORDER.length - 1 ? <View style={styles.divider} /> : null}
+							</React.Fragment>
+						);
+					})}
+				</View>
+			)}
+
+			<ContestModal
+				visible={contestOpen}
+				count={selectionCount}
+				submitting={submitting}
+				onCancel={() => setContestOpen(false)}
+				onConfirm={handleConfirmContest}
+			/>
 
 			<ImageLightbox
 				isVisible={lightboxUrl !== null}
@@ -180,31 +286,90 @@ export const MediaListScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
 	container: { flex: 1, padding: SPACING.lg },
-	header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xl },
+
+	topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md },
 	title: { ...TYPOGRAPHY.h1 },
-	scrollContent: { paddingBottom: SPACING.xl },
+	uploadBtn: { backgroundColor: COLORS.primary, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6 },
+	uploadBtnText: { color: COLORS.text.inverse, fontWeight: '600' },
+
+	toolbar: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		paddingVertical: SPACING.sm,
+		paddingHorizontal: SPACING.md,
+		backgroundColor: COLORS.background.card,
+		borderRadius: 8,
+		borderWidth: 1,
+		borderColor: COLORS.border,
+		marginBottom: SPACING.sm,
+	},
+	toolbarText: { fontSize: 13, color: COLORS.text.secondary },
+	toolbarActions: { flexDirection: 'row', gap: SPACING.sm },
+
+	legendRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: SPACING.xs, marginBottom: SPACING.md },
+	legendItem: { fontSize: 12, color: COLORS.text.secondary },
+	legendDot: { fontSize: 12, color: COLORS.text.placeholder },
+
 	emptyState: { padding: SPACING.xl, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed', borderRadius: 8 },
 	emptyText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },
 
-	section: { marginBottom: SPACING.lg },
-	sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
-	sectionDot: { width: 10, height: 10, borderRadius: 5 },
-	sectionTitle: { ...TYPOGRAPHY.h2 },
-	sectionCount: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontWeight: '700' },
-	sectionEmpty: {
-		...TYPOGRAPHY.caption,
-		color: COLORS.text.placeholder,
-		fontStyle: 'italic',
-		paddingVertical: SPACING.sm,
-		paddingHorizontal: SPACING.md,
+	columns: { flex: 1, flexDirection: 'row', alignItems: 'stretch' },
+	column: {
+		flex: 1,
+		backgroundColor: COLORS.background.card,
+		borderRadius: 10,
+		borderWidth: 1,
+		borderColor: COLORS.border,
+		overflow: 'hidden',
 	},
+	columnHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: SPACING.sm,
+		paddingHorizontal: SPACING.md,
+		paddingVertical: SPACING.sm,
+	},
+	columnDot: { width: 10, height: 10, borderRadius: 5 },
+	columnTitle: { ...TYPOGRAPHY.h2, fontSize: 16 },
+	columnCountWrap: {
+		marginLeft: 'auto',
+		backgroundColor: COLORS.background.main,
+		paddingHorizontal: SPACING.sm,
+		paddingVertical: 2,
+		borderRadius: 999,
+		minWidth: 28,
+		alignItems: 'center',
+	},
+	columnCount: { fontSize: 12, color: COLORS.text.secondary, fontWeight: '700' },
+	columnAccent: { height: 3, width: '100%' },
+	columnEmpty: { ...TYPOGRAPHY.caption, color: COLORS.text.placeholder, fontStyle: 'italic', padding: SPACING.md },
+	divider: { width: SPACING.md },
 
-	taskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background.card, padding: SPACING.md, borderRadius: 8, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
-	thumbnail: { width: 60, height: 60, borderRadius: 4 },
-	info: { flex: 1, marginLeft: SPACING.md, justifyContent: 'center' },
-	badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 },
-	badgeText: { ...TYPOGRAPHY.badge, color: COLORS.text.inverse },
-	rejectComment: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginTop: 4, fontStyle: 'italic' },
-	deleteButton: { padding: SPACING.sm, marginLeft: SPACING.sm },
-	deleteText: { color: COLORS.status.error, fontSize: 16, fontWeight: 'bold' },
+	tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, padding: SPACING.sm },
+	tile: {
+		width: 130,
+		padding: SPACING.xs,
+		borderRadius: 8,
+		borderWidth: 2,
+		borderColor: 'transparent',
+		backgroundColor: COLORS.background.main,
+	},
+	tileSelected: { borderColor: COLORS.primary, backgroundColor: COLORS.background.card },
+	tileImage: { width: 114, height: 114, borderRadius: 4 },
+	tileName: { fontSize: 12, marginTop: SPACING.xs, color: COLORS.text.primary },
+	tileBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 },
+	tileBadgeText: { ...TYPOGRAPHY.badge, color: COLORS.text.inverse },
+	tileComment: { fontSize: 11, color: COLORS.text.secondary, marginTop: 4, fontStyle: 'italic' },
+
+	actionBtn: {
+		paddingHorizontal: SPACING.md,
+		paddingVertical: SPACING.sm,
+		borderRadius: 6,
+		alignItems: 'center',
+	},
+	deleteBtn: { backgroundColor: COLORS.danger },
+	contestBtn: { backgroundColor: COLORS.primary },
+	btnDisabled: { opacity: 0.4 },
+	actionBtnText: { color: COLORS.text.inverse, fontWeight: '600', fontSize: 13 },
 });

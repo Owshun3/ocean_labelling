@@ -111,6 +111,41 @@ router.get('/bans/check', async (req, res) => {
   }
 });
 
+router.post('/contest', requireAuth, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? req.body.ids.filter((n) => Number.isInteger(n) && n > 0)
+    : [];
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 2000) : '';
+  if (ids.length === 0) return res.status(400).json({ error: 'ids required (non-empty integer array)' });
+  if (!message)         return res.status(400).json({ error: 'message required' });
+
+  try {
+    const { rows: eligible } = await pool.query(`
+      SELECT cvat_task_id FROM media_moderation
+      WHERE cvat_task_id = ANY($1)
+        AND uploader_id = $2
+        AND status = 'rejected'
+    `, [ids, req.cvatUser.id]);
+
+    if (eligible.length === 0) {
+      return res.status(403).json({ error: 'Aucun média éligible à la contestation (tu dois être uploadeur et le média doit être rejeté).' });
+    }
+
+    const eligibleIds = eligible.map((r) => r.cvat_task_id);
+    const inserts = eligibleIds.map((id) =>
+      pool.query(`
+        INSERT INTO moderation_contestations (cvat_task_id, contester_id, message)
+        VALUES ($1, $2, $3)
+      `, [id, req.cvatUser.id, message])
+    );
+    await Promise.all(inserts);
+
+    res.json({ created: eligibleIds.length, ignored: ids.length - eligibleIds.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/my-statuses', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`

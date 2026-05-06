@@ -75,6 +75,22 @@ async function _createSchema() {
     ALTER TABLE user_bans ADD COLUMN IF NOT EXISTS released_by INTEGER;
     CREATE INDEX IF NOT EXISTS idx_user_bans_user    ON user_bans(cvat_user_id);
     CREATE INDEX IF NOT EXISTS idx_user_bans_expires ON user_bans(expires_at);
+
+    CREATE TABLE IF NOT EXISTS moderation_contestations (
+      id            SERIAL      PRIMARY KEY,
+      cvat_task_id  INTEGER     NOT NULL,
+      contester_id  INTEGER     NOT NULL,
+      message       TEXT        NOT NULL,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at   TIMESTAMPTZ,
+      resolved_by   INTEGER,
+      resolution    TEXT CHECK (resolution IN ('upheld', 'overturned'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_contestations_open
+      ON moderation_contestations(resolved_at)
+      WHERE resolved_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_contestations_contester
+      ON moderation_contestations(contester_id);
   `);
   console.log('[app-api] DB schema ready');
 }

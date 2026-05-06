@@ -68,7 +68,38 @@ Le studio curator custom est **à construire** par-dessus ces endpoints — il n
 **Rôle moderator — détail :**
 Modère le contenu uploadé sur la plateforme : retire les médias hors-sujet, choquants, publicitaires ou postés par des bots. Peut bannir des utilisateurs.
 N'intervient **pas** sur les annotations elles-mêmes (ce rôle revient au curator).
-Aucune fonctionnalité native CVAT ne couvre la modération de contenu : ni queue de validation pré-publication, ni signalement, ni workflow de bannissement avec motif/durée. Le seul levier proche est le flag Django `is_active=false`, qui n'est pas un outil de modération mais un interrupteur admin. Toute la logique est donc **à construire** côté app-api (tables de signalements et bannissements, endpoints dédiés).
+Aucune fonctionnalité native CVAT ne couvre la modération de contenu : ni queue de validation pré-publication, ni signalement, ni workflow de bannissement avec motif/durée. Toute la logique est construite côté app-api.
+
+## Modération — workflow & tables
+
+Tables app-api (db.js) :
+- `media_moderation(cvat_task_id PK, uploader_id, status pending|validated|rejected, reviewed_by, review_comment, created_at, reviewed_at)` — entrée auto-créée à chaque upload (`POST /upload-history` insère `pending`).
+- `user_bans(id, cvat_user_id, banned_by, reason, banned_at, expires_at, released_at, released_by)` — `released_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())` = ban actif. Distinguer `released_at` (levé manuellement) de `expires_at <= NOW()` (expiration naturelle) est critique pour l'auto-réactivation.
+- `moderation_contestations(id, cvat_task_id, contester_id, message, created_at, resolved_at, resolved_by, resolution upheld|overturned)` — déposée par l'uploadeur sur ses médias rejetés. Côté UI uploadeur : ✅ **construit** (page « Mes Médias », sélection multi-rejetés → ContestModal). Côté admin/modérateur : ⏳ **À construire** — file de contestations ouvertes, lecture du message, résolution `overturned` (re-validation, repasser le `media_moderation.status` à `validated` + `released_at` du ban éventuel) ou `upheld` (clore sans changer).
+
+Ban d'un utilisateur :
+1. INSERT `user_bans` (transactionnel avec UPDATE cascade des médias `pending` → `rejected`).
+2. PATCH CVAT `is_active=false` (le user ne peut plus s'authentifier — DRF renvoie `{"detail":"User inactive or deleted."}` 401 sur ses requêtes).
+3. **Auto-réactivation** : sur `GET /users` (panneau admin) et `GET /moderation/bans/check` (login), pour chaque user `is_active=false` dont le dernier ban a `expires_at <= NOW() AND released_at IS NULL` → PATCH CVAT `is_active=true`. Pas de cron, c'est lazy à l'accès.
+4. Levée manuelle (admin clique « Activé ») : UPDATE `user_bans SET released_at=NOW(), released_by=admin` sur tout ban actif + PATCH CVAT.
+
+Panneau admin — dropdown 3 états (`AdminScreen.tsx`) :
+- `Activé` (vert) → `PATCH /users/:id/active {is_active:true}`
+- `Désactivé` (gris, sticky) → `PATCH /users/:id/active {is_active:false}` (pas de ban — l'auto-réactivation NE S'APPLIQUE PAS sans ban naturellement expiré)
+- `Banni` (rouge) → ouvre `BanModal` (durée + motif partagé avec la modération)
+
+`banInterceptor` côté frontend détecte tout 401 avec `data.detail` (sauf "Authentication credentials were not provided.") comme session expirée et redirige proprement vers `/login` — couvre le cas `User inactive or deleted.` qu'envoie CVAT après ban.
+
+## CVAT settings override — `cvat-extras/ocean.py`
+
+CVAT v2.62.1 tourne en `cvat.settings.production` qui ne lit **pas** `CSRF_TRUSTED_ORIGINS` depuis l'env. Patch sans toucher la boîte noire :
+```python
+from cvat.settings.production import *
+import os as _os
+_csrf_env = _os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_env.split(',') if o.strip()]
+```
+Monté en read-only via volume (`./cvat-extras/ocean.py:/home/django/cvat/settings/ocean.py:ro`) et activé par `DJANGO_SETTINGS_MODULE=cvat.settings.ocean`. **Ne PAS basculer en `cvat.settings.development`** — ça casse OPA (`IAM_OPA_HOST` diffère).
 
 Env app-api : `CVAT_ADMIN_USER` / `CVAT_ADMIN_PASS` (définis dans `.env`) — utilisés pour fetcher la liste complète des users CVAT (seul un superuser CVAT peut le faire). Token caché en mémoire avec refresh auto sur 401.
 
