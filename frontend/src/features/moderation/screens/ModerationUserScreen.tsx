@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
 	View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
-	Alert, Modal, TextInput,
+	Alert, TextInput,
 } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { ModerationService, ModerationMediaEntry, ModerationUploader } from '@/services/api/ModerationService';
+import { appApiClient } from '@/services/api/AppApiService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
+import { BanModal } from '../components/BanModal';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -199,8 +201,9 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 										style={[styles.tile, isSelected && styles.tileSelected]}
 									>
 										<AuthenticatedImage
-											url={`/tasks/${entry.cvat_task_id}/preview`}
+											url={`/moderation/media/${entry.cvat_task_id}/preview`}
 											style={styles.tileImage}
+											client={appApiClient}
 										/>
 										<Text style={styles.tileName} numberOfLines={1}>{entry.task.name}</Text>
 									</Pressable>
@@ -261,104 +264,6 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 				onConfirm={handleBan}
 			/>
 		</View>
-	);
-};
-
-interface BanModalProps {
-	visible: boolean;
-	userLabel: string;
-	submitting: boolean;
-	onCancel: () => void;
-	onConfirm: (durationDays: number | null, reason: string) => void;
-}
-
-const BanModal: React.FC<BanModalProps> = ({ visible, userLabel, submitting, onCancel, onConfirm }) => {
-	const [mode, setMode] = useState<'temp' | 'perm'>('temp');
-	const [days, setDays] = useState('7');
-	const [reason, setReason] = useState('');
-
-	useEffect(() => {
-		if (visible) {
-			setMode('temp');
-			setDays('7');
-			setReason('');
-		}
-	}, [visible]);
-
-	const submit = () => {
-		if (mode === 'perm') return onConfirm(null, reason);
-		const n = Number(days);
-		if (!Number.isFinite(n) || n <= 0) {
-			Alert.alert('Durée invalide', 'Indique un nombre de jours strictement positif.');
-			return;
-		}
-		onConfirm(n, reason);
-	};
-
-	return (
-		<Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-			<View style={styles.modalBackdrop}>
-				<View style={styles.modalCard}>
-					<Text style={styles.modalTitle}>Bannir « {userLabel} »</Text>
-
-					<View style={styles.radioRow}>
-						<Pressable
-							onPress={() => setMode('temp')}
-							style={[styles.radio, mode === 'temp' && styles.radioActive]}
-						>
-							<Text style={[styles.radioText, mode === 'temp' && styles.radioTextActive]}>Pour X jours</Text>
-						</Pressable>
-						<Pressable
-							onPress={() => setMode('perm')}
-							style={[styles.radio, mode === 'perm' && styles.radioActive]}
-						>
-							<Text style={[styles.radioText, mode === 'perm' && styles.radioTextActive]}>Définitivement</Text>
-						</Pressable>
-					</View>
-
-					{mode === 'temp' && (
-						<>
-							<Text style={styles.fieldLabel}>Durée (jours)</Text>
-							<TextInput
-								value={days}
-								onChangeText={setDays}
-								keyboardType="number-pad"
-								style={styles.input}
-								editable={!submitting}
-							/>
-						</>
-					)}
-
-					<Text style={styles.fieldLabel}>Motif (optionnel)</Text>
-					<TextInput
-						value={reason}
-						onChangeText={setReason}
-						placeholder="Ex : spam répété, contenu choquant…"
-						placeholderTextColor={COLORS.text.placeholder}
-						multiline
-						style={styles.textArea}
-						editable={!submitting}
-					/>
-
-					<View style={styles.modalActions}>
-						<Pressable
-							onPress={onCancel}
-							disabled={submitting}
-							style={[styles.actionBtn, styles.cancelBtn, submitting && styles.btnDisabled]}
-						>
-							<Text style={[styles.actionBtnText, { color: COLORS.text.primary }]}>Annuler</Text>
-						</Pressable>
-						<Pressable
-							onPress={submit}
-							disabled={submitting}
-							style={[styles.actionBtn, styles.banBtn, submitting && styles.btnDisabled]}
-						>
-							<Text style={styles.actionBtnText}>Confirmer le bannissement</Text>
-						</Pressable>
-					</View>
-				</View>
-			</View>
-		</Modal>
 	);
 };
 
@@ -442,21 +347,10 @@ const styles = StyleSheet.create({
 	validateBtn: { backgroundColor: COLORS.success },
 	rejectBtn: { backgroundColor: COLORS.warning },
 	banBtn: { backgroundColor: COLORS.danger },
-	cancelBtn: { backgroundColor: COLORS.background.main, borderWidth: 1, borderColor: COLORS.border },
 	btnDisabled: { opacity: 0.5 },
 	actionBtnText: { color: COLORS.text.inverse, fontWeight: '600', fontSize: 14 },
 
 	fieldLabel: { fontSize: 12, color: COLORS.text.secondary, marginTop: SPACING.md, marginBottom: SPACING.xs, fontWeight: '600' },
-	input: {
-		borderWidth: 1,
-		borderColor: COLORS.border,
-		borderRadius: 6,
-		paddingHorizontal: SPACING.sm,
-		paddingVertical: SPACING.sm,
-		fontSize: 14,
-		color: COLORS.text.primary,
-		backgroundColor: COLORS.background.main,
-	},
 	textArea: {
 		borderWidth: 1,
 		borderColor: COLORS.border,
@@ -469,28 +363,4 @@ const styles = StyleSheet.create({
 		minHeight: 70,
 		textAlignVertical: 'top',
 	},
-
-	modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
-	modalCard: {
-		width: '100%',
-		maxWidth: 480,
-		backgroundColor: COLORS.background.card,
-		borderRadius: 10,
-		padding: SPACING.lg,
-	},
-	modalTitle: { ...TYPOGRAPHY.h2, marginBottom: SPACING.md },
-	radioRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
-	radio: {
-		flex: 1,
-		paddingVertical: SPACING.sm,
-		alignItems: 'center',
-		borderRadius: 6,
-		borderWidth: 1,
-		borderColor: COLORS.border,
-		backgroundColor: COLORS.background.main,
-	},
-	radioActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-	radioText: { fontSize: 13, color: COLORS.text.primary, fontWeight: '500' },
-	radioTextActive: { color: COLORS.text.inverse },
-	modalActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
 });

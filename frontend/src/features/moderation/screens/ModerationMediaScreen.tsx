@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert, Pressable, TextInput } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { ModerationService, ModerationMediaDetail } from '@/services/api/ModerationService';
+import { appApiClient } from '@/services/api/AppApiService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
+import { BanModal } from '../components/BanModal';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -20,6 +22,7 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
 	const [rejectComment, setRejectComment] = useState('');
+	const [banModalOpen, setBanModalOpen] = useState(false);
 
 	useEffect(() => {
 		const load = async () => {
@@ -61,24 +64,11 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 		}
 	};
 
-	const handleBanPrompt = async () => {
-		if (typeof window === 'undefined') return;
-		const choice = window.prompt('Bannir cet utilisateur. Saisis le nombre de jours, ou laisse vide pour un bannissement définitif. Tape "annuler" pour abandonner.');
-		if (choice === null || choice.trim().toLowerCase() === 'annuler') return;
-		const trimmed = choice.trim();
-		let durationDays: number | null = null;
-		if (trimmed !== '') {
-			const n = Number(trimmed);
-			if (!Number.isFinite(n) || n <= 0) {
-				Alert.alert('Durée invalide', 'Indique un nombre de jours strictement positif, ou laisse vide pour permanent.');
-				return;
-			}
-			durationDays = n;
-		}
-		const reason = window.prompt('Motif (optionnel)') || '';
+	const handleBan = async (durationDays: number | null, reason: string) => {
 		setSubmitting(true);
 		try {
 			await service.banUser(userId, { duration_days: durationDays, reason });
+			setBanModalOpen(false);
 			router.replace('/(main)/moderation' as Href);
 		} catch (err: any) {
 			Alert.alert('Erreur', err?.response?.data?.error || err?.message || 'Bannissement impossible.');
@@ -128,9 +118,10 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 				<View style={styles.centerColumn}>
 					<View style={styles.imageBox}>
 						<AuthenticatedImage
-							url={`/tasks/${task.id}/data?type=frame&number=0&quality=original`}
+							url={`/moderation/media/${task.id}/frame?number=0&quality=original`}
 							style={styles.image}
 							resizeMode="contain"
+							client={appApiClient}
 						/>
 					</View>
 				</View>
@@ -168,7 +159,7 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 					<View style={styles.card}>
 						<Text style={styles.cardTitle}>Sanction</Text>
 						<Pressable
-							onPress={handleBanPrompt}
+							onPress={() => setBanModalOpen(true)}
 							disabled={submitting}
 							style={[styles.actionBtn, styles.banBtn, submitting && styles.btnDisabled]}
 						>
@@ -177,6 +168,14 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 					</View>
 				</View>
 			</View>
+
+			<BanModal
+				visible={banModalOpen}
+				userLabel={`${uploader.username}#${uploader.id}`}
+				submitting={submitting}
+				onCancel={() => setBanModalOpen(false)}
+				onConfirm={handleBan}
+			/>
 		</View>
 	);
 };

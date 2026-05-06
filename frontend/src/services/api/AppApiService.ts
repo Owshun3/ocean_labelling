@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 
 const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
 
-const appApiClient = axios.create({ baseURL: APP_API_BASE });
+export const appApiClient = axios.create({ baseURL: APP_API_BASE });
 
 appApiClient.interceptors.request.use((config) => {
 	const token = Platform.OS === 'web'

@@ -66,10 +66,8 @@ async function fetchAppRoles(userIds) {
 
 router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
   try {
-    const { rows } = await pool.query(`
-      SELECT mm.uploader_id,
-             COUNT(*)::int AS pending_count,
-             MIN(mm.created_at) AS oldest
+    const { rows: entries } = await pool.query(`
+      SELECT mm.cvat_task_id, mm.uploader_id, mm.created_at
       FROM media_moderation mm
       WHERE mm.status = 'pending'
         AND NOT EXISTS (
@@ -78,14 +76,42 @@ router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
             AND ub.banned_at <= NOW()
             AND (ub.expires_at IS NULL OR ub.expires_at > NOW())
         )
-      GROUP BY mm.uploader_id
-      ORDER BY oldest ASC
+      ORDER BY mm.created_at ASC
     `);
 
-    if (rows.length === 0) return res.json({ results: [] });
+    if (entries.length === 0) return res.json({ results: [] });
 
-    const userIds = rows.map((r) => r.uploader_id);
     const token = await getAdminToken();
+    const allTaskIds = entries.map((e) => e.cvat_task_id);
+    const tasksResp = await cvatGet(`/tasks?id__in=${allTaskIds.join(',')}&page_size=${allTaskIds.length}`, token);
+    const validTaskIds = new Set((tasksResp.data.results || []).map((t) => t.id));
+
+    const orphans = allTaskIds.filter((id) => !validTaskIds.has(id));
+    if (orphans.length > 0) {
+      await pool.query(`
+        UPDATE media_moderation
+        SET status = 'rejected',
+            review_comment = COALESCE(review_comment, 'Auto-rejeté : tâche CVAT introuvable'),
+            reviewed_at = NOW()
+        WHERE cvat_task_id = ANY($1) AND status = 'pending'
+      `, [orphans]);
+    }
+
+    const validEntries = entries.filter((e) => validTaskIds.has(e.cvat_task_id));
+    if (validEntries.length === 0) return res.json({ results: [] });
+
+    const grouped = new Map();
+    for (const e of validEntries) {
+      const g = grouped.get(e.uploader_id);
+      if (g) {
+        g.pending_count += 1;
+        if (e.created_at < g.oldest) g.oldest = e.created_at;
+      } else {
+        grouped.set(e.uploader_id, { uploader_id: e.uploader_id, pending_count: 1, oldest: e.created_at });
+      }
+    }
+    const grouping = Array.from(grouped.values()).sort((a, b) => new Date(a.oldest) - new Date(b.oldest));
+    const userIds = grouping.map((g) => g.uploader_id);
 
     const usersById = {};
     await Promise.all(userIds.map(async (id) => {
@@ -97,17 +123,52 @@ router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
 
     const rolesById = await fetchAppRoles(userIds);
 
-    const results = rows.map((r) => ({
-      uploader_id: r.uploader_id,
-      username: usersById[r.uploader_id]?.username || null,
-      role: rolesById[r.uploader_id] || 'annotator',
-      pending_count: r.pending_count,
-      oldest: r.oldest,
+    const results = grouping.map((g) => ({
+      uploader_id: g.uploader_id,
+      username: usersById[g.uploader_id]?.username || null,
+      role: rolesById[g.uploader_id] || 'annotator',
+      pending_count: g.pending_count,
+      oldest: g.oldest,
     }));
 
     res.json({ results });
   } catch (err) {
     res.status(err.response?.status ?? 502).json({ error: err.response?.data ?? err.message });
+  }
+});
+
+router.get('/media/:taskId/preview', requireModeratorOrAbove, async (req, res) => {
+  const taskId = Number(req.params.taskId);
+  if (!Number.isFinite(taskId)) return res.status(400).json({ error: 'invalid taskId' });
+  try {
+    const token = await getAdminToken();
+    const cvatResp = await axios.get(`${CVAT}/tasks/${taskId}/preview`, {
+      headers: adminHeaders(token),
+      responseType: 'arraybuffer',
+    });
+    res.setHeader('Content-Type', cvatResp.headers['content-type'] || 'image/jpeg');
+    res.send(Buffer.from(cvatResp.data));
+  } catch (err) {
+    res.status(err.response?.status ?? 502).json({ error: err.message });
+  }
+});
+
+router.get('/media/:taskId/frame', requireModeratorOrAbove, async (req, res) => {
+  const taskId = Number(req.params.taskId);
+  if (!Number.isFinite(taskId)) return res.status(400).json({ error: 'invalid taskId' });
+  const number  = Number.isFinite(Number(req.query.number)) ? Number(req.query.number) : 0;
+  const quality = req.query.quality === 'compressed' ? 'compressed' : 'original';
+  try {
+    const token = await getAdminToken();
+    const cvatResp = await axios.get(`${CVAT}/tasks/${taskId}/data`, {
+      params: { type: 'frame', number, quality },
+      headers: adminHeaders(token),
+      responseType: 'arraybuffer',
+    });
+    res.setHeader('Content-Type', cvatResp.headers['content-type'] || 'image/jpeg');
+    res.send(Buffer.from(cvatResp.data));
+  } catch (err) {
+    res.status(err.response?.status ?? 502).json({ error: err.message });
   }
 });
 
@@ -142,6 +203,17 @@ router.get('/users/:id/media', requireModeratorOrAbove, async (req, res) => {
     const tasksResp = await cvatGet(`/tasks?id__in=${ids.join(',')}&page_size=${ids.length}`, token);
     const tasksById = {};
     (tasksResp.data.results || []).forEach((t) => { tasksById[t.id] = t; });
+
+    const orphans = ids.filter((id) => !tasksById[id]);
+    if (orphans.length > 0) {
+      await pool.query(`
+        UPDATE media_moderation
+        SET status = 'rejected',
+            review_comment = COALESCE(review_comment, 'Auto-rejeté : tâche CVAT introuvable'),
+            reviewed_at = NOW()
+        WHERE cvat_task_id = ANY($1) AND status = 'pending'
+      `, [orphans]);
+    }
 
     const results = rows
       .map((r) => ({
