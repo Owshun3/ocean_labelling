@@ -1,0 +1,111 @@
+import axios from 'axios';
+import { Platform } from 'react-native';
+
+const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+
+const moderationClient = axios.create({ baseURL: `${APP_API_BASE}/moderation` });
+
+moderationClient.interceptors.request.use((config) => {
+  const token = Platform.OS === 'web'
+    ? (typeof window !== 'undefined' ? localStorage.getItem('cvat_token') : null)
+    : null;
+  if (token) config.headers.Authorization = `Token ${token}`;
+  return config;
+});
+
+export interface ModerationQueueEntry {
+  uploader_id: number;
+  username: string | null;
+  role: string;
+  pending_count: number;
+  oldest: string;
+}
+
+export interface ModerationUploader {
+  id: number;
+  username: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  date_joined: string | null;
+}
+
+export interface CvatTaskSummary {
+  id: number;
+  name: string;
+  size: number;
+  status: string;
+  created_date: string;
+  updated_date: string;
+  [k: string]: any;
+}
+
+export interface ModerationMediaEntry {
+  cvat_task_id: number;
+  submitted_at: string;
+  task: CvatTaskSummary;
+}
+
+export interface ModerationMediaDetail {
+  moderation: {
+    cvat_task_id: number;
+    uploader_id: number;
+    status: 'pending' | 'validated' | 'rejected';
+    reviewed_by: number | null;
+    review_comment: string | null;
+    created_at: string;
+    reviewed_at: string | null;
+  };
+  task: CvatTaskSummary;
+  uploader: ModerationUploader;
+}
+
+export interface BanPayload {
+  duration_days?: number | null;
+  reason?: string;
+}
+
+export interface BanResult {
+  ok: boolean;
+  expires_at: string | null;
+  cvat_deactivated: boolean;
+}
+
+export class ModerationService {
+  async getQueue(): Promise<ModerationQueueEntry[]> {
+    const resp = await moderationClient.get<{ results: ModerationQueueEntry[] }>('/queue');
+    return resp.data.results;
+  }
+
+  async getUserMedia(userId: number): Promise<{ user: ModerationUploader; results: ModerationMediaEntry[] }> {
+    const resp = await moderationClient.get<{ user: ModerationUploader; results: ModerationMediaEntry[] }>(
+      `/users/${userId}/media`
+    );
+    return resp.data;
+  }
+
+  async getMediaDetail(taskId: number): Promise<ModerationMediaDetail> {
+    const resp = await moderationClient.get<ModerationMediaDetail>(`/media/${taskId}`);
+    return resp.data;
+  }
+
+  async validateMedia(ids: number[]): Promise<{ updated: number }> {
+    const resp = await moderationClient.post<{ updated: number }>('/media/validate', { ids });
+    return resp.data;
+  }
+
+  async rejectMedia(ids: number[], comment?: string): Promise<{ updated: number }> {
+    const body: { ids: number[]; comment?: string } = { ids };
+    if (comment) body.comment = comment;
+    const resp = await moderationClient.post<{ updated: number }>('/media/reject', body);
+    return resp.data;
+  }
+
+  async banUser(userId: number, payload: BanPayload): Promise<BanResult> {
+    const body: BanPayload = {};
+    if (payload.duration_days !== undefined) body.duration_days = payload.duration_days;
+    if (payload.reason !== undefined) body.reason = payload.reason;
+    const resp = await moderationClient.post<BanResult>(`/users/${userId}/ban`, body);
+    return resp.data;
+  }
+}

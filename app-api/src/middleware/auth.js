@@ -62,4 +62,22 @@ async function requireCuratorOrAbove(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, requireAdmin, requireCuratorOrAbove };
+async function requireModeratorOrAbove(req, res, next) {
+  const auth = req.headers['authorization'];
+  if (!auth) return res.status(401).json({ error: 'Authorization header required' });
+  try {
+    req.cvatUser = await resolveCvatUser(auth);
+    if (req.cvatUser.is_superuser || req.cvatUser.is_staff) return next();
+    const { rows } = await pool.query(
+      'SELECT role FROM user_roles WHERE cvat_user_id = $1',
+      [req.cvatUser.id]
+    );
+    const role = rows[0]?.role ?? 'annotator';
+    if (['admin', 'moderator'].includes(role)) return next();
+    return res.status(403).json({ error: 'Moderator access required' });
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired CVAT token' });
+  }
+}
+
+module.exports = { requireAuth, requireAdmin, requireCuratorOrAbove, requireModeratorOrAbove };

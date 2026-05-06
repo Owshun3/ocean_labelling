@@ -9,6 +9,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'ocean-app-a
 app.use('/users', require('./routes/users'));
 app.use('/upload-history', require('./routes/history'));
 app.use('/curator', require('./routes/curator'));
+app.use('/moderation', require('./routes/moderation'));
 
 app.use((_err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });

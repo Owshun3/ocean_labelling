@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Button } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 import { getUserProfile } from '@/services/api/authStorage';
+import { ModerationService } from '@/services/api/ModerationService';
 
 export const DashboardScreen: React.FC = () => {
 	const router = useRouter();
@@ -12,7 +13,23 @@ export const DashboardScreen: React.FC = () => {
 	const userRole = profile?.appRole ?? 'annotator';
 
 	const isCuratorOrAbove = ['admin', 'moderator', 'curator'].includes(userRole);
+	const isModeratorOrAbove = ['admin', 'moderator'].includes(userRole);
 	const isAdmin = userRole === 'admin';
+
+	const [pendingUsers, setPendingUsers] = useState<number | null>(null);
+
+	useEffect(() => {
+		if (!isModeratorOrAbove) return;
+		const fetchQueue = async () => {
+			try {
+				const queue = await new ModerationService().getQueue();
+				setPendingUsers(queue.length);
+			} catch {
+				setPendingUsers(null);
+			}
+		};
+		fetchQueue();
+	}, [isModeratorOrAbove]);
 
 	return (
 		<View style={styles.container}>
@@ -40,11 +57,25 @@ export const DashboardScreen: React.FC = () => {
 					</View>
 				)}
 
+				{isModeratorOrAbove && (
+					<View style={[styles.actionCard, styles.privilegedCard]}>
+						<Text style={styles.cardTitle}>Modération</Text>
+						<Text style={styles.cardText}>
+							{pendingUsers === null
+								? 'File de modération.'
+								: pendingUsers === 0
+									? 'Aucun média en attente.'
+									: `${pendingUsers} utilisateur(s) avec des médias à valider.`}
+						</Text>
+						<Button title="Ouvrir la file" onPress={() => router.push('/(main)/moderation' as Href)} color={COLORS.warning} />
+					</View>
+				)}
+
 				{isAdmin && (
 					<View style={[styles.actionCard, styles.privilegedCard]}>
 						<Text style={styles.cardTitle}>Administration</Text>
 						<Text style={styles.cardText}>Gérez les utilisateurs et les rôles.</Text>
-						<Button title="Panneau Admin" onPress={() => router.push('/(main)/admin' as Href)} color="#ef4444" />
+						<Button title="Panneau Admin" onPress={() => router.push('/(main)/admin' as Href)} color={COLORS.danger} />
 					</View>
 				)}
 			</View>

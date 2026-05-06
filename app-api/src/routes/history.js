@@ -4,23 +4,35 @@ const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// POST /upload-history — record an upload batch
+// POST /upload-history — record an upload batch + auto-create pending moderation entry
 router.post('/', requireAuth, async (req, res) => {
   const { cvat_task_id, batch_name, file_count } = req.body;
   if (!cvat_task_id || !batch_name) {
     return res.status(400).json({ error: 'cvat_task_id and batch_name required' });
   }
 
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(`
+    await client.query('BEGIN');
+    const { rows } = await client.query(`
       INSERT INTO upload_history (cvat_user_id, cvat_task_id, batch_name, file_count)
       VALUES ($1, $2, $3, $4)
       RETURNING id
     `, [req.cvatUser.id, cvat_task_id, batch_name, file_count || 0]);
 
+    await client.query(`
+      INSERT INTO media_moderation (cvat_task_id, uploader_id, status)
+      VALUES ($1, $2, 'pending')
+      ON CONFLICT (cvat_task_id) DO NOTHING
+    `, [cvat_task_id, req.cvatUser.id]);
+
+    await client.query('COMMIT');
     res.status(201).json({ id: rows[0].id });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

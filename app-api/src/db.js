@@ -49,6 +49,30 @@ async function _createSchema() {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS media_moderation (
+      cvat_task_id    INTEGER     PRIMARY KEY,
+      uploader_id     INTEGER     NOT NULL,
+      status          TEXT        NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'validated', 'rejected')),
+      reviewed_by     INTEGER,
+      review_comment  TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_at     TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_media_moderation_status   ON media_moderation(status);
+    CREATE INDEX IF NOT EXISTS idx_media_moderation_uploader ON media_moderation(uploader_id);
+
+    CREATE TABLE IF NOT EXISTS user_bans (
+      id            SERIAL      PRIMARY KEY,
+      cvat_user_id  INTEGER     NOT NULL,
+      banned_by     INTEGER     NOT NULL,
+      reason        TEXT,
+      banned_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at    TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_bans_user    ON user_bans(cvat_user_id);
+    CREATE INDEX IF NOT EXISTS idx_user_bans_expires ON user_bans(expires_at);
   `);
   console.log('[app-api] DB schema ready');
 }

@@ -6,9 +6,10 @@ import { COLORS } from '@/shared/theme/colors';
 interface AuthenticatedImageProps {
 	url: string | null;
 	style?: StyleProp<ImageStyle>;
+	resizeMode?: 'contain' | 'cover' | 'stretch' | 'center' | 'repeat';
 }
 
-export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({ url, style }) => {
+export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({ url, style, resizeMode = 'cover' }) => {
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState(false);
 	const [imageDataUri, setImageDataUri] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({ url, sty
 		);
 	}
 
-	return <Image source={{ uri: imageDataUri }} style={style} />;
+	return <Image source={{ uri: imageDataUri }} style={style} resizeMode={resizeMode} />;
 };
 
 const styles = StyleSheet.create({
