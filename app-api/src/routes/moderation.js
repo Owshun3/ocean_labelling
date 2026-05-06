@@ -3,7 +3,7 @@
 const express = require('express');
 const axios   = require('axios');
 const { pool } = require('../db');
-const { requireModeratorOrAbove } = require('../middleware/auth');
+const { requireAuth, requireModeratorOrAbove } = require('../middleware/auth');
 
 const router = express.Router();
 const CVAT   = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -108,6 +108,19 @@ router.get('/bans/check', async (req, res) => {
     res.json({ banned: false });
   } catch (err) {
     res.status(502).json({ error: err.message });
+  }
+});
+
+router.get('/my-statuses', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT cvat_task_id, status, review_comment, reviewed_at
+      FROM media_moderation
+      WHERE uploader_id = $1
+    `, [req.cvatUser.id]);
+    res.json({ results: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

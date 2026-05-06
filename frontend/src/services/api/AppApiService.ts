@@ -18,6 +18,14 @@ attachBanInterceptor(appApiClient);
 
 export type AppRole = 'admin' | 'curator' | 'moderator' | 'annotator' | 'guest';
 export type AccountState = 'active' | 'disabled' | 'banned';
+export type ModerationStatus = 'pending' | 'validated' | 'rejected';
+
+export interface ModerationStatusEntry {
+	cvat_task_id: number;
+	status: ModerationStatus;
+	review_comment: string | null;
+	reviewed_at: string | null;
+}
 
 export interface BanInfo {
 	reason: string | null;
@@ -67,5 +75,10 @@ export class AppApiService {
 
 	async recordUpload(cvat_task_id: number, batch_name: string, file_count: number): Promise<void> {
 		await appApiClient.post('/upload-history', { cvat_task_id, batch_name, file_count });
+	}
+
+	async getMyModerationStatuses(): Promise<ModerationStatusEntry[]> {
+		const resp = await appApiClient.get<{ results: ModerationStatusEntry[] }>('/moderation/my-statuses');
+		return resp.data.results;
 	}
 }
