@@ -6,6 +6,10 @@ include:
       - cvat-core/docker-compose.override.yml
 
 services:
+  cvat_server:
+    environment:
+      CSRF_TRUSTED_ORIGINS: 'http://localhost:8081,http://127.0.0.1:8081,http://localhost:8888,http://127.0.0.1:8888'
+
   postgres:
     image: postgres:15-alpine
     environment:
