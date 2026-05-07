@@ -18,8 +18,8 @@ const NAV_ROUTES: NavRoute[] = [
 	{ name: 'Annotation',      path: '/(main)/studio/select' as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
 	{ name: 'Curation',        path: '/(main)/curator'    as Href, roles: ['admin', 'moderator', 'curator'] },
 	{ name: 'Modération',      path: '/(main)/moderation' as Href, roles: ['admin', 'moderator'] },
-	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },
 	{ name: 'Administration',  path: '/(main)/admin'     as Href, roles: ['admin'] },
+	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },
 ];
 
 export const Header: React.FC = () => {
