@@ -76,6 +76,8 @@ Tables app-api (db.js) :
 - `media_moderation(cvat_task_id PK, uploader_id, status pending|validated|rejected, reviewed_by, review_comment, created_at, reviewed_at)` — entrée auto-créée à chaque upload (`POST /upload-history` insère `pending`).
 - `user_bans(id, cvat_user_id, banned_by, reason, banned_at, expires_at, released_at, released_by)` — `released_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())` = ban actif. Distinguer `released_at` (levé manuellement) de `expires_at <= NOW()` (expiration naturelle) est critique pour l'auto-réactivation.
 - `moderation_contestations(id, cvat_task_id, contester_id, message, created_at, resolved_at, resolved_by, resolution upheld|overturned)` — déposée par l'uploadeur sur ses médias rejetés. Côté UI uploadeur : ✅ **construit** (page « Mes Médias », sélection multi-rejetés → ContestModal). Côté admin/modérateur : ⏳ **À construire** — file de contestations ouvertes, lecture du message, résolution `overturned` (re-validation, repasser le `media_moderation.status` à `validated` + `released_at` du ban éventuel) ou `upheld` (clore sans changer).
+- `annotation_contestations(id, cvat_task_id, contester_id, message, created_at, resolved_at, resolved_by, resolution upheld|overturned)` — déposée par n'importe quel annotateur sur une tâche dont l'annotation finale a été validée par le curator (`media_moderation.curator_validated_at IS NOT NULL`). UI uploadeur : ✅ **construit** (bouton « Contester » sur tuile « Validé » de `/studio/select`). UI admin : ⏳ **À construire** — file des contestations annotation, possibilité de réouvrir la curation (reset `curator_validated_at`).
+- `media_moderation.curator_validated_at TIMESTAMPTZ` + `curator_validated_by INTEGER` — set par le futur curator studio quand le curator valide l'annotation finale fusionnée. Sert de signal pour la sous-section « Validé » de Mes médias et pour autoriser les contestations annotation.
 
 Ban d'un utilisateur :
 1. INSERT `user_bans` (transactionnel avec UPDATE cascade des médias `pending` → `rejected`).
@@ -143,12 +145,17 @@ Endpoints app-api studio :
 | PUT  | `/studio/jobs/:id/annotations` | requireAuth | Proxy écriture |
 | POST | `/studio/labels/sync {task_id, names}` | requireAuth | Append labels manquants au task, retourne mapping `name → label_id` |
 | POST | `/studio/comments {cvat_job_id, cvat_shape_id, comment}` | requireAuth | Insert commentaire |
+| POST | `/studio/contest-annotation {cvat_task_id, message}` | requireAuth | Contestation de l'annotation finale (rejette si la tâche n'est pas encore `curator_validated_at`) |
 | GET  | `/species?q=` | requireAuth | Autocomplete tri `LOWER(name) ASC` (pas de tri par usage_count — anti-biais), gate frontend ≥1 lettre |
 | POST | `/species {name}` | requireAuth | Création idempotente, status='pending' |
 | PATCH | `/species/:id/approve` | requireCuratorOrAbove | Curator validation |
 | POST | `/species/:id/increment-usage` | requireAuth | Incrémente compteur (frontend l'appelle au validate, mais ne l'affiche pas) |
 
 **Anti-biais autocomplete** : aucune suggestion tant que < 1 lettre tapée. `usage_count` jamais affiché côté UI. Tri alphabétique pour ne pas véhiculer la popularité par l'ordre.
+
+**Page de sélection `/studio/select`** : layout horizontal **Mes médias (flex 2) | Flux communautaire (flex 1)**. Mes médias est subdivisé en 3 sous-sections par `annotation_state` : « Non annoté », « Annoté » (≥ 1 shape dans mon job), « Validé par curator » (`media_moderation.curator_validated_at IS NOT NULL`). La section Validé propose un footer « Voir / Contester » sur chaque tuile. « Voir » est un placeholder tant que le studio curator ne produit pas encore d'annotation finale (`Alert` informatif). « Contester » ouvre `ContestModal` partagé avec la modération → POST `/studio/contest-annotation`.
+
+**Polling post-upload** : `CvatMediaService.waitForTaskData` poll `GET /tasks/{id}` (toujours 200) en attendant `task.size > 0`. **Ne PAS poll `/preview`** : retourne 400 jusqu'à ingestion → console saturée d'erreurs cosmétiques.
 
 ## Studio CVAT injecté (legacy, ADR-006) — coexiste avec ADR-007
 ```

@@ -29,23 +29,35 @@ function labelForSegment(parts: string[], idx: number): string {
 		const parent = parts[idx - 1];
 		if (parent === 'moderation') return `Utilisateur #${seg}`;
 		if (idx >= 2 && parts[idx - 2] === 'moderation') return `Média #${seg}`;
-		if (parent === 'studio') return `Tâche #${seg}`;
-		if (idx >= 2 && parts[idx - 2] === 'studio') return `Job #${seg}`;
 		return `#${seg}`;
 	}
 	return STATIC_LABELS[seg] ?? seg;
 }
 
+function truncateTechnicalSegments(parts: string[]): string[] {
+	if (parts[0] === 'studio' && parts.length >= 2 && /^\d+$/.test(parts[1])) {
+		return ['studio'];
+	}
+	if (parts[0] === 'curator' && parts[1] === 'studio') {
+		return ['curator'];
+	}
+	return parts;
+}
+
 function buildCrumbs(pathname: string): Crumb[] {
 	const parts = pathname.split('/').filter(Boolean);
 	if (parts.length === 0) return [];
+	const truncated = truncateTechnicalSegments(parts);
+	const truncationApplied = truncated.length < parts.length;
+
 	const crumbs: Crumb[] = [{ label: 'Accueil', href: '/' }];
 	let cumulative = '';
-	parts.forEach((seg, i) => {
+	truncated.forEach((seg, i) => {
 		cumulative += '/' + seg;
-		const isLast = i === parts.length - 1;
+		const isLeafOfTruncated = i === truncated.length - 1;
+		const isLast = isLeafOfTruncated && !truncationApplied;
 		crumbs.push({
-			label: labelForSegment(parts, i),
+			label: labelForSegment(truncated, i),
 			href: isLast ? undefined : cumulative,
 		});
 	});
@@ -65,7 +77,7 @@ export const Breadcrumb: React.FC = () => {
 				const isLast = i === crumbs.length - 1;
 				return (
 					<View key={i} style={styles.itemRow}>
-						{c.href && !isLast ? (
+						{c.href ? (
 							<Pressable
 								onPress={() => router.push(c.href as Href)}
 								style={({ hovered }) => [

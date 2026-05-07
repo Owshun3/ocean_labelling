@@ -62,6 +62,8 @@ async function _createSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_media_moderation_status   ON media_moderation(status);
     CREATE INDEX IF NOT EXISTS idx_media_moderation_uploader ON media_moderation(uploader_id);
+    ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS curator_validated_at TIMESTAMPTZ;
+    ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS curator_validated_by INTEGER;
 
     CREATE TABLE IF NOT EXISTS user_bans (
       id            SERIAL      PRIMARY KEY,
@@ -101,6 +103,22 @@ async function _createSchema() {
       ON annotation_comments (cvat_job_id);
     CREATE INDEX IF NOT EXISTS idx_annotation_comments_shape
       ON annotation_comments (cvat_job_id, cvat_shape_client_id);
+
+    CREATE TABLE IF NOT EXISTS annotation_contestations (
+      id            SERIAL      PRIMARY KEY,
+      cvat_task_id  INTEGER     NOT NULL,
+      contester_id  INTEGER     NOT NULL,
+      message       TEXT        NOT NULL,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at   TIMESTAMPTZ,
+      resolved_by   INTEGER,
+      resolution    TEXT CHECK (resolution IN ('upheld', 'overturned'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_annotation_contestations_open
+      ON annotation_contestations(resolved_at)
+      WHERE resolved_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_annotation_contestations_task
+      ON annotation_contestations(cvat_task_id);
 
     CREATE TABLE IF NOT EXISTS moderation_contestations (
       id            SERIAL      PRIMARY KEY,

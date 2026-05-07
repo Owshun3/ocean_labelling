@@ -134,8 +134,6 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 			</View>
 
 			<ValidationPanel
-				taskId={taskId}
-				jobId={jobId}
 				shapes={shapes}
 				selectedShape={shapes.find((s) => s.id === selectedId) ?? null}
 				submitting={submitting}

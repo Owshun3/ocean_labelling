@@ -7,8 +7,6 @@ import { StudioShape } from '../types';
 import { SpeciesAutocomplete } from './SpeciesAutocomplete';
 
 interface Props {
-	taskId: number;
-	jobId: number;
 	shapes: StudioShape[];
 	selectedShape: StudioShape | null;
 	submitting: boolean;
@@ -17,7 +15,7 @@ interface Props {
 }
 
 export const ValidationPanel: React.FC<Props> = ({
-	taskId, jobId, shapes, selectedShape, submitting, onUpdateShape, onValidate,
+	shapes, selectedShape, submitting, onUpdateShape, onValidate,
 }) => {
 	const hasShapes      = shapes.length > 0;
 	const allHaveSpecies = hasShapes && shapes.every((s) => !!s.speciesName);
@@ -28,7 +26,6 @@ export const ValidationPanel: React.FC<Props> = ({
 		return (
 			<View style={styles.col}>
 				<Text style={styles.colTitle}>Validation</Text>
-				<Text style={styles.metaText}>Tâche #{taskId} · Job #{jobId}</Text>
 				<View style={styles.emptyState}>
 					<Text style={styles.emptyText}>Tracez d'abord un rectangle.</Text>
 				</View>
@@ -40,7 +37,7 @@ export const ValidationPanel: React.FC<Props> = ({
 		return (
 			<View style={styles.col}>
 				<Text style={styles.colTitle}>Validation</Text>
-				<Text style={styles.metaText}>{shapes.length} rectangle(s) — sélectionnes-en un pour éditer.</Text>
+				<Text style={styles.metaText}>Sélectionne le rectangle pour éditer son espèce.</Text>
 				<View style={styles.statusRow}>
 					<View style={[styles.dot, { backgroundColor: allHaveSpecies ? COLORS.status.validated : COLORS.warning }]} />
 					<Text style={styles.statusText}>
@@ -62,14 +59,9 @@ export const ValidationPanel: React.FC<Props> = ({
 		);
 	}
 
-	const idx = shapes.findIndex((s) => s.id === selectedShape.id) + 1;
-
 	return (
 		<View style={styles.col}>
 			<Text style={styles.colTitle}>Validation</Text>
-			<Text style={styles.metaText}>
-				Tâche #{taskId} · Job #{jobId} — Rectangle #{idx} / {shapes.length}
-			</Text>
 
 			<View style={styles.statusRow}>
 				<View style={[styles.dot, { backgroundColor: selectedShape.status === 'saved' ? COLORS.status.validated : COLORS.warning }]} />
@@ -115,12 +107,6 @@ export const ValidationPanel: React.FC<Props> = ({
 								: "Valider l'annotation"}
 				</Text>
 			</Pressable>
-
-			{shapes.length > 1 && !allHaveSpecies ? (
-				<Text style={styles.helperText}>
-					Astuce : clique sur les rectangles dans la mini-liste à gauche ou directement sur le canvas (mode V) pour leur attribuer une espèce.
-				</Text>
-			) : null}
 		</View>
 	);
 };
@@ -168,5 +154,4 @@ const styles = StyleSheet.create({
 	btnDisabled: { opacity: 0.4 },
 	validateBtnText: { color: COLORS.text.inverse, fontWeight: '600', fontSize: 13 },
 
-	helperText: { fontSize: 11, color: COLORS.text.placeholder, fontStyle: 'italic', marginTop: SPACING.xs },
 });

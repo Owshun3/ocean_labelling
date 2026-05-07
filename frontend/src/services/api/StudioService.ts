@@ -51,6 +51,7 @@ function pointsClose(a: number[], b: number[]): boolean {
 }
 
 export type ModerationStatus = 'pending' | 'validated' | 'rejected';
+export type AnnotationState  = 'not_annotated' | 'annotated' | 'curator_validated';
 
 export interface FeedTask {
 	cvat_task_id:      number;
@@ -62,6 +63,7 @@ export interface FeedTask {
 	my_job_id:         number | null;
 	my_job_state:      string | null;
 	free_job_count:    number;
+	annotation_state:  AnnotationState;
 }
 
 export interface StudioFeed {
@@ -80,6 +82,13 @@ export class StudioService {
 	async claim(taskId: number): Promise<{ jobId: number; alreadyClaimed: boolean }> {
 		const resp = await studioClient.post<{ jobId: number; alreadyClaimed: boolean }>(
 			'/claim', { task_id: taskId },
+		);
+		return resp.data;
+	}
+
+	async contestAnnotation(taskId: number, message: string): Promise<{ id: number; created_at: string }> {
+		const resp = await studioClient.post<{ id: number; created_at: string }>(
+			'/contest-annotation', { cvat_task_id: taskId, message },
 		);
 		return resp.data;
 	}

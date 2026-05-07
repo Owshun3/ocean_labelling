@@ -98,13 +98,12 @@ export class CvatMediaService {
 		const deadline = Date.now() + maxWaitMs;
 		while (Date.now() < deadline) {
 			try {
-				await apiClient.get(`/tasks/${taskId}/preview`);
-				return;
-			} catch {
-				await new Promise(r => setTimeout(r, 1500));
-			}
+				const resp = await apiClient.get(`/tasks/${taskId}`);
+				if ((resp.data?.size ?? 0) > 0) return;
+			} catch {}
+			await new Promise(r => setTimeout(r, 1500));
 		}
-		throw new Error('Timeout: le serveur CVAT na pas traité les fichiers à temps.');
+		throw new Error('Timeout: le serveur CVAT n\'a pas traité les fichiers à temps.');
 	}
 
 	async getSelf(): Promise<{ id: number; username: string }> {

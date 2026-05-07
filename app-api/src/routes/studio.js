@@ -136,11 +136,20 @@ async function fetchTaskJobs(taskId, token) {
   return resp.data.results ?? [];
 }
 
+async function countShapesInJob(jobId, token) {
+  try {
+    const resp = await cvatGet(`/jobs/${jobId}/annotations`, token);
+    return (resp.data?.shapes ?? []).length;
+  } catch {
+    return 0;
+  }
+}
+
 router.get('/feed', requireAuth, async (req, res) => {
   const me = req.cvatUser.id;
   try {
     const { rows } = await pool.query(`
-      SELECT cvat_task_id, uploader_id, status, created_at
+      SELECT cvat_task_id, uploader_id, status, created_at, curator_validated_at
       FROM media_moderation
       WHERE uploader_id = $1 OR status = 'validated'
     `, [me]);
@@ -158,6 +167,15 @@ router.get('/feed', requireAuth, async (req, res) => {
       catch { jobsByTask.set(id, []); }
     }));
 
+    const ownRows = rows.filter((r) => r.uploader_id === me && tasksById.has(r.cvat_task_id));
+    const myShapesCounts = new Map();
+    await Promise.all(ownRows.map(async (row) => {
+      const jobs = jobsByTask.get(row.cvat_task_id) ?? [];
+      const myJob = jobs.find((j) => j.assignee?.id === me);
+      if (!myJob) { myShapesCounts.set(row.cvat_task_id, 0); return; }
+      myShapesCounts.set(row.cvat_task_id, await countShapesInJob(myJob.id, token));
+    }));
+
     const own = [];
     const community = [];
 
@@ -169,6 +187,12 @@ router.get('/feed', requireAuth, async (req, res) => {
       const myAssigned = jobs.find((j) => j.assignee?.id === me) ?? null;
       const freeJobs = jobs.filter((j) => !j.assignee && j.state !== 'completed');
 
+      let annotationState = 'not_annotated';
+      if (row.uploader_id === me) {
+        if (row.curator_validated_at) annotationState = 'curator_validated';
+        else if ((myShapesCounts.get(row.cvat_task_id) ?? 0) > 0) annotationState = 'annotated';
+      }
+
       const summary = {
         cvat_task_id: row.cvat_task_id,
         name: task.name,
@@ -179,6 +203,7 @@ router.get('/feed', requireAuth, async (req, res) => {
         my_job_id: myAssigned?.id ?? null,
         my_job_state: myAssigned?.state ?? null,
         free_job_count: freeJobs.length,
+        annotation_state: annotationState,
       };
 
       if (row.uploader_id === me) {
@@ -270,6 +295,31 @@ router.put('/jobs/:jobId/annotations', requireAuth, async (req, res) => {
   } catch (err) {
     if (err.statusCode === 403) return res.status(403).json({ error: err.message });
     res.status(err.response?.status ?? 502).json({ error: err.response?.data ?? err.message });
+  }
+});
+
+router.post('/contest-annotation', requireAuth, async (req, res) => {
+  const taskId  = Number(req.body?.cvat_task_id);
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 2000) : '';
+  if (!Number.isFinite(taskId)) return res.status(400).json({ error: 'cvat_task_id required' });
+  if (!message)                  return res.status(400).json({ error: 'message required' });
+
+  try {
+    const { rows } = await pool.query(
+      'SELECT curator_validated_at FROM media_moderation WHERE cvat_task_id = $1',
+      [taskId],
+    );
+    if (rows.length === 0)            return res.status(404).json({ error: 'media inconnu' });
+    if (!rows[0].curator_validated_at) return res.status(400).json({ error: 'l\'annotation finale n\'est pas encore validée par le curator' });
+
+    const inserted = await pool.query(`
+      INSERT INTO annotation_contestations (cvat_task_id, contester_id, message)
+      VALUES ($1, $2, $3)
+      RETURNING id, created_at
+    `, [taskId, req.cvatUser.id, message]);
+    res.status(201).json(inserted.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
