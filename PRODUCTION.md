@@ -230,6 +230,57 @@ systemctl --user disable --now expo
 
 ---
 
+## Découplage des configurations dev local ↔ VM
+
+**Principe** : aucun fichier suivi par git ne contient d'URL ou de mot de passe propre à un environnement. Tout vit dans **deux fichiers `.env` gitignorés** (un par machine) :
+
+| Fichier | Gitignoré ? | Contient |
+|---|---|---|
+| `.env` (racine) | oui (`*.env`) | `POSTGRES_PASSWORD`, `CVAT_ADMIN_PASS`, `CSRF_TRUSTED_ORIGINS` |
+| `frontend/.env` | oui (`*.env`) | les 3 `EXPO_PUBLIC_*` (URLs API et CVAT UI) |
+
+`docker-compose.yml` lit `${CSRF_TRUSTED_ORIGINS}` depuis l'environnement avec un **défaut localhost** : `${CSRF_TRUSTED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,http://localhost:8888,http://127.0.0.1:8888}`. Donc en dev, ne **pas** définir la var → fallback localhost automatique. Sur la VM, définir la var dans `.env` → surcharge.
+
+**Conséquence** : `git pull` de chaque côté ne touche jamais aux fichiers `.env` locaux. Pas de réécriture, pas de conflit, pas de procédure manuelle après pull.
+
+### Configuration côté dev local (poste maison)
+
+`.env` racine — laisser tel quel après `cp .env.example .env`. Pas de `CSRF_TRUSTED_ORIGINS` à définir.
+
+`frontend/.env` :
+```
+EXPO_PUBLIC_API_URL=http://localhost:8888/api
+EXPO_PUBLIC_APP_API_URL=http://localhost:8888/app-api
+EXPO_PUBLIC_CVAT_UI_URL=http://localhost:8888
+```
+
+### Configuration côté VM (réseau université)
+
+`.env` racine — ajouter la dernière ligne :
+```
+POSTGRES_PASSWORD=<...>
+CVAT_ADMIN_USER=admin
+CVAT_ADMIN_PASS=<...>
+CSRF_TRUSTED_ORIGINS=http://<IP_VM>:8081,http://<IP_VM>:8888
+```
+
+`frontend/.env` :
+```
+EXPO_PUBLIC_API_URL=http://<IP_VM>:8888/api
+EXPO_PUBLIC_APP_API_URL=http://<IP_VM>:8888/app-api
+EXPO_PUBLIC_CVAT_UI_URL=http://<IP_VM>:8888
+```
+
+Après modification de l'un ou l'autre :
+```bash
+docker compose up -d --force-recreate cvat_server   # si .env racine a changé
+systemctl --user restart expo                       # si frontend/.env a changé
+```
+
+> Première migration sur la VM (passage de localhost → IP) : la valeur en dur de `CSRF_TRUSTED_ORIGINS` a été retirée de `docker-compose.yml` au commit qui a introduit cette section. Si la VM avait un `.env` sans la nouvelle var → fallback localhost → CVAT rejette les POST depuis l'IP. Ajouter la var dans `.env` puis recreate `cvat_server`.
+
+---
+
 ## Passage de localhost à une vraie IP / domaine universitaire
 
 Section à exécuter le jour où on bascule la plateforme du dev (`localhost`) vers une IP/domaine universitaire. **Faire un smoke test d'une demi-journée sur IP HTTP dès le début du stage** pour repérer les casses listées plus bas, puis revenir en `localhost` pour la suite du dev. Le vrai switch n'est à faire qu'en fin de stage, idéalement avec HTTPS.
@@ -241,27 +292,13 @@ Section à exécuter le jour où on bascule la plateforme du dev (`localhost`) v
 - **Hardcodes `localhost` cachés** dans des composants UI (redirections, `Linking.openURL`, textes) ne se révèlent qu'au switch. Un grep préventif règle ça.
 - **CORS qui reflète `$http_origin`** dans `nginx/nginx.conf` accepte aujourd'hui n'importe quoi → le jour où on fige l'origine pour la sécurité, on découvre les origines oubliées.
 
-### Variables à changer (3 fichiers)
+### Variables à changer
 
-**1. `frontend/.env`** — remplacer les 3 vars :
+Les URLs et CSRF se gèrent via les `.env` de la VM — voir section précédente « Découplage des configurations dev local ↔ VM ». **Aucun fichier suivi par git n'est à modifier au moment du switch.**
 
-```
-EXPO_PUBLIC_API_URL=http://<IP_OU_DOMAINE>:8888/api
-EXPO_PUBLIC_APP_API_URL=http://<IP_OU_DOMAINE>:8888/app-api
-EXPO_PUBLIC_CVAT_UI_URL=http://<IP_OU_DOMAINE>:8888
-```
+Reste un seul fichier de code à toucher pour la prod (recommandé, pas bloquant) :
 
-Ces vars sont **inlinées au bundling** Metro → `systemctl --user restart expo` (ou `npx expo start -c --web` si lancé à la main).
-
-**2. `docker-compose.yml`** — `cvat_server.environment.CSRF_TRUSTED_ORIGINS` :
-
-```yaml
-CSRF_TRUSTED_ORIGINS: 'http://<IP_OU_DOMAINE>:8081,http://<IP_OU_DOMAINE>:8888'
-```
-
-CVAT (Django) rejette tout POST dont l'`Origin` n'est pas dans cette liste. Sans ça → login KO.
-
-**3. `nginx/nginx.conf`** — figer l'origine CORS (recommandé, pas bloquant). Remplacer les `$http_origin` (lignes 17, 25, 36, 44) par l'origine exacte ou une `map` qui whitelist 1-2 valeurs.
+**`nginx/nginx.conf`** — figer l'origine CORS. Remplacer les `$http_origin` (lignes 17, 25, 36, 44) par l'origine exacte ou une `map` qui whitelist 1-2 valeurs. Aujourd'hui n'importe quelle origine est acceptée → trou de sécurité en prod publique. Cette modif **est** suivie par git mais elle est commune à tout déploiement futur, donc OK à committer.
 
 ### Si HTTPS (recommandé sur réseau université)
 
@@ -292,23 +329,20 @@ CVAT v2.62 `cvat.settings.production` met `ALLOWED_HOSTS = ['*']` par défaut �
 ALLOWED_HOSTS = ['<IP_OU_DOMAINE>', 'localhost']
 ```
 
-### Procédure résumée pour basculer
+### Procédure résumée pour basculer (sur la VM uniquement)
 
 ```bash
-# 1. Frontend
-sed -i 's|http://localhost:8888|http://<IP>:8888|g' frontend/.env
+# 1. Mettre à jour les .env locaux à la VM (voir section découplage)
+#    - .env racine → ajouter CSRF_TRUSTED_ORIGINS=http://<IP>:8081,http://<IP>:8888
+#    - frontend/.env → remplacer localhost par <IP> dans les 3 EXPO_PUBLIC_*
 
-# 2. CSRF côté CVAT — éditer docker-compose.yml ligne CSRF_TRUSTED_ORIGINS
-
-# 3. Recreate les services impactés
+# 2. Recreate les services impactés
 docker compose up -d --force-recreate cvat_server
-docker compose restart gateway
 
-# 4. Relancer Expo (vide le cache Metro)
+# 3. Relancer Expo (vide le cache Metro pour réinliner les nouvelles URLs)
 systemctl --user restart expo
-# ou en interactif : cd frontend && npx expo start -c --web
 
-# 5. Smoke test depuis un autre poste du réseau
+# 4. Smoke test depuis un autre poste du réseau
 curl -I http://<IP>:8888/api/server/about
 ```
 
@@ -379,4 +413,4 @@ docker exec -i $(docker compose ps -q postgres) \
 
 ---
 
-*Dernière mise à jour : 2026-05-07 — Procédure post-pull étoffée (npm install, recreate cvat_server) + sections « Faire tourner Expo en permanence » (tmux/systemd) et « Passage de localhost à une vraie IP/domaine »*
+*Dernière mise à jour : 2026-05-07 — Procédure post-pull étoffée + sections « Faire tourner Expo en permanence » et « Passage à une vraie IP » + découplage .env (CSRF_TRUSTED_ORIGINS lu depuis l'env, plus de valeur en dur dans docker-compose.yml)*

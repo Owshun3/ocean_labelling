@@ -9,7 +9,9 @@ services:
   cvat_server:
     environment:
       DJANGO_SETTINGS_MODULE: 'cvat.settings.ocean'
-      CSRF_TRUSTED_ORIGINS: 'http://localhost:8081,http://127.0.0.1:8081,http://localhost:8888,http://127.0.0.1:8888'
+      # Origines acceptées par Django CSRF. Défaut localhost pour le dev local —
+      # surchargée via .env sur la VM (ex : http://10.20.30.40:8081,http://10.20.30.40:8888).
+      CSRF_TRUSTED_ORIGINS: '${CSRF_TRUSTED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,http://localhost:8888,http://127.0.0.1:8888}'
     volumes:
       - ./cvat-extras/ocean.py:/home/django/cvat/settings/ocean.py:ro
 
