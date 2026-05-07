@@ -14,6 +14,8 @@ const STATIC_LABELS: Record<string, string> = {
 	upload:     'Nouveau Dépôt',
 	annotate:   'Annoter',
 	curator:    'Curation',
+	studio:     'Annotation',
+	select:     'Sélection',
 	done:       'Validation enregistrée',
 	moderation: 'Modération',
 	profile:    'Mon Profil',
@@ -27,6 +29,8 @@ function labelForSegment(parts: string[], idx: number): string {
 		const parent = parts[idx - 1];
 		if (parent === 'moderation') return `Utilisateur #${seg}`;
 		if (idx >= 2 && parts[idx - 2] === 'moderation') return `Média #${seg}`;
+		if (parent === 'studio') return `Tâche #${seg}`;
+		if (idx >= 2 && parts[idx - 2] === 'studio') return `Job #${seg}`;
 		return `#${seg}`;
 	}
 	return STATIC_LABELS[seg] ?? seg;

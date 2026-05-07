@@ -76,6 +76,32 @@ async function _createSchema() {
     CREATE INDEX IF NOT EXISTS idx_user_bans_user    ON user_bans(cvat_user_id);
     CREATE INDEX IF NOT EXISTS idx_user_bans_expires ON user_bans(expires_at);
 
+    CREATE TABLE IF NOT EXISTS species (
+      id            SERIAL      PRIMARY KEY,
+      name          TEXT        UNIQUE NOT NULL,
+      status        TEXT        NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+      proposed_by   INTEGER,
+      approved_by   INTEGER,
+      usage_count   INTEGER     NOT NULL DEFAULT 0,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_species_name_lower ON species (LOWER(name));
+    CREATE INDEX IF NOT EXISTS idx_species_status     ON species (status);
+
+    CREATE TABLE IF NOT EXISTS annotation_comments (
+      id                    SERIAL      PRIMARY KEY,
+      cvat_job_id           INTEGER     NOT NULL,
+      cvat_shape_client_id  BIGINT      NOT NULL,
+      author_id             INTEGER     NOT NULL,
+      comment               TEXT        NOT NULL,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_annotation_comments_job
+      ON annotation_comments (cvat_job_id);
+    CREATE INDEX IF NOT EXISTS idx_annotation_comments_shape
+      ON annotation_comments (cvat_job_id, cvat_shape_client_id);
+
     CREATE TABLE IF NOT EXISTS moderation_contestations (
       id            SERIAL      PRIMARY KEY,
       cvat_task_id  INTEGER     NOT NULL,

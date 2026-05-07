@@ -229,3 +229,44 @@ Le JS injecté est actuellement une chaîne de caractères littérale dans `ngin
 | **Positif** | Zéro modification CVAT. Auth transparente par cookie de session. Injection CSS/JS illimitée. Fondation pour le studio curateur et la création de labels en live. |
 | **Négatif** | JS injecté non testable en isolation dans l'état actuel. Fragilité potentielle si CVAT change ses noms de classes CSS internes entre versions. |
 | **Dette planifiée** | Externaliser le JS injecté en fichiers statiques versionnés. |
+
+---
+
+# ADR-007 : Studios custom découplés de cvat-ui (supersède ADR-006 pour les nouveaux studios)
+
+* **Statut :** Accepté
+* **Date :** 2026-05-07
+* **Supersède partiellement :** ADR-006 (Injection NGINX comme stratégie d'encapsulation du studio CVAT)
+
+## Contexte
+
+ADR-006 a figé l'injection NGINX (`sub_filter` + `nginx/static/ocean-studio.{js,css}`) comme stratégie d'encapsulation du studio CVAT. Cette stratégie a deux limites identifiées à l'usage :
+
+- **Fragilité aux upgrades CVAT** : tout sélecteur CSS et toute structure DOM de cvat-ui peut changer sans préavis entre versions. Le JS injecté patche le DOM à l'aveugle (pas d'accès au state Redux interne).
+- **Plafond fonctionnel** : certains besoins métier (overlay multi-annotateur du curator, gestion d'espèces dynamiques avec autocomplete cross-tâches, raccourcis clavier customs) sont quasi-impossibles à implémenter proprement par injection — ils demandent un contrôle complet du rendu.
+
+## Décision
+
+Construire les nouveaux studios (annotation et curation) **en pages Expo natives** dans le frontend, qui consomment directement les endpoints REST publics de CVAT (`/api/jobs/{id}/annotations`, `/api/jobs/{id}/data`, `/api/tasks/{id}`) et les endpoints app-api (`/app-api/species`, `/app-api/curator/*`).
+
+- **Aucune dépendance au DOM, au CSS ou aux composants JS de cvat-ui.** Pas de `sub_filter` sur les routes du nouveau studio. Pas de scraping de classes CSS CVAT. Pas de réutilisation de composants `cvat-ui`.
+- **Rendu** : `react-konva` (web-only) pour le canvas image + shapes. La portabilité native n'est pas un objectif (annoter au doigt n'est pas une UX viable).
+- **Routage Expo** : `/studio/[taskId]/[jobId]` (annotation), `/curator/studio/[taskId]/[jobId]` (curation).
+
+## Coexistence avec ADR-006
+
+ADR-006 reste en vigueur **uniquement pour le studio CVAT existant** (`/tasks/{id}/jobs/{j}`), qui demeure accessible pendant la phase de transition à des fins de fallback admin et de comparaison. `nginx/static/ocean-studio.{js,css}` continue d'être servi par NGINX et n'est pas refactoré dans le cadre de cet ADR.
+
+Quand le studio custom couvrira fonctionnellement le studio CVAT injecté, ADR-006 sera marqué « Supersédé » et le `sub_filter` retiré.
+
+## Conséquences
+
+| | |
+|---|---|
+| **Positif** | Découplage total : un upgrade CVAT 2.62 → 2.6X ne casse rien tant que la signature des endpoints REST reste stable (rétro-compat documentée). Contrôle complet de l'UX (raccourcis, undo/redo, overlay multi-annotateur, autocomplete espèces cross-tâches). Style cohérent avec le reste de l'app Ocean (theme, breadcrumb, header). Code testable en isolation (composants React, services axios), versionnable, lintable. |
+| **Négatif** | Effort initial significatif : un studio d'annotation représente ~8-10 fichiers et une fois mature, le studio curator demandera autant. On ré-implémente des fonctionnalités CVAT (drag/resize, sauvegarde, raccourcis clavier que les utilisateurs CVAT connaissent déjà). |
+| **Risque** | Drift par rapport au comportement de CVAT : nos shapes envoyés via `POST /api/jobs/{id}/annotations` doivent respecter le format exact attendu par CVAT (`type`, `frame`, `points`, `label_id`, `attributes`). Tests d'intégration au curl indispensables avant chaque release. |
+
+## Stratégie hybride pour les espèces (rappel)
+
+Conformément à la décision technique de la session : Postgres est la source de vérité (`species` table), CVAT reçoit le label en miroir lazy au moment du `POST /annotations`. Voir `app-api/src/routes/species.js` et la spec en commentaires de `frontend/src/features/studio/`.

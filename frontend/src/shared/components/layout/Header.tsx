@@ -15,7 +15,7 @@ interface NavRoute {
 const NAV_ROUTES: NavRoute[] = [
 	{ name: 'Accueil',         path: '/(main)'           as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },
 	{ name: 'Mes Médias',      path: '/(main)/media'     as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
-	{ name: 'Annoter',         path: '/(main)/annotate'  as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
+	{ name: 'Annotation',      path: '/(main)/studio/select' as Href, roles: ['admin', 'moderator', 'curator', 'annotator'] },
 	{ name: 'Curation',        path: '/(main)/curator'    as Href, roles: ['admin', 'moderator', 'curator'] },
 	{ name: 'Modération',      path: '/(main)/moderation' as Href, roles: ['admin', 'moderator'] },
 	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'annotator', 'guest'] },

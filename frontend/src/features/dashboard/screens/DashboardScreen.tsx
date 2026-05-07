@@ -45,15 +45,15 @@ export const DashboardScreen: React.FC = () => {
 
 				<View style={styles.actionCard}>
 					<Text style={styles.cardTitle}>Travail</Text>
-					<Text style={styles.cardText}>Rejoignez le studio d'annotation.</Text>
-					<Button title="Commencer à Annoter" onPress={() => router.push('/(main)/annotate' as Href)} color={COLORS.primary} />
+					<Text style={styles.cardText}>Rejoignez la page d'annotation.</Text>
+					<Button title="Commencer à Annoter" onPress={() => router.push('/(main)/studio/select' as Href)} color={COLORS.primary} />
 				</View>
 
 				{isCuratorOrAbove && (
 					<View style={[styles.actionCard, styles.privilegedCard]}>
 						<Text style={styles.cardTitle}>Validation</Text>
 						<Text style={styles.cardText}>Révisez les annotations soumises par les pairs.</Text>
-						<Button title="Mode Curateur" onPress={() => router.push('/(main)/annotate' as Href)} color="#f59e0b" />
+						<Button title="Mode Curateur" onPress={() => router.push('/(main)/curator' as Href)} color="#f59e0b" />
 					</View>
 				)}
 

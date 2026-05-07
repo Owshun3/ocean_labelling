@@ -10,6 +10,8 @@ app.use('/users', require('./routes/users'));
 app.use('/upload-history', require('./routes/history'));
 app.use('/curator', require('./routes/curator'));
 app.use('/moderation', require('./routes/moderation'));
+app.use('/species', require('./routes/species'));
+app.use('/studio', require('./routes/studio'));
 
 app.use((_err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });

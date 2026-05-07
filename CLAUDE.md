@@ -110,34 +110,86 @@ Services frontend :
 - `Header.tsx` — lit `appRole` au mount, affiche selon hiérarchie des rôles
 - Gardes de route : `admin.tsx` (admin only), `media/annotate/upload.tsx` (pas guest)
 
-## Studio d'annotation — fichiers injectés via NGINX
+## Studio d'annotation custom (ADR-007)
+
+**Décision architecturale** : les studios annotateur et curator sont des **pages Expo natives** indépendantes de cvat-ui. Aucun `sub_filter`, aucun scraping de classes CSS CVAT, aucune dépendance au DOM CVAT. Les deux studios consomment les endpoints REST publics CVAT (lecture frame, écriture annotations) via un proxy app-api.
+
+Routes Expo :
+| Route | Écran | Rôle requis |
+|---|---|---|
+| `/studio/select` | `StudioSelectScreen` (deux sections : Mes médias / Flux communautaire) | annotator+ |
+| `/studio/[taskId]/[jobId]` | `StudioScreen` (canvas Konva + outils) | annotator+ |
+| `/curator/studio/[taskId]/[jobId]` | `CuratorStudioScreen` (coquille — overlay multi-annotateur à construire) | curator+ |
+
+Le studio injecté NGINX (`ocean-studio.{js,css}`, route `/tasks/{id}/jobs/{j}`) reste en place comme **fallback admin** pendant la transition. Voir ADR-006 vs ADR-007.
+
+**Stack rendu** : `react-konva@19.0.10` + `konva` (web only — `Platform.OS !== 'web'` affiche un fallback). Stage Konva avec image fit-to-canvas, Group scaled pour les coordonnées, Transformer pour drag/resize, ghost rect dashed pendant le tracé.
+
+**Contrainte single-rect** : un seul rectangle par annotation. `addShape` remplace inconditionnellement le shape précédent ; au validate, PUT-replace côté CVAT supprime tout shape qui n'est plus en local.
+
+**Modèle d'isolation** : un job CVAT par annotateur (consensus_replicas=2 par défaut). `/studio/claim` assigne un job libre au demandeur via `PATCH /jobs/{id} {assignee}`. Idempotent : retourne le job déjà assigné si on re-claim. Lecture/écriture des annotations passent par un proxy app-api strict (`/app-api/studio/jobs/:id/annotations` GET et PUT) qui vérifie `job.assignee.id === cvatUser.id` — bypass l'autorité CVAT du task owner. Curator/admin sont traités comme annotateurs ordinaires dans le studio annotation ; leur permission élargie ne s'appliquera que dans le futur studio curator.
+
+Tables app-api dédiées :
+- `species(id, name UNIQUE, status pending|approved|rejected, proposed_by, approved_by, usage_count, created_at)` — source de vérité de la liste maître. Pattern hybride : Postgres central, CVAT reçoit le label en miroir lazy au moment du `POST /annotations` via `POST /app-api/studio/labels/sync` (idempotent, sémantique merge confirmée v2.62).
+- `annotation_comments(id, cvat_job_id, cvat_shape_client_id, author_id, comment, created_at)` — commentaires libres par bbox, lus par le curator plus tard.
+
+Endpoints app-api studio :
+| Méthode | Route | Auth | But |
+|---|---|---|---|
+| GET  | `/studio/feed` | requireAuth | Liste agrégée mes-médias + flux validé, tri `completed_count ASC` |
+| POST | `/studio/claim {task_id}` | requireAuth | Assigne un job libre, idempotent, 409 si complet |
+| GET  | `/studio/tasks/:id/preview` | requireAuth | Proxy preview (admin token, contourne 403 owner-only) |
+| GET  | `/studio/jobs/:id/annotations` | requireAuth | Proxy lecture + enrichit chaque shape avec `label_name` |
+| PUT  | `/studio/jobs/:id/annotations` | requireAuth | Proxy écriture |
+| POST | `/studio/labels/sync {task_id, names}` | requireAuth | Append labels manquants au task, retourne mapping `name → label_id` |
+| POST | `/studio/comments {cvat_job_id, cvat_shape_id, comment}` | requireAuth | Insert commentaire |
+| GET  | `/species?q=` | requireAuth | Autocomplete tri `LOWER(name) ASC` (pas de tri par usage_count — anti-biais), gate frontend ≥1 lettre |
+| POST | `/species {name}` | requireAuth | Création idempotente, status='pending' |
+| PATCH | `/species/:id/approve` | requireCuratorOrAbove | Curator validation |
+| POST | `/species/:id/increment-usage` | requireAuth | Incrémente compteur (frontend l'appelle au validate, mais ne l'affiche pas) |
+
+**Anti-biais autocomplete** : aucune suggestion tant que < 1 lettre tapée. `usage_count` jamais affiché côté UI. Tri alphabétique pour ne pas véhiculer la popularité par l'ordre.
+
+## Studio CVAT injecté (legacy, ADR-006) — coexiste avec ADR-007
 ```
 nginx/static/
-  ocean-theme.css   # AUTO-GÉNÉRÉ — ne pas éditer. Source : frontend/src/shared/theme/
-  ocean-studio.css  # Layout barre bas, sélecteurs masquage header CVAT — utilise var(--ocean-*)
-  ocean-studio.js   # IIFE : barre top/validation/label live/nav blocker
+  ocean-theme.css   # AUTO-GÉNÉRÉ. Source : frontend/src/shared/theme/
+  ocean-studio.css  # Masquage header CVAT — utilise var(--ocean-*)
+  ocean-studio.js   # IIFE : barre top/validation/appReturn redirect
 scripts/
-  generate-studio-theme.js  # Génère ocean-theme.css depuis les thèmes TS
+  generate-studio-theme.js  # Régénère ocean-theme.css depuis les thèmes TS
 ```
-**⚠ Après toute modification de `frontend/src/shared/theme/*.ts` :**
-```bash
-node scripts/generate-studio-theme.js
-```
-`ocean-theme.css` est commité (volume NGINX), pas de build step nécessaire en prod.
+**⚠ Après modif de `frontend/src/shared/theme/*.ts`** : `node scripts/generate-studio-theme.js`. `ocean-theme.css` est commité.
 
 ## Structure frontend (fichiers clés)
 ```
-app/(main)/media.tsx → MediaListScreen    app/(main)/upload.tsx → UploadScreen
-app/(main)/annotate.tsx → AnnotationHubScreen
+app/(main)/
+  media.tsx           → MediaListScreen
+  upload.tsx          → UploadScreen
+  annotate.tsx        → redirect vers /studio/select (legacy URL)
+  studio/index.tsx    → redirect vers /studio/select
+  studio/select.tsx   → StudioSelectScreen
+  studio/[taskId]/[jobId].tsx                 → StudioScreen (annotateur)
+  curator/index.tsx   → CuratorHubScreen
+  curator/done.tsx    → CuratorPostValidationScreen
+  curator/studio/[taskId]/[jobId].tsx         → CuratorStudioScreen (coquille)
+  moderation/...      → modération
+src/features/studio/
+  screens/StudioScreen.tsx, StudioSelectScreen.tsx
+  components/StudioCanvas.tsx, ValidationPanel.tsx, SpeciesAutocomplete.tsx, StudioFeedTile.tsx
+  hooks/useStudioFrame.ts (image), useInitialShapes.ts (shapes existants)
+  types.ts (StudioShape, StudioTool)
 src/services/api/
-  axiosClient.ts         # axios instance — PAS de Content-Type global
-  CvatAuthService.ts     # login, register, logout
-  CvatMediaService.ts    # uploadMedia, getTasks, deleteTask, getFirstJobId, getSelf, assignJob
-src/shared/components/images/
-  AuthenticatedImage.tsx # GET image via token Bearer → base64
-  ImageLightbox.tsx      # modal plein écran (utilisé dans MediaListScreen)
+  axiosClient.ts       # apiClient — pas de Content-Type global
+  StudioService.ts     # getFeed, claim, validateAll (PUT-replace via proxy)
+  SpeciesService.ts    # search, create, incrementUsage
+  CvatAuthService.ts, CvatMediaService.ts, ModerationService.ts, AppApiService.ts
+src/shared/components/
+  layout/Header.tsx       # nav (entrée "Annotation" → /studio/select)
+  layout/Breadcrumb.tsx   # auto-généré depuis usePathname()
+  images/AuthenticatedImage.tsx   # GET image authentifiée → base64 ou via client custom
+  images/ImageLightbox.tsx
 ```
-Orphelins (non utilisés) : `MediaCard.tsx`, `useMediaQueue.ts`
 
 ## CVAT API v2 — endpoints
 | Action | Endpoint |
@@ -181,3 +233,11 @@ formData.append('client_files', file.file, fileName);        // ✗ silencieusem
 **Alert.alert web :** Callbacks multi-boutons non fiables → `window.confirm()` sur `Platform.OS === 'web'`.
 
 **Accept header axiosClient :** `application/vnd.cvat+json, application/json, text/plain, */*` — le `*/*` couvre les images.
+
+**CVAT 500 sur GET avec `data: null` :** appeler `axios({ method: 'get', url, data: null, ... })` côté serveur fait planter CVAT v2.62 (`AttributeError: 'NoneType'.get` dans leur permission code, ligne `request.data.get("project_id")`). Cause : axios sérialise `data: null` même sur GET, et Django parse ça comme un body JSON. **Toujours utiliser `axios.get(url, { headers })` distinct de `axios.patch/put` côté app-api**, pas un dispatcher générique. Voir `app-api/src/routes/studio.js` (refactor `cvatRequest` → `cvatGet/cvatPatch/cvatPut`).
+
+**Labels CVAT — sémantique merge sur PATCH `/tasks/{id}` :** v2.62 fait merge (append) et non replace ; les labels existants sont conservés. Confirmé par smoke test. Pas besoin de lire d'abord la liste pour append. Pour récupérer le `label_id` du nouveau label : refaire un `GET /labels?task_id=X` après le PATCH (le retour du PATCH ne contient pas inline les labels).
+
+**Annotations format CVAT v2 :** `PUT /jobs/{id}/annotations` body `{ version, tags, shapes, tracks }`. Chaque shape rectangle : `{ type:'rectangle', points:[x1,y1,x2,y2], frame, label_id, occluded:false, outside:false, z_order:0, rotation:0, group:0, source:'manual', attributes:[] }`. Inclure `id` pour update (CVAT préserve), omettre pour create. CVAT alloue/préserve les ids selon présence.
+
+**CVAT permission task owner :** le owner d'une tâche (= uploader CVAT) a accès à TOUS les jobs de sa tâche, contournant l'isolement par assignee. Pour bloquer ça (cas où l'uploader ne doit pas voir les annotations des autres annotateurs sur SA tâche), passer par un proxy app-api qui vérifie strictement `job.assignee.id === cvatUser.id`. Modèle utilisé pour `/app-api/studio/jobs/:id/annotations`.
