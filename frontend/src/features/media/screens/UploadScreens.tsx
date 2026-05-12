@@ -1,12 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Button, Image, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useMediaUpload } from '../hooks/useMediaUpload';
+import { AppApiService } from '@/services/api/AppApiService';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 
-const MAX_BATCH_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MAX_BATCH_BYTES = 200 * 1024 * 1024;
 const MEGABYTE = 1024 * 1024;
 
 const fileSize = (img: any): number => {
@@ -17,17 +18,28 @@ const fileSize = (img: any): number => {
 
 export const UploadScreen: React.FC = () => {
 	const [selectedImages, setSelectedImages] = useState<any[]>([]);
+	const [maxBatchBytes, setMaxBatchBytes] = useState<number>(DEFAULT_MAX_BATCH_BYTES);
 	const { upload, isUploading, progress } = useMediaUpload();
 	const router = useRouter();
+	const appService = useMemo(() => new AppApiService(), []);
+
+	useEffect(() => {
+		appService.getSettings()
+			.then((s) => {
+				const n = Number(s.upload_max_bytes);
+				if (Number.isFinite(n) && n > 0) setMaxBatchBytes(n);
+			})
+			.catch(() => { /* fallback to default */ });
+	}, [appService]);
 
 	const totalBytes = useMemo(
 		() => selectedImages.reduce((sum, img) => sum + fileSize(img), 0),
 		[selectedImages]
 	);
 	const totalMB  = totalBytes / MEGABYTE;
-	const limitMB  = MAX_BATCH_BYTES / MEGABYTE;
-	const fillPct  = Math.min(100, (totalBytes / MAX_BATCH_BYTES) * 100);
-	const overLimit = totalBytes > MAX_BATCH_BYTES;
+	const limitMB  = maxBatchBytes / MEGABYTE;
+	const fillPct  = Math.min(100, (totalBytes / maxBatchBytes) * 100);
+	const overLimit = totalBytes > maxBatchBytes;
 
 	const pickImage = async () => {
 		const result = await ImagePicker.launchImageLibraryAsync({

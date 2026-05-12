@@ -12,6 +12,7 @@ app.use('/curator', require('./routes/curator'));
 app.use('/moderation', require('./routes/moderation'));
 app.use('/species', require('./routes/species'));
 app.use('/studio', require('./routes/studio'));
+app.use('/settings', require('./routes/settings'));
 
 app.use((_err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });

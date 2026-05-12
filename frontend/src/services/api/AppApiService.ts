@@ -82,6 +82,11 @@ export class AppApiService {
 		return resp.data.results;
 	}
 
+	async getSettings(): Promise<Record<string, string>> {
+		const resp = await appApiClient.get<Record<string, string>>('/settings');
+		return resp.data;
+	}
+
 	async contestRejection(ids: number[], message: string): Promise<{ created: number; ignored: number }> {
 		const resp = await appApiClient.post<{ created: number; ignored: number }>(
 			'/moderation/contest',

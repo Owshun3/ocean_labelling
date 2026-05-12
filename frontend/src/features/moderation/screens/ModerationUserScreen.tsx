@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
 	View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
-	Alert, TextInput,
+	Alert, Platform,
 } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { ModerationService, ModerationMediaEntry, ModerationUploader } from '@/services/api/ModerationService';
 import { appApiClient } from '@/services/api/AppApiService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { BanModal } from '../components/BanModal';
+import { RejectReasonPicker } from '../components/RejectReasonPicker';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -104,16 +105,24 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 		}
 	};
 
+	const proposeBanAfterReject = (count: number): boolean => {
+		if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+		const label = count === 1 ? '1 média rejeté' : `${count} médias rejetés`;
+		return window.confirm(`${label}. Veux-tu aussi sanctionner cet utilisateur (bannissement) ?`);
+	};
+
 	const handleReject = async () => {
 		if (selected.size === 0 || submitting) return;
+		const count = selected.size;
 		setSubmitting(true);
 		try {
 			await service.rejectMedia(Array.from(selected), rejectComment || undefined);
 			setRejectComment('');
 			await load();
+			setSubmitting(false);
+			if (proposeBanAfterReject(count)) setBanModalOpen(true);
 		} catch (err: any) {
 			Alert.alert('Erreur', err?.response?.data?.error || err?.message || 'Rejet impossible.');
-		} finally {
 			setSubmitting(false);
 		}
 	};
@@ -223,16 +232,15 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 						>
 							<Text style={styles.actionBtnText}>Valider la sélection</Text>
 						</Pressable>
+					</View>
 
-						<Text style={styles.fieldLabel}>Motif du rejet (optionnel)</Text>
-						<TextInput
+					<View style={styles.card}>
+						<Text style={styles.cardTitle}>Rejet</Text>
+						<Text style={styles.fieldLabel}>Motif</Text>
+						<RejectReasonPicker
 							value={rejectComment}
-							onChangeText={setRejectComment}
-							placeholder="Ex : hors-sujet, qualité insuffisante…"
-							placeholderTextColor={COLORS.text.placeholder}
-							multiline
-							style={styles.textArea}
-							editable={!submitting}
+							onChange={setRejectComment}
+							disabled={submitting}
 						/>
 						<Pressable
 							onPress={handleReject}
@@ -245,6 +253,9 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 
 					<View style={styles.card}>
 						<Text style={styles.cardTitle}>Sanction</Text>
+						<Text style={styles.cascadeHint}>
+							Tous les médias en attente de cet utilisateur seront automatiquement rejetés.
+						</Text>
 						<Pressable
 							onPress={() => setBanModalOpen(true)}
 							disabled={submitting}
@@ -351,16 +362,5 @@ const styles = StyleSheet.create({
 	actionBtnText: { color: COLORS.text.inverse, fontWeight: '600', fontSize: 14 },
 
 	fieldLabel: { fontSize: 12, color: COLORS.text.secondary, marginTop: SPACING.md, marginBottom: SPACING.xs, fontWeight: '600' },
-	textArea: {
-		borderWidth: 1,
-		borderColor: COLORS.border,
-		borderRadius: 6,
-		paddingHorizontal: SPACING.sm,
-		paddingVertical: SPACING.sm,
-		fontSize: 13,
-		color: COLORS.text.primary,
-		backgroundColor: COLORS.background.main,
-		minHeight: 70,
-		textAlignVertical: 'top',
-	},
+	cascadeHint: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontStyle: 'italic', marginBottom: SPACING.xs },
 });

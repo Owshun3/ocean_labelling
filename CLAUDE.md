@@ -90,6 +90,16 @@ Ban d'un utilisateur :
 3. **Auto-réactivation** : sur `GET /users` (panneau admin) et `GET /moderation/bans/check` (login), pour chaque user `is_active=false` dont le dernier ban a `expires_at <= NOW() AND released_at IS NULL` → PATCH CVAT `is_active=true`. Pas de cron, c'est lazy à l'accès.
 4. Levée manuelle (admin clique « Activé ») : UPDATE `user_bans SET released_at=NOW(), released_by=admin` sur tout ban actif + PATCH CVAT.
 
+Workflow de rejet (modération) :
+- UI : `RejectReasonPicker` propose 5 motifs prédéfinis (spam, bot, non conforme à la charte, politique, contenu pour adultes) + option « Autre » avec champ libre. Le motif final (label preset ou texte libre) est stocké tel quel dans `media_moderation.review_comment`.
+- Après un rejet réussi, prompt `window.confirm` proposant le bannissement de l'uploadeur. Si accepté, ouvre `BanModal`. Sinon, retour normal.
+- Boutons « Bannir » affichent un hint cascade explicite : « Tous les médias en attente de cet utilisateur seront automatiquement rejetés. » (la cascade est déjà appliquée par `routes/moderation.js:POST /users/:id/ban`).
+
+Paramètre `upload_max_bytes` (table `app_settings`) :
+- Defaut 200 Mo (`200 * 1024 * 1024`), seedé au démarrage par `routes/settings.js`.
+- Lu côté frontend via `AppApiService.getSettings()` au mount de `UploadScreens`. Le frontend a un fallback constant (200 Mo) si la fetch échoue.
+- PATCH `/app-api/settings/:key` (admin only) pour modifier sans redéploiement. UI admin de gestion à construire.
+
 Panneau admin — dropdown 3 états (`AdminScreen.tsx`) :
 - `Activé` (vert) → `PATCH /users/:id/active {is_active:true}`
 - `Désactivé` (gris, sticky) → `PATCH /users/:id/active {is_active:false}` (pas de ban — l'auto-réactivation NE S'APPLIQUE PAS sans ban naturellement expiré)
