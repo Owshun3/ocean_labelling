@@ -15,12 +15,13 @@ import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
-const ROLES: AppRole[] = ['admin', 'moderator', 'curator', 'annotator', 'guest'];
+const ROLES: AppRole[] = ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'];
 
 const ROLE_LABELS: Record<AppRole, string> = {
 	admin: 'Administrateur',
 	moderator: 'Modérateur',
 	curator: 'Curateur',
+	chercheur: 'Chercheur',
 	annotator: 'Annotateur',
 	guest: 'Invité',
 };
@@ -29,6 +30,7 @@ const ROLE_COLORS: Record<AppRole, string> = {
 	admin: '#dc2626',
 	moderator: '#0284c7',
 	curator: '#7c3aed',
+	chercheur: '#0ea5e9',
 	annotator: '#16a34a',
 	guest: '#9ca3af',
 };

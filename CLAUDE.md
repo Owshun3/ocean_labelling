@@ -45,12 +45,17 @@ Proxy NGINX : `/app-api/` → `http://app-api:3000/` (strip prefix via trailing 
 
 Compte admin : `username=admin`, mot de passe défini dans `.env` → `CVAT_ADMIN_PASS` (CVAT superuser → rôle 'admin' automatique).
 
-Hiérarchie des rôles (haut → bas) : `admin` > `moderator` > `curator` > `annotator` > `guest`.
+Hiérarchie des rôles (haut → bas) : `admin` > `moderator` > `curator` ≥ `chercheur` > `annotator` > `guest`.
 Stockage : table `user_roles(cvat_user_id PK, role)`. Utilisateurs non présents = `annotator` par défaut.
+
+**Rôle chercheur — détail :**
+Profil hybride pour usage scientifique. Peut uploader des médias, annoter, et **agir comme curator** (validation, fusion). **Ne peut pas** modérer. **Export limité** à un périmètre de données autorisé en amont (à définir : table d'autorisations explicites par utilisateur×scope). Cas typique : étudiant chercheur invité qui contribue à un sous-ensemble de données validées par l'admin.
+Côté code : middleware `requireCuratorOrAbove` doit accepter `chercheur`. Middleware `requireModeratorOrAbove` l'exclut. Nouveau middleware ou logique d'export contrôle les bornes d'accès aux données.
 
 **Rôle curator — détail :**
 Reçoit un **batch de médias annotés à valider, fourni individuellement** à chaque curator par l'admin ou par un algorithme d'assignation (à construire).
 Son travail : vérifier la qualité, voir tous les labels et étiquettes (noms d'espèces) proposés par les différents annotateurs, puis fusionner les annotations, choisir la meilleure, ou réannoter lui-même. Valide pour usage/export.
+**Responsabilité espèces** : quand un annotateur propose une nouvelle espèce avec une description, le curator peut (1) valider la description proposée, (2) l'importer depuis Wikipédia, (3) la remplir manuellement. Il **harmonise** les noms (scientifique / usage français / usage polynésien) — garant de la cohérence du catalogue d'espèces. La description finale est stockée en base et affichée côté guest dans un encadré sur la fiche espèce (ex. « vini vini : cliquez ici pour une description plus détaillée »).
 
 **Prérequis technique du curator (Consensus Replicas) :**
 Pour qu'une tâche puisse être curée, elle DOIT avoir été créée avec `consensus_replicas >= 2` au moment du `POST /api/tasks`. Ce paramètre ne peut PAS être ajouté rétroactivement (contrainte CVAT — source : docs.cvat.ai/docs/qa-analytics/consensus/).
@@ -119,7 +124,7 @@ Services frontend :
 Routes Expo :
 | Route | Écran | Rôle requis |
 |---|---|---|
-| `/studio/select` | `StudioSelectScreen` (deux sections : Mes médias / Flux communautaire) | annotator+ |
+| `/studio/select` | `StudioSelectScreen` (deux sections : Mes médias / Mur communautaire) | annotator+ |
 | `/studio/[taskId]/[jobId]` | `StudioScreen` (canvas Konva + outils) | annotator+ |
 | `/curator/studio/[taskId]/[jobId]` | `CuratorStudioScreen` (coquille — overlay multi-annotateur à construire) | curator+ |
 
@@ -151,9 +156,13 @@ Endpoints app-api studio :
 | PATCH | `/species/:id/approve` | requireCuratorOrAbove | Curator validation |
 | POST | `/species/:id/increment-usage` | requireAuth | Incrémente compteur (frontend l'appelle au validate, mais ne l'affiche pas) |
 
-**Anti-biais autocomplete** : aucune suggestion tant que < 1 lettre tapée. `usage_count` jamais affiché côté UI. Tri alphabétique pour ne pas véhiculer la popularité par l'ordre.
+**Anti-biais autocomplete** : aucune suggestion tant que < 1 lettre tapée. `usage_count` jamais affiché côté UI. Tri alphabétique pour ne pas véhiculer la popularité par l'ordre. **Search "contains"** (pas "starts with") pour matcher la frappe partout dans le nom — formellement présenté comme « suggestions » et non « autocomplétion », pour ne pas suggérer une intention contraignante.
 
-**Page de sélection `/studio/select`** : layout horizontal **Mes médias (flex 2) | Flux communautaire (flex 1)**. Mes médias est subdivisé en 3 sous-sections par `annotation_state` : « Non annoté », « Annoté » (≥ 1 shape dans mon job), « Validé par curator » (`media_moderation.curator_validated_at IS NOT NULL`). La section Validé propose un footer « Voir / Contester » sur chaque tuile. « Voir » est un placeholder tant que le studio curator ne produit pas encore d'annotation finale (`Alert` informatif). « Contester » ouvre `ContestModal` partagé avec la modération → POST `/studio/contest-annotation`.
+**Modèle espèce enrichi** (à implémenter) : `species` doit porter trois noms — `scientific_name` (Latin), `common_name` (français/usage), `polynesian_name` (tahitien d'usage) — affiché « Nom usage (polynesian_name) ». Tag `category` ∈ `terrestrial_fauna | marine_fauna | ...` (radio extensible). Champ `description` libre, rempli par le curator (saisie, Wikipédia, ou validation de la proposition annotateur). La recherche frappe sur les trois noms — l'annotateur tape n'importe lequel, le suggesteur trouve.
+
+**Page de sélection `/studio/select`** : layout horizontal **Mes médias (flex 2) | Mur communautaire (flex 1)**. Mes médias est subdivisé en 3 sous-sections par `annotation_state` : « Non annoté », « Annoté » (≥ 1 shape dans mon job), « Validé par curator » (`media_moderation.curator_validated_at IS NOT NULL`). La section Validé propose un footer « Voir / Contester » sur chaque tuile. « Voir » est un placeholder tant que le studio curator ne produit pas encore d'annotation finale (`Alert` informatif). « Contester » ouvre `ContestModal` partagé avec la modération → POST `/studio/contest-annotation`.
+
+**Vocabulaire** : le terme « flux » est banni de l'UI au profit de **« mur »** (mur communautaire, mur de médias). Le guest verra une version curated du mur (exemples + médias labellisés pour l'attractivité, **sans** exposition complète pour éviter l'aspiration des idées par des tiers).
 
 **Polling post-upload** : `CvatMediaService.waitForTaskData` poll `GET /tasks/{id}` (toujours 200) en attendant `task.size > 0`. **Ne PAS poll `/preview`** : retourne 400 jusqu'à ingestion → console saturée d'erreurs cosmétiques.
 

@@ -16,7 +16,7 @@ appApiClient.interceptors.request.use((config) => {
 
 attachBanInterceptor(appApiClient);
 
-export type AppRole = 'admin' | 'curator' | 'moderator' | 'annotator' | 'guest';
+export type AppRole = 'admin' | 'moderator' | 'curator' | 'chercheur' | 'annotator' | 'guest';
 export type AccountState = 'active' | 'disabled' | 'banned';
 export type ModerationStatus = 'pending' | 'validated' | 'rejected';
 

@@ -270,3 +270,118 @@ Quand le studio custom couvrira fonctionnellement le studio CVAT injecté, ADR-0
 ## Stratégie hybride pour les espèces (rappel)
 
 Conformément à la décision technique de la session : Postgres est la source de vérité (`species` table), CVAT reçoit le label en miroir lazy au moment du `POST /annotations`. Voir `app-api/src/routes/species.js` et la spec en commentaires de `frontend/src/features/studio/`.
+
+---
+
+# ADR-008 : Authentification par session côté app-api (proposé, à implémenter)
+
+* **Statut :** Proposé (réunion 2026-05-07)
+* **Date :** 2026-05-07
+
+## Contexte
+
+Modèle actuel : authentification Token-Bearer DRF côté CVAT, propagée via header `Authorization: Token <key>` à app-api. Le frontend stocke le token CVAT en localStorage. Pas de session serveur côté app-api.
+
+Limitations identifiées en réunion :
+- Pas d'invalidation côté serveur : un token compromis reste valide jusqu'à logout explicite (qui dépend de l'utilisateur).
+- Pas de TTL contrôlable côté app-api ; on subit la politique CVAT.
+- Le localStorage est lisible par tout JS de la page (XSS = vol de token).
+
+## Décision
+
+Migrer vers un modèle de **session serveur** géré par app-api :
+- Au login, app-api crée une entrée `app_sessions(id, cvat_user_id, cvat_token, created_at, expires_at, last_seen_at)` côté Postgres et émet un **session ID** (UUID v4) court.
+- Le client stocke le session ID dans un cookie `HttpOnly` + `Secure` + `SameSite=Strict`. Le cookie sert UNIQUEMENT à transporter le session ID — aucun crédential réel n'est dans le cookie.
+- Toutes les requêtes app-api passent le cookie ; le middleware `requireAuth` lit le cookie → look-up session → enrichit `req.cvatUser`. Le token CVAT est récupéré côté serveur depuis la session pour les proxies CVAT.
+- Logout : `DELETE app_sessions WHERE id = ?`. Invalidation immédiate.
+- TTL session : 30 jours rolling (renouvelé à chaque requête via `last_seen_at`). Hard expiry après 90 jours d'inactivité absolue.
+
+## Conséquences
+
+| Positif | Négatif |
+|---|---|
+| Invalidation serveur immédiate possible | État serveur (table sessions) — minor cost |
+| Token CVAT jamais exposé au JS frontend (anti-XSS) | Migration significative côté frontend (suppression localStorage, gestion cookie) |
+| TTL et révocation contrôlés par nous | Le frontend doit envoyer `credentials: 'include'` partout |
+| Audit log naturel (`app_sessions.last_seen_at`) | Login direct CVAT (`/api/auth/login`) reste, mais le token n'est plus exposé au client |
+
+## Migration
+
+À effectuer en une session dédiée. Touche : `CvatAuthService`, `axiosClient` (withCredentials, retire l'intercepteur Token), tous les services API (`AppApiService`, `StudioService`, `SpeciesService`, `ModerationService`, `CuratorService`), backend `middleware/auth.js`, tous les routers (`requireAuth` doit fonctionner sur le cookie), config NGINX (CORS `Access-Control-Allow-Credentials`), table `app_sessions` dans `db.js`.
+
+---
+
+# ADR-009 : Rôles CVAT bas par défaut + rôle applicatif distinct (proposé)
+
+* **Statut :** Proposé (réunion 2026-05-07)
+* **Date :** 2026-05-07
+
+## Contexte
+
+CVAT possède son propre système de permissions (organization roles : owner, maintainer, worker, supervisor). Aujourd'hui les utilisateurs Ocean créés via registration héritent du rôle CVAT par défaut, qui peut être trop permissif si CVAT change ses defaults entre versions, ou si on oublie d'ajuster lors de la création.
+
+Risque : un utilisateur Ocean avec rôle applicatif `annotator` pourrait, via accès direct à l'API CVAT (port 8888 ouvert, token valide), exécuter des opérations CVAT-natives élargies (lister toutes les tâches, créer un projet) si son rôle CVAT le lui permet.
+
+## Décision
+
+À l'inscription d'un nouvel utilisateur Ocean, app-api doit **assigner explicitement le rôle CVAT le plus restrictif possible** (typiquement `worker` ou équivalent) en parallèle de l'inscription dans `user_roles`. Le rôle applicatif Ocean (admin/moderator/curator/chercheur/annotator/guest) reste la source de vérité pour les permissions Ocean ; le rôle CVAT bas est une **couche de défense en profondeur** contre les contournements directs.
+
+L'admin Ocean (CVAT_ADMIN_USER) reste superuser CVAT — c'est lui qui pilote l'API admin via app-api.
+
+## Conséquences
+
+| Positif | Négatif |
+|---|---|
+| Défense en profondeur : un bug app-api n'élargit pas l'accès CVAT | Code d'inscription doit faire un PATCH CVAT supplémentaire pour set le rôle |
+| Sépare cleanly « rôle Ocean » de « rôle CVAT » | Si CVAT change le nom du rôle bas, casse silencieuse |
+| Cohérent avec ADR-002 (CVAT en boîte noire) — on ne touche pas son code, on utilise son API | — |
+
+## Implémentation
+
+À étudier en session dédiée. Touche : `app-api/src/routes/users.js` (création), endpoint CVAT à confirmer (probablement `PATCH /api/memberships/{id}` après l'inscription). Vérifier le rôle CVAT par défaut actuel via `cvat_db` (table `organizations_membership` ou similaire).
+
+---
+
+# ADR-010 : Modèle espèce multi-noms + tags + description (accepté)
+
+* **Statut :** Accepté (réunion 2026-05-07)
+* **Date :** 2026-05-07
+
+## Contexte
+
+Le modèle `species` actuel ne porte qu'un seul champ `name`. La réunion a clarifié qu'une espèce peut être désignée par :
+- Son nom scientifique (Latin)
+- Son nom d'usage français (ex. « tortue verte »)
+- Son nom d'usage polynésien / tahitien (ex. « honu »)
+
+L'annotateur, selon son profil (chercheur scientifique vs amateur local), tape l'un ou l'autre. La recherche doit matcher dans les trois noms.
+
+De plus, le curator a la responsabilité de produire une **description** par espèce (saisie libre, import Wikipédia, ou validation de proposition annotateur), affichée côté guest dans la fiche espèce.
+
+## Décision
+
+Évolution du schéma `species` :
+```sql
+ALTER TABLE species ADD COLUMN IF NOT EXISTS scientific_name TEXT;
+ALTER TABLE species ADD COLUMN IF NOT EXISTS common_name TEXT;       -- renomme l'actuel `name` côté usage
+ALTER TABLE species ADD COLUMN IF NOT EXISTS polynesian_name TEXT;
+ALTER TABLE species ADD COLUMN IF NOT EXISTS category TEXT;          -- 'terrestrial_fauna' | 'marine_fauna' | ...
+ALTER TABLE species ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE species ADD COLUMN IF NOT EXISTS description_source TEXT; -- 'manual' | 'wikipedia' | 'annotator_proposal'
+```
+
+Le champ `name` existant migre en `common_name` ; les autres sont rétro-compatibles (NULL par défaut). Un index trigramme ou un index GIN sur la concaténation des trois noms accélère la recherche substring.
+
+Recherche : autocomplete change de `LOWER(name) LIKE 'q%'` (prefix) à `LOWER(scientific_name || ' ' || common_name || ' ' || polynesian_name) LIKE '%q%'` (contains). Affichage UI : « common_name (polynesian_name) — scientific_name ».
+
+Catégories : radio buttons dans la fiche curator (faune terrestre / faune marine / extensible). UI annotateur peut filtrer/regrouper par catégorie plus tard.
+
+## Conséquences
+
+| Positif | Négatif |
+|---|---|
+| Recherche naturelle peu importe le profil de l'annotateur | Migration des espèces existantes (mapping `name` → `common_name`) |
+| Description curated stockée → fiche guest informative | UI curator à construire (édition espèce + import Wikipédia) |
+| `category` ouvre la voie à des filtres UI plus tard | Tri/dédoublonnage à anticiper (deux noms scientifiques différents pour la même espèce ?) |
+
+Implémentation à séquencer : (1) migration schéma + adaptation autocomplete backend, (2) UI annotateur multi-noms display, (3) UI curator édition espèce + import Wikipédia, (4) fiche guest publique.

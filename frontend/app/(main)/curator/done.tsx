@@ -2,7 +2,7 @@ import { Redirect, useLocalSearchParams } from 'expo-router';
 import { getUserProfile } from '@/services/api/authStorage';
 import { CuratorPostValidationScreen } from '@/features/curator/screens/CuratorPostValidationScreen';
 
-const ALLOWED_ROLES = ['admin', 'moderator', 'curator'];
+const ALLOWED_ROLES = ['admin', 'moderator', 'curator', 'chercheur'];
 
 export default function CuratorDoneRoute() {
 	const profile = getUserProfile();

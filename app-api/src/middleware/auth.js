@@ -104,7 +104,7 @@ async function requireCuratorOrAbove(req, res, next) {
   req.cvatUser = cvatUser;
   if (cvatUser.is_superuser || cvatUser.is_staff) return next();
   const role = await fetchAppRole(cvatUser.id);
-  if (['admin', 'moderator', 'curator'].includes(role)) return next();
+  if (['admin', 'moderator', 'curator', 'chercheur'].includes(role)) return next();
   return res.status(403).json({ error: 'Curator access required' });
 }
 

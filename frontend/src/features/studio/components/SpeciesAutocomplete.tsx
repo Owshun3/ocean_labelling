@@ -69,7 +69,7 @@ export const SpeciesAutocomplete: React.FC<Props> = ({ value, onPick }) => {
 				onChangeText={(t) => { setText(t); setIsOpen(true); }}
 				onFocus={() => setIsOpen(true)}
 				onBlur={() => setTimeout(() => setIsOpen(false), 150)}
-				placeholder="Tape un nom d'espèce…"
+				placeholder="Cherche une espèce…"
 				placeholderTextColor={COLORS.text.placeholder}
 				style={styles.input}
 				autoCapitalize="none"
@@ -87,7 +87,7 @@ export const SpeciesAutocomplete: React.FC<Props> = ({ value, onPick }) => {
 						>
 							<Text style={styles.itemName}>{r.name}</Text>
 							{r.status === 'pending' ? (
-								<Text style={styles.pendingTag}>en attente curator</Text>
+								<Text style={styles.pendingTag}>en attente de validation</Text>
 							) : null}
 						</Pressable>
 					))}
@@ -99,7 +99,7 @@ export const SpeciesAutocomplete: React.FC<Props> = ({ value, onPick }) => {
 						>
 							<View style={styles.newBadge}><Text style={styles.newBadgeText}>NOUVELLE</Text></View>
 							<Text style={styles.proposeText}>
-								Proposer « {trimmed} » (sera soumise au curator)
+								Proposer « {trimmed} » (sera soumise pour validation)
 							</Text>
 						</Pressable>
 					) : null}

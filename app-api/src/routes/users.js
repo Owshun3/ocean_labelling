@@ -5,7 +5,7 @@ const { requireAdmin, requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 const CVAT_API = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
-const VALID_ROLES = ['admin', 'moderator', 'curator', 'annotator', 'guest'];
+const VALID_ROLES = ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'];
 
 // Token CVAT admin caché — utilisé pour lister tous les users (seul un superuser CVAT peut le faire)
 let cachedAdminToken = null;

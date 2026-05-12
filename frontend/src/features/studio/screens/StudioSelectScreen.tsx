@@ -104,7 +104,12 @@ export const StudioSelectScreen: React.FC = () => {
 				<Text style={styles.filterHint}>{'// TODO filtres v2 (géoloc, espèces, dates…)'}</Text>
 			</View>
 
-			<Text style={styles.legend}>Double-clic pour démarrer l'annotation. Sur un média validé : « Voir » ou « Contester ».</Text>
+			<View style={styles.legendBox}>
+				<Text style={styles.legendIcon}>i</Text>
+				<Text style={styles.legendText}>
+					<Text style={styles.legendStrong}>Double-clic</Text> sur un média pour démarrer l'annotation. Sur un média validé, choisis « Voir » ou « Contester ».
+				</Text>
+			</View>
 
 			<View style={styles.columns}>
 				<View style={styles.ownCol}>
@@ -147,7 +152,7 @@ export const StudioSelectScreen: React.FC = () => {
 				<View style={styles.communityCol}>
 					<View style={styles.colHeader}>
 						<View style={[styles.colDot, { backgroundColor: COLORS.success }]} />
-						<Text style={styles.colTitle}>Flux communautaire</Text>
+						<Text style={styles.colTitle}>Mur communautaire</Text>
 						<View style={styles.colCountWrap}>
 							<Text style={styles.colCount}>{community.length}</Text>
 						</View>
@@ -238,7 +243,27 @@ const styles = StyleSheet.create({
 	filterPillText: { fontSize: 12, color: COLORS.text.inverse, fontWeight: '600' },
 	filterHint: { fontSize: 11, color: COLORS.text.placeholder, fontStyle: 'italic', marginLeft: 'auto' },
 
-	legend: { fontSize: 12, color: COLORS.text.secondary, marginBottom: SPACING.md },
+	legendBox: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: SPACING.sm,
+		paddingVertical: SPACING.sm,
+		paddingHorizontal: SPACING.md,
+		backgroundColor: COLORS.background.card,
+		borderRadius: 8,
+		borderWidth: 1,
+		borderColor: COLORS.border,
+		borderLeftWidth: 4,
+		borderLeftColor: COLORS.primary,
+		marginBottom: SPACING.md,
+	},
+	legendIcon: {
+		width: 20, height: 20, borderRadius: 10,
+		backgroundColor: COLORS.primary, color: COLORS.text.inverse,
+		textAlign: 'center', fontWeight: '700', fontSize: 13, lineHeight: 20,
+	},
+	legendText: { fontSize: 13, color: COLORS.text.primary, flex: 1 },
+	legendStrong: { fontWeight: '700', color: COLORS.primary },
 
 	columns: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md },
 

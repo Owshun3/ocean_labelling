@@ -21,7 +21,7 @@ router.get('/', requireAuth, async (req, res) => {
     const params = [];
     let where = '';
     if (q.length > 0) {
-      params.push(`${q.toLowerCase()}%`);
+      params.push(`%${q.toLowerCase()}%`);
       where = `WHERE LOWER(name) LIKE $1`;
     }
     const { rows } = await pool.query(`

@@ -12,7 +12,7 @@ export const DashboardScreen: React.FC = () => {
 	const profile = getUserProfile();
 	const userRole = profile?.appRole ?? 'annotator';
 
-	const isCuratorOrAbove = ['admin', 'moderator', 'curator'].includes(userRole);
+	const isCuratorOrAbove = ['admin', 'moderator', 'curator', 'chercheur'].includes(userRole);
 	const isModeratorOrAbove = ['admin', 'moderator'].includes(userRole);
 	const isAdmin = userRole === 'admin';
 
