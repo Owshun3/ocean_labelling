@@ -90,6 +90,14 @@ async function _createSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_species_name_lower ON species (LOWER(name));
     CREATE INDEX IF NOT EXISTS idx_species_status     ON species (status);
+    ALTER TABLE species ADD COLUMN IF NOT EXISTS scientific_name      TEXT;
+    ALTER TABLE species ADD COLUMN IF NOT EXISTS polynesian_name      TEXT;
+    ALTER TABLE species ADD COLUMN IF NOT EXISTS category             TEXT;
+    ALTER TABLE species ADD COLUMN IF NOT EXISTS description          TEXT;
+    ALTER TABLE species ADD COLUMN IF NOT EXISTS description_source   TEXT
+      CHECK (description_source IS NULL OR description_source IN ('manual', 'wikipedia', 'annotator_proposal'));
+    CREATE INDEX IF NOT EXISTS idx_species_scientific_lower ON species (LOWER(scientific_name));
+    CREATE INDEX IF NOT EXISTS idx_species_polynesian_lower ON species (LOWER(polynesian_name));
 
     CREATE TABLE IF NOT EXISTS annotation_comments (
       id                    SERIAL      PRIMARY KEY,

@@ -17,12 +17,27 @@ speciesClient.interceptors.request.use((config) => {
 attachBanInterceptor(speciesClient);
 
 export type SpeciesStatus = 'pending' | 'approved' | 'rejected';
+export type SpeciesCategory = 'terrestrial_fauna' | 'marine_fauna' | 'flora' | 'other';
+export type DescriptionSource = 'manual' | 'wikipedia' | 'annotator_proposal';
 
 export interface Species {
 	id: number;
 	name: string;
+	scientific_name: string | null;
+	polynesian_name: string | null;
+	category: SpeciesCategory | null;
+	description: string | null;
+	description_source: DescriptionSource | null;
 	status: SpeciesStatus;
 	usage_count: number;
+}
+
+export interface SpeciesEditPayload {
+	scientific_name?: string | null;
+	polynesian_name?: string | null;
+	category?: SpeciesCategory | null;
+	description?: string | null;
+	description_source?: DescriptionSource | null;
 }
 
 export class SpeciesService {
@@ -33,6 +48,11 @@ export class SpeciesService {
 
 	async create(name: string): Promise<Species> {
 		const resp = await speciesClient.post<Species>('/', { name });
+		return resp.data;
+	}
+
+	async update(id: number, payload: SpeciesEditPayload): Promise<Species> {
+		const resp = await speciesClient.patch<Species>(`/${id}`, payload);
 		return resp.data;
 	}
 

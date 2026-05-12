@@ -85,7 +85,15 @@ export const SpeciesAutocomplete: React.FC<Props> = ({ value, onPick }) => {
 							onPress={() => pickExisting(r)}
 							style={({ hovered }: any) => [styles.dropdownItem, hovered && styles.dropdownItemHover]}
 						>
-							<Text style={styles.itemName}>{r.name}</Text>
+							<View style={styles.itemMain}>
+								<Text style={styles.itemName}>
+									{r.name}
+									{r.polynesian_name ? <Text style={styles.itemPoly}> · {r.polynesian_name}</Text> : null}
+								</Text>
+								{r.scientific_name ? (
+									<Text style={styles.itemScientific}>{r.scientific_name}</Text>
+								) : null}
+							</View>
 							{r.status === 'pending' ? (
 								<Text style={styles.pendingTag}>en attente de validation</Text>
 							) : null}
@@ -127,12 +135,15 @@ const styles = StyleSheet.create({
 	},
 	loadingText: { fontSize: 11, color: COLORS.text.placeholder, padding: SPACING.sm, fontStyle: 'italic' },
 	dropdownItem: {
-		flexDirection: 'row', alignItems: 'center', gap: 6,
+		flexDirection: 'row', alignItems: 'flex-start', gap: 6,
 		paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm,
 		borderBottomWidth: 1, borderBottomColor: COLORS.border,
 	},
 	dropdownItemHover: { backgroundColor: COLORS.background.main },
-	itemName:  { fontSize: 13, color: COLORS.text.primary, flex: 1 },
+	itemMain:  { flex: 1, gap: 2 },
+	itemName:  { fontSize: 13, color: COLORS.text.primary, fontWeight: '500' },
+	itemPoly:  { fontSize: 12, color: COLORS.text.secondary, fontWeight: '400' },
+	itemScientific: { fontSize: 11, color: COLORS.text.placeholder, fontStyle: 'italic' },
 	pendingTag: { fontSize: 10, color: COLORS.warning, fontWeight: '600', textTransform: 'uppercase' },
 	proposeItem: { backgroundColor: `${COLORS.warning}11` },
 	proposeText: { fontSize: 12, color: COLORS.text.primary, flex: 1 },
