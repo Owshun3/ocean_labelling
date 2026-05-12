@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { Stage, Layer, Image as KonvaImage, Rect, Group, Transformer } from 'react-konva';
 import type Konva from 'konva';
@@ -6,6 +6,12 @@ import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { useStudioFrame } from '../hooks/useStudioFrame';
 import { StudioShape, StudioTool } from '../types';
+
+export interface StudioCanvasHandle {
+	zoomIn:    () => void;
+	zoomOut:   () => void;
+	resetZoom: () => void;
+}
 
 interface Props {
 	jobId: number;
@@ -23,6 +29,11 @@ interface FitTransform {
 	offsetX: number;
 	offsetY: number;
 }
+
+const ZOOM_STEP    = 1.25;
+const ZOOM_MIN     = 0.2;
+const ZOOM_MAX     = 8;
+const MIN_RECT_PX  = 4;
 
 function computeFit(stageW: number, stageH: number, imgW: number, imgH: number): FitTransform {
 	if (stageW <= 0 || stageH <= 0 || imgW <= 0 || imgH <= 0) {
@@ -57,15 +68,22 @@ function clampRect(r: { x: number; y: number; width: number; height: number }, i
 	return { x, y, width, height };
 }
 
-export const StudioCanvas: React.FC<Props> = ({
+export const StudioCanvas = forwardRef<StudioCanvasHandle, Props>(({
 	jobId, frameNumber, tool, shapes, selectedId, onAddShape, onSelectShape, onUpdateShape,
-}) => {
+}, ref) => {
 	const { image, loading, error } = useStudioFrame(jobId, frameNumber);
 	const [size, setSize] = useState({ width: 0, height: 0 });
-	const [firstPoint, setFirstPoint] = useState<{ x: number; y: number } | null>(null);
-	const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
 
+	const [stageScale, setStageScale] = useState(1);
+	const [stagePos,   setStagePos]   = useState({ x: 0, y: 0 });
+
+	const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+	const [drawEnd,   setDrawEnd]   = useState<{ x: number; y: number } | null>(null);
+	const panLastRef = useRef<{ x: number; y: number } | null>(null);
+
+	const stageRef       = useRef<Konva.Stage | null>(null);
 	const layerRef       = useRef<Konva.Layer | null>(null);
+	const groupRef       = useRef<Konva.Group | null>(null);
 	const transformerRef = useRef<Konva.Transformer | null>(null);
 
 	const fit = useMemo(
@@ -73,12 +91,29 @@ export const StudioCanvas: React.FC<Props> = ({
 		[size, image],
 	);
 
+	const zoomTo = (newScale: number, focus: { x: number; y: number }) => {
+		const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newScale));
+		const pointTo = {
+			x: (focus.x - stagePos.x) / stageScale,
+			y: (focus.y - stagePos.y) / stageScale,
+		};
+		setStageScale(clamped);
+		setStagePos({
+			x: focus.x - pointTo.x * clamped,
+			y: focus.y - pointTo.y * clamped,
+		});
+	};
+
+	useImperativeHandle(ref, () => ({
+		zoomIn:    () => zoomTo(stageScale * ZOOM_STEP, { x: size.width / 2, y: size.height / 2 }),
+		zoomOut:   () => zoomTo(stageScale / ZOOM_STEP, { x: size.width / 2, y: size.height / 2 }),
+		resetZoom: () => { setStageScale(1); setStagePos({ x: 0, y: 0 }); },
+	}), [stageScale, stagePos, size]);
+
 	useEffect(() => {
-		if (tool !== 'rectangle') {
-			setFirstPoint(null);
-			setHoverPoint(null);
-		}
-		if (tool !== 'select') onSelectShape(null);
+		if (tool !== 'rectangle') { setDrawStart(null); setDrawEnd(null); }
+		if (tool !== 'select')    onSelectShape(null);
+		if (tool !== 'pan')       panLastRef.current = null;
 	}, [tool, onSelectShape]);
 
 	useEffect(() => {
@@ -95,8 +130,7 @@ export const StudioCanvas: React.FC<Props> = ({
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
-				setFirstPoint(null);
-				setHoverPoint(null);
+				setDrawStart(null); setDrawEnd(null);
 				onSelectShape(null);
 			}
 		};
@@ -106,55 +140,80 @@ export const StudioCanvas: React.FC<Props> = ({
 		}
 	}, [onSelectShape]);
 
-	const stageToImage = (stageX: number, stageY: number) => {
-		if (fit.scale === 0 || !image) return null;
-		const ix = (stageX - fit.offsetX) / fit.scale;
-		const iy = (stageY - fit.offsetY) / fit.scale;
-		if (ix < 0 || iy < 0 || ix > image.width || iy > image.height) return null;
-		return { x: ix, y: iy };
+	const getImagePos = (): { x: number; y: number } | null => {
+		const group = groupRef.current;
+		if (!group || !image) return null;
+		const pos = group.getRelativePointerPosition();
+		if (!pos) return null;
+		if (pos.x < 0 || pos.y < 0 || pos.x > image.width || pos.y > image.height) return null;
+		return pos;
 	};
 
-	const handleStageClick = (evt: any) => {
-		const targetType = evt.target?.getClassName?.();
+	const handleMouseDown = (e: any) => {
+		if (tool === 'pan') {
+			const stage = stageRef.current;
+			const ptr = stage?.getPointerPosition();
+			if (ptr) panLastRef.current = ptr;
+			return;
+		}
+		if (tool === 'rectangle' && image) {
+			const pos = getImagePos();
+			if (!pos) return;
+			setDrawStart(pos);
+			setDrawEnd(pos);
+			return;
+		}
 		if (tool === 'select') {
+			const targetType = e.target?.getClassName?.();
 			if (targetType === 'Stage' || targetType === 'Image') onSelectShape(null);
-			return;
 		}
-		if (tool !== 'rectangle' || !image) return;
-		const stage = evt.target.getStage();
-		const ptr = stage?.getPointerPosition();
-		if (!ptr) return;
-		const img = stageToImage(ptr.x, ptr.y);
-		if (!img) return;
-
-		if (!firstPoint) {
-			setFirstPoint(img);
-			setHoverPoint(img);
-			return;
-		}
-		const rect = normalizeRect(firstPoint, img);
-		if (rect.width < 2 || rect.height < 2) {
-			setFirstPoint(null);
-			setHoverPoint(null);
-			return;
-		}
-		const clamped = clampRect(rect, image.width, image.height);
-		onAddShape({
-			id: newShapeId(),
-			x: clamped.x, y: clamped.y, width: clamped.width, height: clamped.height,
-			status: 'unsaved',
-		});
-		setFirstPoint(null);
-		setHoverPoint(null);
 	};
 
-	const handleStageMouseMove = (evt: any) => {
-		if (tool !== 'rectangle' || !firstPoint) return;
-		const stage = evt.target.getStage();
+	const handleMouseMove = () => {
+		if (tool === 'pan' && panLastRef.current) {
+			const stage = stageRef.current;
+			const ptr = stage?.getPointerPosition();
+			if (!ptr) return;
+			const dx = ptr.x - panLastRef.current.x;
+			const dy = ptr.y - panLastRef.current.y;
+			panLastRef.current = ptr;
+			setStagePos((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+			return;
+		}
+		if (tool === 'rectangle' && drawStart) {
+			const pos = getImagePos();
+			if (pos) setDrawEnd(pos);
+		}
+	};
+
+	const handleMouseUp = () => {
+		if (tool === 'pan') {
+			panLastRef.current = null;
+			return;
+		}
+		if (tool === 'rectangle' && drawStart && drawEnd && image) {
+			const rect = normalizeRect(drawStart, drawEnd);
+			if (rect.width >= MIN_RECT_PX && rect.height >= MIN_RECT_PX) {
+				const clamped = clampRect(rect, image.width, image.height);
+				onAddShape({
+					id: newShapeId(),
+					x: clamped.x, y: clamped.y, width: clamped.width, height: clamped.height,
+					status: 'unsaved',
+				});
+			}
+			setDrawStart(null);
+			setDrawEnd(null);
+		}
+	};
+
+	const handleWheel = (e: any) => {
+		if (typeof e.evt?.preventDefault === 'function') e.evt.preventDefault();
+		const stage = stageRef.current;
 		const ptr = stage?.getPointerPosition();
 		if (!ptr) return;
-		const img = stageToImage(ptr.x, ptr.y);
-		if (img) setHoverPoint(img);
+		const direction = e.evt.deltaY > 0 ? -1 : 1;
+		const target = direction > 0 ? stageScale * 1.1 : stageScale / 1.1;
+		zoomTo(target, ptr);
 	};
 
 	const handleRectDragEnd = (id: string, node: Konva.Node) => {
@@ -189,10 +248,13 @@ export const StudioCanvas: React.FC<Props> = ({
 		);
 	}
 
-	const ghost = firstPoint && hoverPoint ? normalizeRect(firstPoint, hoverPoint) : null;
+	const ghost = drawStart && drawEnd ? normalizeRect(drawStart, drawEnd) : null;
+	const dashUnit  = 6 / (fit.scale * stageScale);
+	const strokeUnit = 2 / (fit.scale * stageScale);
+
 	const stageCursor =
-		tool === 'rectangle' && image ? 'crosshair'
-		: tool === 'select' ? 'default'
+		tool === 'pan'       ? (panLastRef.current ? 'grabbing' : 'grab')
+		: tool === 'rectangle' && image ? 'crosshair'
 		: 'default';
 
 	return (
@@ -215,15 +277,22 @@ export const StudioCanvas: React.FC<Props> = ({
 			)}
 			{size.width > 0 && size.height > 0 && (
 				<Stage
+					ref={stageRef as any}
 					width={size.width}
 					height={size.height}
-					onClick={handleStageClick}
-					onTap={handleStageClick}
-					onMouseMove={handleStageMouseMove}
+					scaleX={stageScale}
+					scaleY={stageScale}
+					x={stagePos.x}
+					y={stagePos.y}
+					onMouseDown={handleMouseDown}
+					onMouseMove={handleMouseMove}
+					onMouseUp={handleMouseUp}
+					onMouseLeave={handleMouseUp}
+					onWheel={handleWheel}
 					style={{ cursor: stageCursor }}
 				>
 					<Layer ref={layerRef as any}>
-						<Group x={fit.offsetX} y={fit.offsetY} scaleX={fit.scale} scaleY={fit.scale}>
+						<Group ref={groupRef as any} x={fit.offsetX} y={fit.offsetY} scaleX={fit.scale} scaleY={fit.scale}>
 							{image && <KonvaImage image={image} listening />}
 							{shapes.map((s) => {
 								const stroke = s.status === 'saved' ? COLORS.status.validated : COLORS.warning;
@@ -235,7 +304,7 @@ export const StudioCanvas: React.FC<Props> = ({
 										x={s.x} y={s.y}
 										width={s.width} height={s.height}
 										stroke={stroke}
-										strokeWidth={2 / fit.scale}
+										strokeWidth={strokeUnit}
 										strokeScaleEnabled={false}
 										fill={`${stroke}22`}
 										draggable={tool === 'select'}
@@ -249,7 +318,7 @@ export const StudioCanvas: React.FC<Props> = ({
 										onTransformEnd={(e) => handleRectTransformEnd(s.id, e.target)}
 										shadowEnabled={isSelected}
 										shadowColor={COLORS.primary}
-										shadowBlur={isSelected ? 8 / fit.scale : 0}
+										shadowBlur={isSelected ? 8 / (fit.scale * stageScale) : 0}
 									/>
 								);
 							})}
@@ -258,9 +327,9 @@ export const StudioCanvas: React.FC<Props> = ({
 									x={ghost.x} y={ghost.y}
 									width={ghost.width} height={ghost.height}
 									stroke={COLORS.warning}
-									strokeWidth={2}
+									strokeWidth={strokeUnit}
 									strokeScaleEnabled={false}
-									dash={[8 / fit.scale, 4 / fit.scale]}
+									dash={[dashUnit * 1.5, dashUnit]}
 									listening={false}
 								/>
 							)}
@@ -284,10 +353,12 @@ export const StudioCanvas: React.FC<Props> = ({
 			)}
 		</View>
 	);
-};
+});
+
+StudioCanvas.displayName = 'StudioCanvas';
 
 const styles = StyleSheet.create({
-	container: { flex: 1, position: 'relative', backgroundColor: COLORS.background.imagePlaceholder },
+	container: { flex: 1, position: 'relative', backgroundColor: COLORS.background.imagePlaceholder, overflow: 'hidden' },
 	overlay: {
 		...StyleSheet.absoluteFillObject,
 		alignItems: 'center',

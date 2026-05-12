@@ -140,7 +140,9 @@ Routes Expo :
 
 Le studio injecté NGINX (`ocean-studio.{js,css}`, route `/tasks/{id}/jobs/{j}`) reste en place comme **fallback admin** pendant la transition. Voir ADR-006 vs ADR-007.
 
-**Stack rendu** : `react-konva@19.0.10` + `konva` (web only — `Platform.OS !== 'web'` affiche un fallback). Stage Konva avec image fit-to-canvas, Group scaled pour les coordonnées, Transformer pour drag/resize, ghost rect dashed pendant le tracé.
+**Stack rendu** : `react-konva@19.0.10` + `konva` (web only — `Platform.OS !== 'web'` affiche un fallback). Stage Konva avec image fit-to-canvas, Group scaled pour les coordonnées image, Transformer pour drag/resize, ghost rect dashed pendant le tracé.
+
+**Outils + viewport** : 3 outils — Rect (drag-and-drop pour tracer), Select (Transformer 8 poignées), Déplacer (pan stage). Raccourcis : R / V / P. Zoom : boutons +/− et « Ajuster » dans la colonne outils, raccourcis +/-/0, molette souris centrée sur le curseur. Borne zoom 0.2x à 8x. Le Stage Konva applique le zoom (`scaleX/scaleY`) + position pan ; le Group interne reste en image-fit pour que les coordonnées des shapes restent en pixels image, invariantes au zoom. Tracé d'un rect = mousedown + drag + mouseup (≥ 4px image-coords sinon ignoré).
 
 **Contrainte single-rect** : un seul rectangle par annotation. `addShape` remplace inconditionnellement le shape précédent ; au validate, PUT-replace côté CVAT supprime tout shape qui n'est plus en local.
 

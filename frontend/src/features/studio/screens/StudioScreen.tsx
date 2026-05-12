@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 import { StudioService } from '@/services/api/StudioService';
-import { StudioCanvas } from '../components/StudioCanvas';
+import { StudioCanvas, StudioCanvasHandle } from '../components/StudioCanvas';
 import { ValidationPanel } from '../components/ValidationPanel';
 import { useInitialShapes } from '../hooks/useInitialShapes';
 import { StudioShape, StudioTool } from '../types';
@@ -23,6 +23,7 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 	const [submitting, setSubmitting] = useState(false);
 	const [initialized, setInitialized] = useState(false);
 	const studio = useMemo(() => new StudioService(), []);
+	const canvasRef = useRef<StudioCanvasHandle>(null);
 
 	const initial = useInitialShapes(jobId);
 
@@ -84,6 +85,10 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 			}
 			if (e.key === 'r' || e.key === 'R') setTool('rectangle');
 			if (e.key === 'v' || e.key === 'V') setTool('select');
+			if (e.key === 'p' || e.key === 'P') setTool('pan');
+			if (e.key === '+' || e.key === '=') canvasRef.current?.zoomIn();
+			if (e.key === '-' || e.key === '_') canvasRef.current?.zoomOut();
+			if (e.key === '0')                  canvasRef.current?.resetZoom();
 		};
 		if (typeof window !== 'undefined') {
 			window.addEventListener('keydown', onKey);
@@ -96,32 +101,44 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 			<View style={styles.toolsColumn}>
 				<Text style={styles.colTitle}>Outils</Text>
 
-				<ToolButton active={tool === 'rectangle'} label="Rect" hint="R" glyph="▭" onPress={() => setTool('rectangle')} />
+				<ToolButton active={tool === 'rectangle'} label="Rect"   hint="R" glyph="▭" onPress={() => setTool('rectangle')} />
 				<ToolButton active={tool === 'select'}    label="Select" hint="V" glyph="➤" onPress={() => setTool('select')} />
+				<ToolButton active={tool === 'pan'}       label="Déplacer" hint="P" glyph="✋" onPress={() => setTool('pan')} />
 
-				<View style={styles.shapesListWrap}>
-					<Text style={styles.shapesTitle}>Shapes ({shapes.length})</Text>
-					{shapes.length === 0 ? (
-						<Text style={styles.placeholderHint}>aucun</Text>
-					) : (
-						shapes.map((s, i) => (
-							<Pressable
-								key={s.id}
-								onPress={() => { setTool('select'); setSelectedId(s.id); }}
-								style={[styles.shapeRow, selectedId === s.id && styles.shapeRowSelected]}
-							>
-								<View style={[styles.shapeDot, { backgroundColor: s.status === 'saved' ? COLORS.status.validated : COLORS.warning }]} />
-								<Text style={styles.shapeLabel}>#{i + 1}</Text>
-							</Pressable>
-						))
-					)}
+				<View style={styles.zoomBlock}>
+					<Text style={styles.shapesTitle}>Zoom</Text>
+					<View style={styles.zoomRow}>
+						<Pressable onPress={() => canvasRef.current?.zoomOut()} style={styles.zoomBtn}>
+							<Text style={styles.zoomGlyph}>−</Text>
+						</Pressable>
+						<Pressable onPress={() => canvasRef.current?.zoomIn()} style={styles.zoomBtn}>
+							<Text style={styles.zoomGlyph}>+</Text>
+						</Pressable>
+					</View>
+					<Pressable onPress={() => canvasRef.current?.resetZoom()} style={styles.zoomResetBtn}>
+						<Text style={styles.zoomResetText}>Réajuster</Text>
+					</Pressable>
 				</View>
 
-				<Text style={styles.shortcutHint}>Suppr · supprimer{'\n'}Échap · désélectionner</Text>
+				{shapes.length > 0 ? (
+					<Pressable
+						onPress={() => shapes[0] && deleteShape(shapes[0].id)}
+						style={({ hovered }: any) => [styles.deleteBtn, hovered && styles.deleteBtnHover]}
+					>
+						<Text style={styles.deleteBtnText}>Effacer</Text>
+					</Pressable>
+				) : null}
+
+				<Text style={styles.shortcutHint}>
+					Échap · annuler{'\n'}
+					Suppr · effacer{'\n'}
+					+/− · zoom · 0 · ajuster
+				</Text>
 			</View>
 
 			<View style={styles.canvasColumn}>
 				<StudioCanvas
+					ref={canvasRef}
 					jobId={jobId}
 					frameNumber={0}
 					tool={tool}
@@ -191,15 +208,42 @@ const styles = StyleSheet.create({
 	toolHint: { fontSize: 10, color: COLORS.text.placeholder, fontWeight: '700' },
 	toolHintActive: { color: COLORS.text.inverse, opacity: 0.8 },
 
-	shapesListWrap: { marginTop: SPACING.md, gap: SPACING.xs },
-	shapesTitle: { fontSize: 11, fontWeight: '700', color: COLORS.text.secondary, textTransform: 'uppercase' },
-	shapeRow: {
-		flexDirection: 'row', alignItems: 'center', gap: 6,
-		paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4,
+	zoomBlock: { marginTop: SPACING.md, gap: 4 },
+	zoomRow:   { flexDirection: 'row', gap: 4 },
+	zoomBtn: {
+		flex: 1,
+		aspectRatio: 1,
+		borderRadius: 6,
+		borderWidth: 1,
+		borderColor: COLORS.border,
+		backgroundColor: COLORS.background.main,
+		alignItems: 'center',
+		justifyContent: 'center',
 	},
-	shapeRowSelected: { backgroundColor: COLORS.background.main, borderWidth: 1, borderColor: COLORS.primary },
-	shapeDot: { width: 8, height: 8, borderRadius: 4 },
-	shapeLabel: { fontSize: 12, color: COLORS.text.primary },
+	zoomGlyph: { fontSize: 18, color: COLORS.text.primary, fontWeight: '700' },
+	zoomResetBtn: {
+		paddingVertical: 6,
+		borderRadius: 6,
+		borderWidth: 1,
+		borderColor: COLORS.border,
+		backgroundColor: COLORS.background.main,
+		alignItems: 'center',
+	},
+	zoomResetText: { fontSize: 11, color: COLORS.text.primary, fontWeight: '600' },
+
+	shapesTitle: { fontSize: 11, fontWeight: '700', color: COLORS.text.secondary, textTransform: 'uppercase' },
+
+	deleteBtn: {
+		marginTop: SPACING.md,
+		paddingVertical: 6,
+		borderRadius: 6,
+		borderWidth: 1,
+		borderColor: COLORS.danger,
+		backgroundColor: COLORS.background.main,
+		alignItems: 'center',
+	},
+	deleteBtnHover:   { backgroundColor: `${COLORS.danger}18` },
+	deleteBtnText:    { fontSize: 11, color: COLORS.danger, fontWeight: '600' },
 
 	shortcutHint: { fontSize: 10, color: COLORS.text.placeholder, marginTop: 'auto', lineHeight: 14 },
 
@@ -213,5 +257,4 @@ const styles = StyleSheet.create({
 	},
 
 	colTitle: { ...TYPOGRAPHY.h2, fontSize: 16 },
-	placeholderHint: { fontSize: 12, color: COLORS.text.placeholder, fontStyle: 'italic' },
 });

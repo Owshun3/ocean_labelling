@@ -13,4 +13,4 @@ export interface StudioShape {
 	cvatClientId?: number;
 }
 
-export type StudioTool = 'rectangle' | 'select';
+export type StudioTool = 'rectangle' | 'select' | 'pan';
