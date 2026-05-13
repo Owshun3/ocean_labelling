@@ -53,10 +53,11 @@ export default function RootLayout() {
 	if (settings['platform.maintenance_mode']) {
 		const profile = getUserProfile();
 		const isAdmin = !!profile && (profile.appRole === 'admin' || profile.is_superuser);
-		const inAdminGroup = segments[1] === 'admin';
 		const inAuthGroup = segments[0] === '(auth)';
-		// Admin garde l'accès au tableau de bord + à l'auth. Tout le reste → page maintenance.
-		if (!(isAdmin && (inAdminGroup || inAuthGroup))) {
+		// Toujours laisser passer le groupe (auth) : un visiteur doit pouvoir tenter le login pour
+		// vérifier s'il est admin. Sinon le site peut se retrouver verrouillé indéfiniment.
+		// Admin authentifié : accès complet (le middleware backend bypass maintenance pour lui).
+		if (!(inAuthGroup || isAdmin)) {
 			return (
 				<>
 					<MaintenanceScreen />
