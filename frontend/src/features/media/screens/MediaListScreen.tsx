@@ -95,7 +95,7 @@ export const MediaListScreen: React.FC = () => {
 		const last = lastClickRef.current;
 		if (last && last.id === taskId && now - last.time < DOUBLE_CLICK_MS) {
 			lastClickRef.current = null;
-			setLightboxUrl(`/tasks/${taskId}/preview`);
+			setLightboxUrl(`/tasks/${taskId}/data?type=frame&number=0&quality=original`);
 			return;
 		}
 		lastClickRef.current = { id: taskId, time: now };
