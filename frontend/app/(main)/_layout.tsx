@@ -5,6 +5,7 @@ import { Header } from '@/shared/components/layout/Header';
 import { Breadcrumb } from '@/shared/components/layout/Breadcrumb';
 import { Footer } from '@/shared/components/layout/Footer';
 import { COLORS } from '@/shared/theme/colors';
+import { SPACING } from '@/shared/theme/spacing';
 
 export default function MainLayout() {
 	return (
@@ -27,5 +28,6 @@ const styles = StyleSheet.create({
 	content: {
 		flex: 1,
 		overflow: 'hidden',
+		paddingHorizontal: SPACING.lg,
 	}
 });

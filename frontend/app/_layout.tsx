@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Platform, ActivityIndicator, View, StyleSheet } from 'react-native';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
 import { COLORS } from '@/shared/theme/colors';
+import { ToastHost } from '@/shared/toast/Toast';
 
 export default function RootLayout() {
 	const [isAuthChecked, setIsAuthChecked] = useState(false);
@@ -65,7 +66,12 @@ export default function RootLayout() {
 		);
 	}
 
-	return <Slot />;
+	return (
+		<>
+			<Slot />
+			<ToastHost />
+		</>
+	);
 }
 
 const styles = StyleSheet.create({

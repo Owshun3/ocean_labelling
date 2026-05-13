@@ -27,6 +27,42 @@ export interface ModerationStatusEntry {
 	reviewed_at: string | null;
 }
 
+export interface UserProfileStats {
+	annotations_validated: number;
+	media_validated: number;
+	media_rejected: number;
+	actions_validated_total: number;
+	precision_annotations: number | null;
+	acceptance_media: number | null;
+}
+
+export interface UserProfile {
+	id: number;
+	username: string;
+	first_name: string;
+	last_name: string;
+	email: string;
+	date_joined: string | null;
+	is_superuser: boolean;
+	role: AppRole;
+	username_changed_at: string | null;
+	username_next_change_at: string | null;
+	stats: UserProfileStats;
+}
+
+export interface UpdateProfilePayload {
+	first_name?: string;
+	last_name?: string;
+	email?: string;
+	username?: string;
+}
+
+export interface ChangePasswordPayload {
+	old_password: string;
+	new_password: string;
+	confirm_password: string;
+}
+
 export interface BanInfo {
 	reason: string | null;
 	expires_at: string | null;
@@ -93,5 +129,19 @@ export class AppApiService {
 			{ ids, message },
 		);
 		return resp.data;
+	}
+
+	async getMyProfile(): Promise<UserProfile> {
+		const resp = await appApiClient.get<UserProfile>('/users/me/profile');
+		return resp.data;
+	}
+
+	async updateMyProfile(payload: UpdateProfilePayload): Promise<UserProfile> {
+		const resp = await appApiClient.patch<UserProfile>('/users/me', payload);
+		return resp.data;
+	}
+
+	async changeMyPassword(payload: ChangePasswordPayload): Promise<void> {
+		await appApiClient.post('/users/me/password', payload);
 	}
 }

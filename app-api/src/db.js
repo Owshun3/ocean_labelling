@@ -25,6 +25,7 @@ async function _createSchema() {
       role          TEXT        NOT NULL DEFAULT 'annotator',
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS username_changed_at TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS upload_history (
       id             SERIAL PRIMARY KEY,

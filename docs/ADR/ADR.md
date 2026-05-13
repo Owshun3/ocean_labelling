@@ -385,3 +385,58 @@ Catégories : radio buttons dans la fiche curator (faune terrestre / faune marin
 | `category` ouvre la voie à des filtres UI plus tard | Tri/dédoublonnage à anticiper (deux noms scientifiques différents pour la même espèce ?) |
 
 Implémentation à séquencer : (1) migration schéma + adaptation autocomplete backend, (2) UI annotateur multi-noms display, (3) UI curator édition espèce + import Wikipédia, (4) fiche guest publique.
+
+---
+
+# ADR-011 : Système de paliers de gamification
+
+* **Statut :** Accepté
+* **Date :** 2026-05-08
+
+## Contexte
+
+Le profil utilisateur doit afficher un rang reflétant la fiabilité et la contribution réelle de l'utilisateur — pas le simple volume d'activité. Une mauvaise métrique (ex. total des annotations soumises, peu importe leur sort) découragerait les nouveaux contributeurs car statistiquement seule une bbox sur N est retenue par le curator.
+
+## Décision
+
+**5 paliers en français**, seuils basés sur la métrique `actions_validated_total` :
+
+| Palier | Seuil | Couleur |
+|---|---|---|
+| Débutant | 0–49 | #9ca3af |
+| Bronze | 50–199 | #cd7f32 |
+| Argent | 200–499 | #c0c0c0 |
+| Or | 500–2999 | #f59e0b |
+| Platine | 3000+ | #06b6d4 |
+
+Le seuil affiché dans l'UI est celui d'**entrée** dans le palier suivant. Exemple à 75 actions : palier Bronze, barre de progression vers 200 (Argent).
+
+## Définition de `actions_validated_total`
+
+```
+actions_validated_total =
+    COUNT(curator_certifications WHERE chosen_bbox_annotator_id = me AND mode = 'review')
+  + COUNT(media_moderation         WHERE uploader_id = me AND status = 'validated')
+```
+
+Seules les actions **avérées comme positives** (le curator a retenu la bbox, ou le modérateur a accepté le média) comptent. Une annotation refusée par le curator ne décrémente pas mais ne fait pas progresser non plus.
+
+## Stats affichées dans le profil
+
+| Stat | Calcul |
+|---|---|
+| Précision annotations | `validées / (validées + refusées)` (refusées masquées du UI) |
+| Acceptation médias | `validés / (validés + refusés)` |
+| Annotations validées | count |
+| Médias acceptés | count |
+| Médias refusés | count |
+
+**Pas de « annotations refusées » affiché** : statistiquement, avec consensus_replicas=2 et N annotateurs concurrents, le ratio rejeté/validé est défavorable et décourage. Le numérateur du taux de précision le capture déjà.
+
+## Conséquences
+
+| Positif | Négatif |
+|---|---|
+| Métrique alignée sur la qualité, pas le volume | Un utilisateur très actif mais peu retenu progresse lentement |
+| Aucune nouvelle table compteur à maintenir | Recalcul à chaque chargement profil — acceptable, requêtes indexées |
+| Source unique de vérité : `curator_certifications` + `media_moderation` | — |
