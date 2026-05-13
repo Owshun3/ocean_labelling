@@ -4,6 +4,7 @@ import type { Proposal } from '@/services/api/CuratorService';
 import type { CuratorMode, CuratorOpacity } from '../hooks/useCuratorMode';
 import type { StudioTool } from '@/features/studio/types';
 import { BboxProposalList } from './BboxProposalList';
+import { SpeciesProposalList, SpeciesOption } from './SpeciesProposalList';
 import { OpacityRadio } from './OpacityRadio';
 import { ColorPicker } from './ColorPicker';
 import { COLORS } from '@/shared/theme/colors';
@@ -17,10 +18,13 @@ interface Props {
 	selectedIds: Set<number>;
 	opacity: CuratorOpacity;
 	annotatorColor: string;
+	speciesOptions:   SpeciesOption[];
+	selectedSpeciesKey: string | null;
 	onChangeTool:    (t: StudioTool) => void;
 	onChangeOpacity: (o: CuratorOpacity) => void;
 	onChangeColor:   (c: string) => void;
 	onToggleSelect:  (id: number, kind: 'single' | 'toggle' | 'range', ordered: number[]) => void;
+	onPickSpecies:   (opt: SpeciesOption) => void;
 	onEnterDrawing:  () => void;
 	onExitDrawing:   () => void;
 	onZoomIn:    () => void;
@@ -30,7 +34,8 @@ interface Props {
 
 export const CuratorSidebarLeft: React.FC<Props> = ({
 	mode, tool, proposals, selectedIds, opacity, annotatorColor,
-	onChangeTool, onChangeOpacity, onChangeColor, onToggleSelect,
+	speciesOptions, selectedSpeciesKey,
+	onChangeTool, onChangeOpacity, onChangeColor, onToggleSelect, onPickSpecies,
 	onEnterDrawing, onExitDrawing,
 	onZoomIn, onZoomOut, onZoomReset,
 }) => {
@@ -53,7 +58,16 @@ export const CuratorSidebarLeft: React.FC<Props> = ({
 			</View>
 
 			<View style={styles.block}>
-				<Text style={styles.heading}>Propositions ({proposals.length})</Text>
+				<Text style={styles.heading}>Espèces proposées ({speciesOptions.length})</Text>
+				<SpeciesProposalList
+					options={speciesOptions}
+					selectedKey={selectedSpeciesKey}
+					onSelect={onPickSpecies}
+				/>
+			</View>
+
+			<View style={styles.block}>
+				<Text style={styles.heading}>Bbox proposées ({proposals.length})</Text>
 				<BboxProposalList
 					proposals={proposals}
 					selectedIds={selectedIds}

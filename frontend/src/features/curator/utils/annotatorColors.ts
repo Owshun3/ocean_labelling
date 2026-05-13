@@ -8,7 +8,8 @@ export const ANNOTATOR_PALETTE: string[] = [
 ];
 
 export const CURATOR_COLOR = '#06b6d4';
-export const CURATOR_STROKE_WIDTH = 3;
+export const ANNOTATOR_STROKE_WIDTH = 1.25;
+export const CURATOR_STROKE_WIDTH   = 1.75;
 
 const STORAGE_KEY = 'curator_annotator_color';
 

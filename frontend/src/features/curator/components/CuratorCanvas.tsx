@@ -9,7 +9,7 @@ import type { StudioTool } from '@/features/studio/types';
 import { curatorClient, type Proposal } from '@/services/api/CuratorService';
 import type { CuratorBbox, CuratorMode, CuratorOpacity } from '../hooks/useCuratorMode';
 import { opacityToFloat } from '../hooks/useCuratorMode';
-import { CURATOR_COLOR, CURATOR_STROKE_WIDTH } from '../utils/annotatorColors';
+import { CURATOR_COLOR, CURATOR_STROKE_WIDTH, ANNOTATOR_STROKE_WIDTH } from '../utils/annotatorColors';
 
 export interface CuratorCanvasHandle {
 	zoomIn:    () => void;
@@ -202,7 +202,7 @@ export const CuratorCanvas = forwardRef<CuratorCanvasHandle, Props>(({
 		: (mode === 'drawing' && tool === 'rectangle' && image && !curatorBbox) ? 'crosshair'
 		: 'default';
 
-	const strokeUnit = 2 / (fit.scale * stageScale);
+	const strokeUnit = ANNOTATOR_STROKE_WIDTH / (fit.scale * stageScale);
 	const dashUnit  = 6 / (fit.scale * stageScale);
 	const curatorStrokeUnit = CURATOR_STROKE_WIDTH / (fit.scale * stageScale);
 	const ordered = proposals.map((p) => p.cvat_shape_id);

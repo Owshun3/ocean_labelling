@@ -250,7 +250,7 @@ export const StudioCanvas = forwardRef<StudioCanvasHandle, Props>(({
 
 	const ghost = drawStart && drawEnd ? normalizeRect(drawStart, drawEnd) : null;
 	const dashUnit  = 6 / (fit.scale * stageScale);
-	const strokeUnit = 2 / (fit.scale * stageScale);
+	const strokeUnit = 1.25 / (fit.scale * stageScale);
 
 	const stageCursor =
 		tool === 'pan'       ? (panLastRef.current ? 'grabbing' : 'grab')

@@ -15,20 +15,37 @@ interface Props {
 	disabledHint: string | null;
 	metadata: ProposalsPayload['metadata'];
 	task:     ProposalsPayload['task'];
+	speciesLocked: boolean;
+	speciesLockedName: string | null;
 	onSpeciesChange: (v: SpeciesTriValue) => void;
+	onUnlockSpecies: () => void;
 	onCommentChange: (s: string) => void;
 	onCertify:       () => void;
 }
 
 export const CuratorSidebarRight: React.FC<Props> = ({
 	speciesValue, comment, canCertify, submitting, disabledHint,
-	metadata, task,
-	onSpeciesChange, onCommentChange, onCertify,
+	metadata, task, speciesLocked, speciesLockedName,
+	onSpeciesChange, onUnlockSpecies, onCommentChange, onCertify,
 }) => (
 	<View style={styles.col}>
 		<View style={styles.block}>
 			<Text style={styles.heading}>Espèce</Text>
-			<SpeciesTriFieldForm value={speciesValue} disabled={submitting} onChange={onSpeciesChange} />
+			{speciesLocked ? (
+				<View style={styles.lockBanner}>
+					<Text style={styles.lockBannerText}>
+						« {speciesLockedName ?? 'espèce'} » est déjà validée. Les noms sont verrouillés.
+					</Text>
+					<Pressable onPress={onUnlockSpecies}>
+						<Text style={styles.lockBannerAction}>Modifier (mettra à jour la base)</Text>
+					</Pressable>
+				</View>
+			) : null}
+			<SpeciesTriFieldForm
+				value={speciesValue}
+				disabled={submitting || speciesLocked}
+				onChange={onSpeciesChange}
+			/>
 		</View>
 
 		<View style={styles.block}>
@@ -85,6 +102,17 @@ const styles = StyleSheet.create({
 		fontSize: 13, color: COLORS.text.primary, backgroundColor: COLORS.background.main,
 		minHeight: 70, textAlignVertical: 'top',
 	},
+
+	lockBanner: {
+		flexDirection: 'column', gap: 4,
+		paddingHorizontal: SPACING.sm, paddingVertical: 6,
+		borderRadius: 6,
+		borderLeftWidth: 3, borderLeftColor: COLORS.success,
+		backgroundColor: `${COLORS.success}11`,
+		marginBottom: SPACING.xs,
+	},
+	lockBannerText:   { fontSize: 11, color: COLORS.text.primary },
+	lockBannerAction: { fontSize: 11, color: COLORS.primary, fontWeight: '700', textDecorationLine: 'underline' },
 
 	certifyWrap: { marginTop: 'auto', gap: SPACING.xs },
 	certifyBtn: {

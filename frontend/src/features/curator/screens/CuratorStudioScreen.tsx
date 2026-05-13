@@ -14,6 +14,7 @@ import { CuratorSidebarLeft } from '../components/CuratorSidebarLeft';
 import { CuratorSidebarRight } from '../components/CuratorSidebarRight';
 import { BboxTooltip } from '../components/BboxTooltip';
 import { SpeciesTriValue } from '../components/SpeciesTriFieldForm';
+import { buildSpeciesOptions, SpeciesOption } from '../components/SpeciesProposalList';
 
 interface Props {
 	taskId: number;
@@ -35,6 +36,8 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 	const [species, setSpecies] = useState<SpeciesTriValue>(EMPTY_SPECIES);
 	const [comment, setComment] = useState('');
 	const [submitting, setSubmitting] = useState(false);
+	const [selectedSpeciesKey, setSelectedSpeciesKey] = useState<string | null>(null);
+	const [speciesLocked, setSpeciesLocked] = useState(false);
 
 	useEffect(() => { saveCuratorAnnotatorColor(state.annotatorColor); }, [state.annotatorColor]);
 
@@ -46,37 +49,75 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 		return proposals.find((p) => p.cvat_shape_id === onlyId) ?? null;
 	}, [state.mode, state.selectedIds, proposals]);
 
+	const speciesOptions = useMemo(() => buildSpeciesOptions(proposals), [proposals]);
+
+	const selectedSpeciesOpt: SpeciesOption | null = useMemo(
+		() => speciesOptions.find((o) => o.key === selectedSpeciesKey) ?? null,
+		[speciesOptions, selectedSpeciesKey],
+	);
+
 	useEffect(() => {
-		if (state.mode === 'review' && selectedProposal?.species) {
-			setSpecies({
-				scientific_name: selectedProposal.species.scientific_name ?? '',
-				usage_name:      selectedProposal.species.usage_name      ?? '',
-				polynesian_name: selectedProposal.species.polynesian_name ?? '',
-			});
-		} else if (state.mode === 'drawing') {
-			if (!species.scientific_name && !species.usage_name && !species.polynesian_name) {
-				setSpecies(EMPTY_SPECIES);
-			}
-		} else if (state.mode === 'review' && selectedProposal && !selectedProposal.species) {
+		if (state.mode === 'drawing') return;
+		if (selectedSpeciesKey !== null) return;
+		if (state.selectedIds.size !== 1) return;
+		const onlyId = state.selectedIds.values().next().value;
+		const p = proposals.find((q) => q.cvat_shape_id === onlyId);
+		if (!p) return;
+		const key = p.species ? `id:${p.species.id}` : `name:${p.label_name ?? ''}`;
+		setSelectedSpeciesKey(key);
+	}, [state.mode, state.selectedIds, proposals, selectedSpeciesKey]);
+
+	useEffect(() => {
+		if (!selectedSpeciesOpt) return;
+		const sp = selectedSpeciesOpt.species;
+		if (!sp) {
 			setSpecies({
 				scientific_name: '',
-				usage_name:      selectedProposal.label_name ?? '',
+				usage_name:      selectedSpeciesOpt.fallbackLabel ?? selectedSpeciesOpt.displayName,
 				polynesian_name: '',
 			});
-		} else if (state.mode === 'review' && state.selectedIds.size !== 1) {
-			setSpecies(EMPTY_SPECIES);
+			setSpeciesLocked(false);
+			return;
 		}
-	}, [state.mode, selectedProposal, state.selectedIds.size]); // eslint-disable-line react-hooks/exhaustive-deps
+		const has3 = !!(sp.scientific_name && sp.usage_name && sp.polynesian_name);
+		if (has3 && sp.status === 'approved') {
+			setSpecies({
+				scientific_name: sp.scientific_name!,
+				usage_name:      sp.usage_name!,
+				polynesian_name: sp.polynesian_name!,
+			});
+			setSpeciesLocked(true);
+		} else {
+			setSpecies({
+				scientific_name: sp.scientific_name ?? '',
+				usage_name:      sp.usage_name ?? sp.name ?? '',
+				polynesian_name: sp.polynesian_name ?? '',
+			});
+			setSpeciesLocked(false);
+		}
+	}, [selectedSpeciesOpt]);
+
+	const onPickSpecies = useCallback((opt: SpeciesOption) => {
+		setSelectedSpeciesKey(opt.key);
+	}, []);
+
+	const onUnlockSpecies = useCallback(() => {
+		setSpeciesLocked(false);
+	}, []);
 
 	const onEnterDrawing = useCallback(() => {
 		state.enterDrawing();
 		setTool('rectangle');
 		setSpecies(EMPTY_SPECIES);
+		setSelectedSpeciesKey(null);
+		setSpeciesLocked(false);
 	}, [state]);
 
 	const onExitDrawing = useCallback(() => {
 		state.exitDrawing();
 		setSpecies(EMPTY_SPECIES);
+		setSelectedSpeciesKey(null);
+		setSpeciesLocked(false);
 	}, [state]);
 
 	const onSetCuratorBbox = useCallback((b: CuratorBbox | null) => {
@@ -106,12 +147,16 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 			let rejected: any[] = [];
 			let sourceName: string | undefined;
 
+			const speciesSourceName = selectedSpeciesOpt?.species?.name
+				?? selectedSpeciesOpt?.fallbackLabel
+				?? undefined;
+
 			if (state.mode === 'review' && selectedProposal) {
 				mode = 'review';
 				const p = selectedProposal;
 				shape = { points: [p.x, p.y, p.x + p.width, p.y + p.height] };
 				chosenAnnotatorId = p.annotator_id;
-				sourceName = p.species?.name ?? p.label_name ?? undefined;
+				sourceName = speciesSourceName ?? p.species?.name ?? p.label_name ?? undefined;
 				rejected = proposals
 					.filter((q) => q.cvat_shape_id !== p.cvat_shape_id)
 					.map((q) => ({
@@ -123,6 +168,7 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				mode = 'create';
 				const b = state.curatorBbox;
 				shape = { points: [b.x, b.y, b.x + b.width, b.y + b.height] };
+				sourceName = speciesSourceName;
 				rejected = proposals.map((q) => ({
 					annotator_id: q.annotator_id,
 					cvat_shape_id: q.cvat_shape_id,
@@ -175,10 +221,13 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				selectedIds={state.selectedIds}
 				opacity={state.opacity}
 				annotatorColor={state.annotatorColor}
+				speciesOptions={speciesOptions}
+				selectedSpeciesKey={selectedSpeciesKey}
 				onChangeTool={setTool}
 				onChangeOpacity={state.setOpacity}
 				onChangeColor={state.setAnnotatorColor}
 				onToggleSelect={state.toggleSelected}
+				onPickSpecies={onPickSpecies}
 				onEnterDrawing={onEnterDrawing}
 				onExitDrawing={onExitDrawing}
 				onZoomIn={() => canvasRef.current?.zoomIn()}
@@ -225,7 +274,13 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				disabledHint={disabledHint}
 				metadata={data.metadata}
 				task={data.task}
-				onSpeciesChange={setSpecies}
+				speciesLocked={speciesLocked}
+				speciesLockedName={selectedSpeciesOpt?.displayName ?? null}
+				onSpeciesChange={(v) => {
+					setSpecies(v);
+					if (speciesLocked) setSpeciesLocked(false);
+				}}
+				onUnlockSpecies={onUnlockSpecies}
 				onCommentChange={setComment}
 				onCertify={onCertify}
 			/>
