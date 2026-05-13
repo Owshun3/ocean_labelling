@@ -40,7 +40,11 @@ export const CuratorTile: React.FC<Props> = ({ task, onOpen }) => {
 			/>
 			<Text style={styles.name} numberOfLines={1}>{task.name}</Text>
 			<View style={styles.metaRow}>
-				<Text style={styles.metaText}>{task.jobs_count} annot.</Text>
+				<Text style={styles.metaText}>
+					{(task.annotated_jobs_count ?? 0) > 0
+						? `${task.annotated_jobs_count} annotation${(task.annotated_jobs_count ?? 0) > 1 ? 's' : ''}`
+						: 'Pas encore annoté'}
+				</Text>
 				<Text style={styles.metaDot}>·</Text>
 				<Text style={styles.metaText}>{date}</Text>
 			</View>

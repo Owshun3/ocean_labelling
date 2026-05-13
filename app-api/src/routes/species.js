@@ -39,6 +39,94 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/search', requireAuth, async (req, res) => {
+  const field = String(req.query.field || '').trim();
+  const q     = String(req.query.q || '').trim();
+  const VALID_FIELDS = { scientific: 'scientific_name', usage: 'usage_name', polynesian: 'polynesian_name' };
+  const column = VALID_FIELDS[field];
+  if (!column) return res.status(400).json({ error: `field must be one of ${Object.keys(VALID_FIELDS).join(', ')}` });
+  if (q.length === 0) return res.json({ results: [] });
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, name, scientific_name, usage_name, polynesian_name, tags,
+             description, description_source, status, usage_count
+      FROM species
+      WHERE LOWER(COALESCE(${column}, '')) LIKE $1
+      ORDER BY LOWER(${column}) ASC
+      LIMIT 10
+    `, [`%${q.toLowerCase()}%`]);
+    res.json({ results: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/full', requireCuratorOrAbove, async (req, res) => {
+  const body = req.body || {};
+  const sName = typeof body.scientific_name === 'string' ? body.scientific_name.trim() : '';
+  const uName = typeof body.usage_name      === 'string' ? body.usage_name.trim()      : '';
+  const pName = typeof body.polynesian_name === 'string' ? body.polynesian_name.trim() : '';
+  const tags  = Array.isArray(body.tags) ? body.tags.filter((t) => typeof t === 'string') : [];
+  const sourceName = typeof body.source_name === 'string' ? body.source_name.trim() : null;
+
+  if (!sName || !uName || !pName) {
+    return res.status(400).json({ error: 'scientific_name, usage_name, polynesian_name required' });
+  }
+
+  try {
+    const match = await pool.query(
+      `SELECT * FROM species
+       WHERE LOWER(scientific_name) = LOWER($1)
+         AND LOWER(usage_name)      = LOWER($2)
+         AND LOWER(polynesian_name) = LOWER($3)
+       LIMIT 1`,
+      [sName, uName, pName],
+    );
+    if (match.rows.length > 0) {
+      const upd = await pool.query(
+        `UPDATE species SET tags = $1, status = 'approved', approved_by = COALESCE(approved_by, $2)
+         WHERE id = $3 RETURNING *`,
+        [tags, req.cvatUser.id, match.rows[0].id],
+      );
+      return res.json(upd.rows[0]);
+    }
+
+    if (sourceName) {
+      const legacy = await pool.query(
+        `SELECT * FROM species WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+        [sourceName],
+      );
+      if (legacy.rows.length > 0) {
+        const upd = await pool.query(
+          `UPDATE species SET scientific_name=$1, usage_name=$2, polynesian_name=$3,
+                              tags=$4, status='approved', approved_by=COALESCE(approved_by, $5)
+           WHERE id=$6 RETURNING *`,
+          [sName, uName, pName, tags, req.cvatUser.id, legacy.rows[0].id],
+        );
+        return res.json(upd.rows[0]);
+      }
+    }
+
+    const ins = await pool.query(
+      `INSERT INTO species (name, scientific_name, usage_name, polynesian_name, tags, status, proposed_by, approved_by)
+       VALUES ($1, $2, $3, $4, $5, 'approved', $6, $6)
+       ON CONFLICT (name) DO UPDATE SET
+         scientific_name = EXCLUDED.scientific_name,
+         usage_name      = EXCLUDED.usage_name,
+         polynesian_name = EXCLUDED.polynesian_name,
+         tags            = EXCLUDED.tags,
+         status          = 'approved',
+         approved_by     = COALESCE(species.approved_by, EXCLUDED.approved_by)
+       RETURNING *`,
+      [sName, sName, uName, pName, tags, req.cvatUser.id],
+    );
+    res.status(201).json(ins.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/', requireAuth, async (req, res) => {
   const name = normalizeName(req.body?.name);
   if (!name) return res.status(400).json({ error: 'name required (1-120 chars)' });

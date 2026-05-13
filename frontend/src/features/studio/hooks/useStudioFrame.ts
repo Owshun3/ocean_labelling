@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { AxiosInstance } from 'axios';
 import { apiClient } from '@/services/api/axiosClient';
 
 interface State {
@@ -7,7 +8,13 @@ interface State {
 	error: string | null;
 }
 
-export function useStudioFrame(jobId: number, frameNumber: number): State {
+interface FetchSpec {
+	client: AxiosInstance;
+	path: string;
+	params?: Record<string, any>;
+}
+
+export function useStudioFrame(jobId: number, frameNumber: number, custom?: FetchSpec): State {
 	const [image, setImage] = useState<HTMLImageElement | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -19,11 +26,12 @@ export function useStudioFrame(jobId: number, frameNumber: number): State {
 		setError(null);
 		setImage(null);
 
-		apiClient
-			.get(`/jobs/${jobId}/data`, {
-				params: { type: 'frame', number: frameNumber, quality: 'compressed' },
-				responseType: 'blob',
-			})
+		const client = custom?.client ?? apiClient;
+		const path   = custom?.path   ?? `/jobs/${jobId}/data`;
+		const params = custom?.params ?? { type: 'frame', number: frameNumber, quality: 'compressed' };
+
+		client
+			.get(path, { params, responseType: 'blob' })
 			.then((resp) => {
 				if (cancelled) return;
 				objectUrl = URL.createObjectURL(resp.data);

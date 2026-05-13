@@ -178,6 +178,35 @@ Endpoints app-api studio :
 
 **Polling post-upload** : `CvatMediaService.waitForTaskData` poll `GET /tasks/{id}` (toujours 200) en attendant `task.size > 0`. **Ne PAS poll `/preview`** : retourne 400 jusqu'à ingestion → console saturée d'erreurs cosmétiques.
 
+## Studio Curator (`/curator/studio/[taskId]/[jobId]`)
+
+**Workflow** : studio unifié (un seul mode UI, deux états internes `review` / `drawing`). Le curator voit toutes les bbox proposées par les annotateurs (replicas du même task), peut en sélectionner une pour la certifier verbatim, ou tracer la sienne propre. **Aucune édition possible sur les bbox annotateurs** (read-only intégral, pas de Transformer). Seule la bbox curator-dessinée (couleur cyan `#06b6d4` distincte, stroke 3px) est éditable.
+
+Layout : sidebar gauche 290 px (outils + zoom + propositions + opacité + color picker + + Nouvelle annotation), canvas central flex, sidebar droite 320 px (3 champs espèce + commentaire + métadonnées + Certifier).
+
+**Couleurs** : toutes les bbox annotateurs ont la **même couleur** (choisie par le curator parmi 6 swatches `ANNOTATOR_PALETTE` dans `utils/annotatorColors.ts`, persistée `localStorage.curator_annotator_color`). L'identité de l'annotateur passe par `AnnotatorBadge` (username + slot rank `TODO`) dans la liste et le tooltip survol. La curator-bbox utilise `CURATOR_COLOR=#06b6d4` non sélectionnable.
+
+**Opacité 3 niveaux** (`OpacityRadio`) : Cachée/Légère/Opaque pilote les bbox **non cochées** dans les 2 modes. Sélectionnées toujours à opacité 1.
+
+**Tables** (cf. db.js) :
+- `species` enrichie : `usage_name`, `tags TEXT[]`, `reference_image_url` (posé, non exposé UI). `category` (Lot C, single-value) devient mort-né au profit de `tags`.
+- `media_metadata(cvat_task_id PK, gps_*, taken_at, camera_*, image_*, raw_exif JSONB)` : EXIF extraite côté frontend via `exifr` au mount d'upload, POST à `/app-api/media/:taskId/metadata` après `recordUpload`.
+- `curator_certifications(id, cvat_task_id, cvat_job_id, curator_id, mode review|create, chosen_bbox_annotator_id, chosen_bbox_data JSONB, rejected_proposals JSONB, species_id, curator_comment, certified_at)` : audit pour calcul futur du rang annotateur (`COUNT WHERE chosen_bbox_annotator_id=X AND mode='review'`).
+- `annotation_comments.is_curator_comment BOOLEAN` : distinguer commentaire curator d'un commentaire annotateur.
+
+**Endpoints app-api curator** :
+| Méthode | Route | But |
+|---|---|---|
+| GET  | `/curator/tasks/:id/proposals` | Agrège jobs replicas (assignees + shapes + label_name + species DB joinées) + metadata + moderation row |
+| POST | `/curator/tasks/:id/certify`   | Orchestration complète : upsertSpeciesFull → ensure label CVAT → PUT /jobs annotations → UPDATE media_moderation.curator_validated_at → INSERT curator_certifications. Transactionnel sur le bloc DB (CVAT en best-effort) |
+| POST | `/species/full`                | Idempotent : match 3 noms → match source_name → INSERT. Statut auto = 'approved' (réservé curator+) |
+| GET  | `/species/search?field=…&q=…`  | Single-field autocomplete (scientific|usage|polynesian), contains |
+| GET/POST | `/media/:taskId/metadata`  | Upsert EXIF (extrait côté frontend via exifr) |
+
+**Build studio** (en cas de pépin frontend) : Konva via le hook `useStudioFrame` partagé avec l'annotateur. Le curator a ses **propres outils** (Rect/Select/Pan + zoom +/-/Réajuster) mais ne dessine **qu'une seule** curator-bbox ; cliquer "+ Nouvelle annotation" en plein milieu de drawing jette la précédente sans confirmation (anti-frustration).
+
+**Rang annotateur** (`curator_certifications`) : tables prêtes, calcul UI à construire séparément. Composant `AnnotatorBadge.tsx` réserve un slot vertical avec commentaire `// TODO rank badge`.
+
 ## Studio CVAT injecté (legacy, ADR-006) — coexiste avec ADR-007
 ```
 nginx/static/

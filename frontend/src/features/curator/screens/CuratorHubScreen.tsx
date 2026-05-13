@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { CuratorService, CuratorTask } from '@/services/api/CuratorService';
 import { CuratorTile } from '../components/CuratorTile';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
-
-const cvatUiUrl = process.env.EXPO_PUBLIC_CVAT_UI_URL ?? 'http://localhost:8888';
 
 export function openCurationStudio(task: CuratorTask): void {
 	const jobId = task.jobs?.[0]?.id;
@@ -14,8 +13,7 @@ export function openCurationStudio(task: CuratorTask): void {
 		window.alert('Aucun job d\'annotation disponible pour ce média.');
 		return;
 	}
-	const returnUrl = encodeURIComponent(`/curator/done?taskId=${task.id}`);
-	window.location.href = `${cvatUiUrl}/tasks/${task.id}/jobs/${jobId}?appReturn=${returnUrl}`;
+	router.push(`/(main)/curator/studio/${task.id}/${jobId}` as any);
 }
 
 export const CuratorHubScreen: React.FC = () => {

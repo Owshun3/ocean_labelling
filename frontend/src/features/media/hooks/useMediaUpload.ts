@@ -1,7 +1,36 @@
 import { useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
+import * as exifr from 'exifr';
 import { CvatMediaService } from '@/services/api/CvatMediaService';
 import { AppApiService } from '@/services/api/AppApiService';
+import { MediaMetadataService } from '@/services/api/MediaMetadataService';
+
+async function extractExif(asset: any): Promise<{
+	gps_latitude?: number; gps_longitude?: number;
+	taken_at?: string; camera_make?: string; camera_model?: string;
+	image_width?: number; image_height?: number;
+	raw?: Record<string, unknown>;
+} | null> {
+	if (Platform.OS !== 'web') return null;
+	const file: File | null = asset?.file instanceof File ? asset.file : null;
+	if (!file) return null;
+	try {
+		const data: any = await exifr.parse(file, true);
+		if (!data) return null;
+		return {
+			gps_latitude:  typeof data.latitude  === 'number' ? data.latitude  : undefined,
+			gps_longitude: typeof data.longitude === 'number' ? data.longitude : undefined,
+			taken_at:      data.DateTimeOriginal instanceof Date ? data.DateTimeOriginal.toISOString() : undefined,
+			camera_make:   typeof data.Make  === 'string' ? data.Make  : undefined,
+			camera_model:  typeof data.Model === 'string' ? data.Model : undefined,
+			image_width:   typeof data.ImageWidth  === 'number' ? data.ImageWidth  : (typeof data.ExifImageWidth  === 'number' ? data.ExifImageWidth  : undefined),
+			image_height:  typeof data.ImageHeight === 'number' ? data.ImageHeight : (typeof data.ExifImageHeight === 'number' ? data.ExifImageHeight : undefined),
+			raw: data as Record<string, unknown>,
+		};
+	} catch {
+		return null;
+	}
+}
 
 export interface UploadProgress {
 	current: number;
@@ -26,8 +55,10 @@ export const useMediaUpload = () => {
 		try {
 			const self = await cvat.getSelf();
 			const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+			const metaService = new MediaMetadataService();
 
 			for (let i = 0; i < files.length; i++) {
+				const exifPromise = extractExif(files[i]);
 				const uploadNum = await cvat.getNextUploadNumber();
 				const baseName = `${self.username}_${date}_${String(uploadNum).padStart(4, '0')}`;
 				const taskId = await cvat.uploadMedia(baseName, [files[i]]);
@@ -40,6 +71,23 @@ export const useMediaUpload = () => {
 					const message = payload?.error || e?.message || 'erreur inconnue';
 					console.error('[upload] recordUpload failed', { taskId, status, payload, error: e });
 					moderationErrors.push({ taskId, status, message });
+				}
+				try {
+					const exif = await exifPromise;
+					if (exif) {
+						await metaService.set(taskId, {
+							gps_latitude:  exif.gps_latitude  ?? null,
+							gps_longitude: exif.gps_longitude ?? null,
+							taken_at:      exif.taken_at      ?? null,
+							camera_make:   exif.camera_make   ?? null,
+							camera_model:  exif.camera_model  ?? null,
+							image_width:   exif.image_width   ?? null,
+							image_height:  exif.image_height  ?? null,
+							raw_exif:      exif.raw           ?? null,
+						});
+					}
+				} catch (e) {
+					console.warn('[upload] EXIF save failed', e);
 				}
 				taskIds.push(taskId);
 				setProgress({ current: i + 1, total: files.length });

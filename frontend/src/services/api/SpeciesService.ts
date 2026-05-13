@@ -24,12 +24,24 @@ export interface Species {
 	id: number;
 	name: string;
 	scientific_name: string | null;
+	usage_name?: string | null;
 	polynesian_name: string | null;
 	category: SpeciesCategory | null;
+	tags?: string[];
 	description: string | null;
 	description_source: DescriptionSource | null;
 	status: SpeciesStatus;
 	usage_count: number;
+}
+
+export type SpeciesSearchField = 'scientific' | 'usage' | 'polynesian';
+
+export interface SpeciesFullInput {
+	scientific_name: string;
+	usage_name: string;
+	polynesian_name: string;
+	tags?: string[];
+	source_name?: string;
 }
 
 export interface SpeciesEditPayload {
@@ -58,5 +70,15 @@ export class SpeciesService {
 
 	async incrementUsage(id: number): Promise<void> {
 		await speciesClient.post(`/${id}/increment-usage`);
+	}
+
+	async searchByField(field: SpeciesSearchField, q: string): Promise<Species[]> {
+		const resp = await speciesClient.get<{ results: Species[] }>('/search', { params: { field, q } });
+		return resp.data.results;
+	}
+
+	async createFull(payload: SpeciesFullInput): Promise<Species> {
+		const resp = await speciesClient.post<Species>('/full', payload);
+		return resp.data;
 	}
 }

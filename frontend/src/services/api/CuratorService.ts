@@ -34,6 +34,8 @@ export interface CuratorTask {
   jobs: CuratorJob[];
   jobs_count: number;
   completed_count: number;
+  annotations_count?: number;
+  annotated_jobs_count?: number;
 }
 
 export interface QualityConflict {
@@ -60,6 +62,77 @@ export interface MergeStatus {
   status: 'queued' | 'started' | 'finished' | 'failed';
   target_job?: { id: number };
   task_id?: number;
+}
+
+export interface ProposalSpecies {
+  id: number;
+  name: string;
+  scientific_name: string | null;
+  usage_name: string | null;
+  polynesian_name: string | null;
+  tags: string[];
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface Proposal {
+  cvat_shape_id: number;
+  cvat_job_id: number;
+  annotator_id: number;
+  annotator_username: string;
+  points: number[];
+  x: number; y: number; width: number; height: number;
+  label_id: number;
+  label_name: string | null;
+  species: ProposalSpecies | null;
+}
+
+export interface ProposalsPayload {
+  task: {
+    id: number; name: string; status: string;
+    created_date: string; size: number;
+  };
+  moderation: {
+    uploader_id: number;
+    status: string;
+    created_at: string;
+    curator_validated_at: string | null;
+  } | null;
+  metadata: {
+    cvat_task_id: number;
+    gps_latitude: number | null;
+    gps_longitude: number | null;
+    taken_at: string | null;
+    camera_make: string | null;
+    camera_model: string | null;
+    image_width: number | null;
+    image_height: number | null;
+  } | null;
+  jobs: Array<{ id: number; state: string; stage: string; assignee: { id: number; username: string } }>;
+  proposals: Proposal[];
+}
+
+export interface CertifyPayload {
+  cvat_job_id: number;
+  mode: 'review' | 'create';
+  chosen_bbox_annotator_id?: number | null;
+  shape: { points: number[] };
+  species: {
+    scientific_name: string;
+    usage_name: string;
+    polynesian_name: string;
+    tags?: string[];
+    source_name?: string;
+  };
+  comment?: string;
+  rejected_proposals?: Array<{ annotator_id: number; cvat_shape_id: number; label_name: string | null }>;
+}
+
+export interface CertifyResult {
+  ok: boolean;
+  certification_id: number;
+  certified_at: string;
+  species: ProposalSpecies;
+  cvat_shape_id: number | null;
 }
 
 export class CuratorService {
@@ -101,5 +174,15 @@ export class CuratorService {
       await new Promise(r => setTimeout(r, 2000));
     }
     throw new Error('Timeout: le merge dépasse 2 minutes');
+  }
+
+  async getProposals(taskId: number): Promise<ProposalsPayload> {
+    const resp = await curatorClient.get<ProposalsPayload>(`/tasks/${taskId}/proposals`);
+    return resp.data;
+  }
+
+  async certify(taskId: number, payload: CertifyPayload): Promise<CertifyResult> {
+    const resp = await curatorClient.post<CertifyResult>(`/tasks/${taskId}/certify`, payload);
+    return resp.data;
   }
 }

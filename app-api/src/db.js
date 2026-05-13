@@ -98,6 +98,10 @@ async function _createSchema() {
       CHECK (description_source IS NULL OR description_source IN ('manual', 'wikipedia', 'annotator_proposal'));
     CREATE INDEX IF NOT EXISTS idx_species_scientific_lower ON species (LOWER(scientific_name));
     CREATE INDEX IF NOT EXISTS idx_species_polynesian_lower ON species (LOWER(polynesian_name));
+    ALTER TABLE species ADD COLUMN IF NOT EXISTS usage_name           TEXT;
+    ALTER TABLE species ADD COLUMN IF NOT EXISTS tags                  TEXT[] NOT NULL DEFAULT '{}';
+    ALTER TABLE species ADD COLUMN IF NOT EXISTS reference_image_url   TEXT;
+    CREATE INDEX IF NOT EXISTS idx_species_usage_lower ON species (LOWER(usage_name));
 
     CREATE TABLE IF NOT EXISTS annotation_comments (
       id                    SERIAL      PRIMARY KEY,
@@ -111,6 +115,7 @@ async function _createSchema() {
       ON annotation_comments (cvat_job_id);
     CREATE INDEX IF NOT EXISTS idx_annotation_comments_shape
       ON annotation_comments (cvat_job_id, cvat_shape_client_id);
+    ALTER TABLE annotation_comments ADD COLUMN IF NOT EXISTS is_curator_comment BOOLEAN NOT NULL DEFAULT FALSE;
 
     CREATE TABLE IF NOT EXISTS annotation_contestations (
       id            SERIAL      PRIMARY KEY,
@@ -143,6 +148,36 @@ async function _createSchema() {
       WHERE resolved_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_contestations_contester
       ON moderation_contestations(contester_id);
+
+    CREATE TABLE IF NOT EXISTS media_metadata (
+      cvat_task_id  INTEGER     PRIMARY KEY,
+      gps_latitude  DOUBLE PRECISION,
+      gps_longitude DOUBLE PRECISION,
+      taken_at      TIMESTAMPTZ,
+      camera_make   TEXT,
+      camera_model  TEXT,
+      image_width   INTEGER,
+      image_height  INTEGER,
+      raw_exif      JSONB,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS curator_certifications (
+      id                       SERIAL      PRIMARY KEY,
+      cvat_task_id             INTEGER     NOT NULL,
+      cvat_job_id              INTEGER     NOT NULL,
+      curator_id               INTEGER     NOT NULL,
+      mode                     TEXT        NOT NULL CHECK (mode IN ('review', 'create')),
+      chosen_bbox_annotator_id INTEGER,
+      chosen_bbox_data         JSONB       NOT NULL,
+      rejected_proposals       JSONB,
+      species_id               INTEGER     REFERENCES species(id),
+      curator_comment          TEXT,
+      certified_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_curator_cert_task    ON curator_certifications (cvat_task_id);
+    CREATE INDEX IF NOT EXISTS idx_curator_cert_chosen  ON curator_certifications (chosen_bbox_annotator_id);
+    CREATE INDEX IF NOT EXISTS idx_curator_cert_curator ON curator_certifications (curator_id);
   `);
   console.log('[app-api] DB schema ready');
 }
