@@ -1,18 +1,9 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
 import { attachBanInterceptor } from './banInterceptor';
 
 const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
 
-export const curatorClient = axios.create({ baseURL: `${APP_API_BASE}/curator` });
-
-curatorClient.interceptors.request.use((config) => {
-  const token = Platform.OS === 'web'
-    ? (typeof window !== 'undefined' ? localStorage.getItem('cvat_token') : null)
-    : null;
-  if (token) config.headers.Authorization = `Token ${token}`;
-  return config;
-});
+export const curatorClient = axios.create({ baseURL: `${APP_API_BASE}/curator`, withCredentials: true });
 
 attachBanInterceptor(curatorClient);
 

@@ -1,69 +1,49 @@
-import { Slot, useRouter, useSegments, Href } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Platform, ActivityIndicator, View, StyleSheet } from 'react-native';
-import { CvatAuthService } from '@/services/api/CvatAuthService';
-import { COLORS } from '@/shared/theme/colors';
+import { Slot, useSegments, useRouter, Redirect, Href } from 'expo-router';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
+import { isSessionAlive, getUserProfile } from '@/services/api/authStorage';
 import { ToastHost } from '@/shared/toast/Toast';
 
+type Target = 'pass' | '/(auth)/login' | '/(main)' | '/(main)/welcome';
+
+function decide(segments: string[]): Target {
+	const alive = isSessionAlive();
+	const inAuthGroup = segments[0] === '(auth)';
+
+	if (!alive) {
+		return inAuthGroup ? 'pass' : '/(auth)/login';
+	}
+
+	const profile = getUserProfile();
+	const hasSeenWelcome = profile?.hasSeenWelcome ?? true;
+
+	if (!hasSeenWelcome) {
+		return segments[1] === 'welcome' ? 'pass' : '/(main)/welcome';
+	}
+	if (inAuthGroup || segments.length === 0) {
+		return '/(main)';
+	}
+	return 'pass';
+}
+
 export default function RootLayout() {
-	const [isAuthChecked, setIsAuthChecked] = useState(false);
-	const router = useRouter();
 	const segments = useSegments() as string[];
+	const router = useRouter();
+	const target = decide(segments);
 
 	useEffect(() => {
-		let isMounted = true;
-
-		const verifyRouting = async () => {
-			try {
-				const authService = new CvatAuthService();
-				const token = await authService.getToken();
-				
-				let hasSeenWelcome = true;
-				if (Platform.OS === 'web') {
-					hasSeenWelcome = localStorage.getItem('has_seen_welcome') === 'true';
-				}
-
-				const inAuthGroup = segments[0] === '(auth)';
-
-				if (!isMounted) return;
-
-				if (!token) {
-					if (!inAuthGroup) {
-						router.replace('/(auth)/login' as Href);
-					}
-				} else {
-					if (!hasSeenWelcome) {
-						if (segments[1] !== 'welcome') {
-							router.replace('/(main)/welcome' as Href);
-						}
-					} else if (inAuthGroup || segments.length === 0) {
-						router.replace('/(main)' as Href);
-					}
-				}
-			} catch (error) {
-				if (isMounted) {
-					router.replace('/(auth)/login' as Href);
-				}
-			} finally {
-				if (isMounted) {
-					setIsAuthChecked(true);
-				}
+		if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+		const onStorage = (e: StorageEvent) => {
+			if (e.key === 'ocean_session_alive' && e.newValue === null) {
+				setTimeout(() => router.replace('/(auth)/login' as Href), 0);
 			}
 		};
+		window.addEventListener('storage', onStorage);
+		return () => window.removeEventListener('storage', onStorage);
+	}, [router]);
 
-		verifyRouting();
-
-		return () => {
-			isMounted = false;
-		};
-	}, [segments]);
-
-	if (!isAuthChecked) {
-		return (
-			<View style={styles.loaderContainer}>
-				<ActivityIndicator size="large" color={COLORS.primary} />
-			</View>
-		);
+	if (target !== 'pass') {
+		return <Redirect href={target as Href} />;
 	}
 
 	return (
@@ -73,12 +53,3 @@ export default function RootLayout() {
 		</>
 	);
 }
-
-const styles = StyleSheet.create({
-	loaderContainer: {
-		flex: 1,
-		justifyContent: 'center',
-		alignItems: 'center',
-		backgroundColor: COLORS.background.main,
-	}
-});

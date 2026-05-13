@@ -1,125 +1,87 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
-const AUTH_TOKEN_KEY = 'cvat_token';
-const CSRF_TOKEN_KEY = 'cvat_csrf_token';
-
-async function setStoredValue(key: string, value: string): Promise<void> {
-	if (Platform.OS === 'web') {
-		localStorage.setItem(key, value);
-		return;
-	}
-
-	await SecureStore.setItemAsync(key, value);
-}
-
-async function getStoredValue(key: string): Promise<string | null> {
-	if (Platform.OS === 'web') {
-		return localStorage.getItem(key);
-	}
-
-	return SecureStore.getItemAsync(key);
-}
-
-async function deleteStoredValue(key: string): Promise<void> {
-	if (Platform.OS === 'web') {
-		localStorage.removeItem(key);
-		return;
-	}
-
-	await SecureStore.deleteItemAsync(key);
-}
-
-function extractCsrfTokenFromCookieHeader(cookieHeader: string): string | null {
-	const match = cookieHeader.match(/(?:^|[;,]\s*)csrftoken=([^;,\s]+)/i);
-	return match?.[1] ?? null;
-}
-
-export async function saveAuthToken(token: string): Promise<void> {
-	await setStoredValue(AUTH_TOKEN_KEY, token);
-}
-
-export async function getAuthToken(): Promise<string | null> {
-	return getStoredValue(AUTH_TOKEN_KEY);
-}
-
-export async function clearAuthToken(): Promise<void> {
-	await deleteStoredValue(AUTH_TOKEN_KEY);
-}
-
-export async function saveCsrfToken(token: string): Promise<void> {
-	await setStoredValue(CSRF_TOKEN_KEY, token);
-}
-
-export async function getCsrfToken(): Promise<string | null> {
-	return getStoredValue(CSRF_TOKEN_KEY);
-}
-
-export async function clearCsrfToken(): Promise<void> {
-	await deleteStoredValue(CSRF_TOKEN_KEY);
-}
-
-// ─── User profile (web-only, used for nav role-gating) ───────────────────────
-
 export interface StoredUserProfile {
 	id: number;
 	username: string;
 	is_superuser: boolean;
 	is_staff: boolean;
 	appRole: string;
+	hasSeenWelcome: boolean;
 }
 
 const USER_PROFILE_KEY = 'cvat_user_profile';
+const SESSION_ALIVE_KEY = 'ocean_session_alive';
+
+// Storage abstraction — sync localStorage on web, async SecureStore on mobile.
+// Profile/session-alive flag are non-sensitive: profile is only for nav role-gating,
+// session-alive is a boolean. The actual auth state lives in the HttpOnly cookie
+// and the `app_sessions` Postgres table — nothing sensitive ever touches the device.
+// Cookies on mobile are handled by the native HTTP layer (NSURLSession / OkHttp),
+// transparent to axios as long as `withCredentials: true` is set.
+
+function setItem(key: string, value: string): void {
+	if (Platform.OS === 'web') {
+		if (typeof window !== 'undefined') localStorage.setItem(key, value);
+		return;
+	}
+	SecureStore.setItemAsync(key, value).catch(() => {});
+}
+
+function getItemSync(key: string): string | null {
+	if (Platform.OS === 'web') {
+		return typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+	}
+	return null;
+}
+
+async function getItemAsync(key: string): Promise<string | null> {
+	if (Platform.OS === 'web') {
+		return typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+	}
+	try { return await SecureStore.getItemAsync(key); } catch { return null; }
+}
+
+function removeItem(key: string): void {
+	if (Platform.OS === 'web') {
+		if (typeof window !== 'undefined') localStorage.removeItem(key);
+		return;
+	}
+	SecureStore.deleteItemAsync(key).catch(() => {});
+}
 
 export function saveUserProfile(profile: StoredUserProfile): void {
-	if (typeof window !== 'undefined') {
-		localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
-	}
+	setItem(USER_PROFILE_KEY, JSON.stringify(profile));
 }
 
 export function getUserProfile(): StoredUserProfile | null {
-	if (typeof window !== 'undefined') {
-		const raw = localStorage.getItem(USER_PROFILE_KEY);
-		try { return raw ? JSON.parse(raw) : null; } catch { return null; }
-	}
-	return null;
+	const raw = getItemSync(USER_PROFILE_KEY);
+	if (!raw) return null;
+	try { return JSON.parse(raw) as StoredUserProfile; } catch { return null; }
+}
+
+export async function getUserProfileAsync(): Promise<StoredUserProfile | null> {
+	const raw = await getItemAsync(USER_PROFILE_KEY);
+	if (!raw) return null;
+	try { return JSON.parse(raw) as StoredUserProfile; } catch { return null; }
 }
 
 export function clearUserProfile(): void {
-	if (typeof window !== 'undefined') {
-		localStorage.removeItem(USER_PROFILE_KEY);
-	}
+	removeItem(USER_PROFILE_KEY);
 }
 
-export function extractCsrfTokenFromHeaders(
-	headers: Record<string, unknown> | undefined
-): string | null {
-	if (!headers) {
-		return null;
-	}
+export function markSessionAlive(): void {
+	setItem(SESSION_ALIVE_KEY, String(Date.now()));
+}
 
-	const directHeader = headers['x-csrftoken'] ?? headers['X-CSRFToken'];
-	if (typeof directHeader === 'string' && directHeader.length > 0) {
-		return directHeader;
-	}
+export function isSessionAlive(): boolean {
+	return getItemSync(SESSION_ALIVE_KEY) !== null;
+}
 
-	const rawCookieHeader = headers['set-cookie'] ?? headers['Set-Cookie'];
-	if (typeof rawCookieHeader === 'string') {
-		return extractCsrfTokenFromCookieHeader(rawCookieHeader);
-	}
+export async function isSessionAliveAsync(): Promise<boolean> {
+	return (await getItemAsync(SESSION_ALIVE_KEY)) !== null;
+}
 
-	if (Array.isArray(rawCookieHeader)) {
-		for (const value of rawCookieHeader) {
-			if (typeof value !== 'string') {
-				continue;
-			}
-
-			const token = extractCsrfTokenFromCookieHeader(value);
-			if (token) {
-				return token;
-			}
-		}
-	}
-
-	return null;
+export function clearSessionAlive(): void {
+	removeItem(SESSION_ALIVE_KEY);
 }

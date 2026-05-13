@@ -3,10 +3,11 @@ import { View, Text, Button, StyleSheet, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import { AppConfigService } from '@/services/api/AppConfigService';
+import { appApiClient } from '@/services/api/AppApiService';
+import { getUserProfile, saveUserProfile } from '@/services/api/authStorage';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
-import { Platform } from 'react-native';
 
 export const WelcomeScreen: React.FC = () => {
 	const [message, setMessage] = useState<string>('');
@@ -41,10 +42,12 @@ export const WelcomeScreen: React.FC = () => {
 		};
 	}, []);
 
-	const acknowledgeWelcome = () => {
-		if (Platform.OS === 'web') {
-			localStorage.setItem('has_seen_welcome', 'true');
-		}
+	const acknowledgeWelcome = async () => {
+		try {
+			await appApiClient.post('/auth/welcome-seen');
+		} catch { /* best-effort — pire des cas, l'utilisateur reverra l'écran une fois */ }
+		const stored = getUserProfile();
+		if (stored) saveUserProfile({ ...stored, hasSeenWelcome: true });
 		router.replace('/(main)' as Href);
 	};
 

@@ -26,6 +26,7 @@ async function _createSchema() {
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS username_changed_at TIMESTAMPTZ;
+    ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS has_seen_welcome BOOLEAN NOT NULL DEFAULT FALSE;
 
     CREATE TABLE IF NOT EXISTS upload_history (
       id             SERIAL PRIMARY KEY,
@@ -179,6 +180,20 @@ async function _createSchema() {
     CREATE INDEX IF NOT EXISTS idx_curator_cert_task    ON curator_certifications (cvat_task_id);
     CREATE INDEX IF NOT EXISTS idx_curator_cert_chosen  ON curator_certifications (chosen_bbox_annotator_id);
     CREATE INDEX IF NOT EXISTS idx_curator_cert_curator ON curator_certifications (curator_id);
+
+    CREATE TABLE IF NOT EXISTS app_sessions (
+      id             UUID        PRIMARY KEY,
+      cvat_user_id   INTEGER     NOT NULL,
+      cvat_token     TEXT        NOT NULL,
+      remember       BOOLEAN     NOT NULL DEFAULT FALSE,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at     TIMESTAMPTZ NOT NULL,
+      user_agent     TEXT,
+      ip             TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_app_sessions_user ON app_sessions (cvat_user_id);
+    CREATE INDEX IF NOT EXISTS idx_app_sessions_exp  ON app_sessions (expires_at);
   `);
   console.log('[app-api] DB schema ready');
 }

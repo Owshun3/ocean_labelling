@@ -1,8 +1,6 @@
-import { Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
 import { apiClient } from './axiosClient';
-import { saveUserProfile, clearUserProfile } from './authStorage';
-import { AppApiService } from './AppApiService';
+import { appApiClient } from './AppApiService';
+import { saveUserProfile, clearUserProfile, markSessionAlive, clearSessionAlive } from './authStorage';
 
 const CVAT_ERROR_FR: Record<string, string> = {
 	'Unable to log in with provided credentials.': 'Identifiants incorrects.',
@@ -20,30 +18,12 @@ const CVAT_ERROR_FR: Record<string, string> = {
 const tr = (msg: string) => CVAT_ERROR_FR[msg] ?? msg;
 
 export class CvatAuthService {
-	private readonly TOKEN_KEY = 'cvat_token';
-
-	private async saveTokenLocally(token: string): Promise<void> {
-		if (Platform.OS === 'web') {
-			localStorage.setItem(this.TOKEN_KEY, token);
-		} else {
-			await SecureStore.setItemAsync(this.TOKEN_KEY, token);
-		}
-	}
-
-	public async getToken(): Promise<string | null> {
-		if (Platform.OS === 'web') {
-			return localStorage.getItem(this.TOKEN_KEY);
-		} else {
-			return await SecureStore.getItemAsync(this.TOKEN_KEY);
-		}
-	}
-
 	private extractLoginError(error: any): never {
 		if (!error?.response) {
 			throw new Error('Serveur inaccessible. Vérifiez que le service est démarré (port 8888).');
 		}
 		const { status, data } = error.response;
-		const detail = data?.non_field_errors?.[0] ?? data?.detail;
+		const detail = data?.error ?? data?.non_field_errors?.[0] ?? data?.detail;
 		if (status === 400 || status === 401) {
 			throw new Error(tr(detail ?? 'Unable to log in with provided credentials.'));
 		}
@@ -63,26 +43,22 @@ export class CvatAuthService {
 		throw new Error(`Erreur ${status} lors de la création du compte.`);
 	}
 
-	public async login(username: string, password: string): Promise<void> {
+	public async login(username: string, password: string, rememberMe: boolean = false): Promise<void> {
 		try {
-			const response = await apiClient.post('/auth/login', { username, password });
-			await this.saveTokenLocally(response.data.key);
-			const selfResp = await apiClient.get('/users/self');
-			const isSuperuser = selfResp.data.is_superuser ?? false;
-
-			let appRole: string = isSuperuser ? 'admin' : 'annotator';
-			try {
-				const roleData = await new AppApiService().getMyRole();
-				appRole = roleData.role;
-			} catch { /* app-api indisponible, fallback CVAT */ }
-
-			saveUserProfile({
-				id: selfResp.data.id,
-				username: selfResp.data.username,
-				is_superuser: isSuperuser,
-				is_staff: selfResp.data.is_staff ?? false,
-				appRole,
+			const resp = await appApiClient.post('/auth/login', {
+				username,
+				password,
+				remember_me: rememberMe,
 			});
+			saveUserProfile({
+				id: resp.data.id,
+				username: resp.data.username,
+				is_superuser: resp.data.is_superuser ?? false,
+				is_staff: resp.data.is_staff ?? false,
+				appRole: resp.data.role ?? 'annotator',
+				hasSeenWelcome: resp.data.has_seen_welcome ?? false,
+			});
+			markSessionAlive();
 		} catch (error: any) {
 			this.extractLoginError(error);
 		}
@@ -109,7 +85,7 @@ export class CvatAuthService {
 		}
 
 		try {
-			await this.login(username, password);
+			await this.login(username, password, false);
 		} catch {
 			throw new Error('Compte créé, mais connexion automatique échouée. Connectez-vous manuellement.');
 		}
@@ -117,14 +93,10 @@ export class CvatAuthService {
 
 	public async logout(): Promise<void> {
 		try {
-			await apiClient.post('/auth/logout');
+			await appApiClient.post('/auth/logout');
 		} finally {
-			if (Platform.OS === 'web') {
-				localStorage.removeItem(this.TOKEN_KEY);
-			} else {
-				await SecureStore.deleteItemAsync(this.TOKEN_KEY);
-			}
 			clearUserProfile();
+			clearSessionAlive();
 		}
 	}
 }

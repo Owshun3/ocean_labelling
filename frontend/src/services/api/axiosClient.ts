@@ -1,47 +1,14 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
 
-const getLocalToken = async (): Promise<string | null> => {
-	if (Platform.OS === 'web') {
-		return typeof window !== 'undefined' ? localStorage.getItem('cvat_token') : null;
-	}
-	return await SecureStore.getItemAsync('cvat_token');
-};
+const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
 
 export const apiClient = axios.create({
-	baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api',
+	baseURL: `${APP_API_BASE}/cvat`,
 	withCredentials: true,
 	headers: {
 		'Accept': 'application/vnd.cvat+json, application/json, text/plain, */*',
 	},
 });
-
-function readCsrfFromCookie(): string | null {
-	if (typeof document === 'undefined') return null;
-	const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-	return m ? m[1] : null;
-}
-
-apiClient.interceptors.request.use(
-	async (config) => {
-		const token = await getLocalToken();
-
-		if (config.headers && token) {
-			config.headers.Authorization = `Token ${token}`;
-		}
-
-		if (config.headers) {
-			const csrf = readCsrfFromCookie();
-			if (csrf) config.headers['X-CSRFToken'] = csrf;
-		}
-
-		return config;
-	},
-	(error) => {
-		return Promise.reject(error);
-	}
-);
 
 import { attachBanInterceptor } from './banInterceptor';
 attachBanInterceptor(apiClient);

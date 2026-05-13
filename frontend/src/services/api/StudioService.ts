@@ -1,20 +1,11 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
 import { SpeciesService } from './SpeciesService';
 import { attachBanInterceptor } from './banInterceptor';
 import { StudioShape } from '@/features/studio/types';
 
 const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
 
-export const studioClient = axios.create({ baseURL: `${APP_API_BASE}/studio` });
-
-studioClient.interceptors.request.use((config) => {
-	const token = Platform.OS === 'web'
-		? (typeof window !== 'undefined' ? localStorage.getItem('cvat_token') : null)
-		: null;
-	if (token) config.headers.Authorization = `Token ${token}`;
-	return config;
-});
+export const studioClient = axios.create({ baseURL: `${APP_API_BASE}/studio`, withCredentials: true });
 
 attachBanInterceptor(studioClient);
 

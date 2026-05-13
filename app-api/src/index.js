@@ -1,11 +1,19 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const { init } = require('./db');
 
 const app = express();
-app.use(express.json());
+app.set('trust proxy', 1);
+app.use(cookieParser());
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'ocean-app-api' }));
 
+// CVAT proxy must NOT be behind body-parser — streams the raw request body.
+app.use('/cvat', require('./routes/cvatProxy'));
+
+app.use(express.json({ limit: '10mb' }));
+
+app.use('/auth', require('./routes/auth'));
 app.use('/users', require('./routes/users'));
 app.use('/upload-history', require('./routes/history'));
 app.use('/curator', require('./routes/curator'));

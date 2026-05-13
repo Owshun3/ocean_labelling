@@ -24,6 +24,7 @@ export const LoginScreen: React.FC = () => {
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [showPassword, setShowPassword] = useState(false);
+	const [rememberMe, setRememberMe] = useState(false);
 	const [ban, setBan] = useState<BanState | null>(null);
 	const [sessionExpired, setSessionExpired] = useState<SessionExpiredInfo | null>(null);
 	const [, forceRerender] = useState(0);
@@ -70,7 +71,7 @@ export const LoginScreen: React.FC = () => {
 
 		try {
 			const authService = new CvatAuthService();
-			await authService.login(username, password);
+			await authService.login(username, password, rememberMe);
 			router.replace('/(main)' as Href);
 		} catch (err) {
 			const banInfo = await checkBanForUsername(username);
@@ -143,6 +144,13 @@ export const LoginScreen: React.FC = () => {
 					</View>
 				</View>
 				
+				<Pressable onPress={() => setRememberMe(v => !v)} style={styles.rememberRow}>
+					<View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+						{rememberMe ? <Ionicons name="checkmark" size={14} color={COLORS.text.inverse} /> : null}
+					</View>
+					<Text style={styles.rememberLabel}>Se souvenir de moi (30 jours)</Text>
+				</Pressable>
+
 				{isLoading ? (
 					<ActivityIndicator size="large" color={COLORS.primary} />
 				) : (
@@ -192,6 +200,10 @@ const styles = StyleSheet.create({
 	passwordRow: { flexDirection: 'row', alignItems: 'center' },
 	passwordInput: { flex: 1, borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 },
 	eyeButton: { borderWidth: 1, borderColor: COLORS.border, borderLeftWidth: 0, borderTopRightRadius: 4, borderBottomRightRadius: 4, paddingHorizontal: SPACING.sm, justifyContent: 'center', alignSelf: 'stretch' },
+	rememberRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md },
+	checkbox: { width: 18, height: 18, borderRadius: 3, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background.main, alignItems: 'center', justifyContent: 'center' },
+	checkboxChecked: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+	rememberLabel: { ...TYPOGRAPHY.body, color: COLORS.text.primary, fontSize: 13 },
 	switchContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.xl, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
 	switchText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },
 	link: { ...TYPOGRAPHY.body, color: COLORS.primary, fontWeight: 'bold' }

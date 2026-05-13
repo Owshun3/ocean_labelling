@@ -1,6 +1,6 @@
 import { AxiosInstance } from 'axios';
 import { Platform } from 'react-native';
-import { clearAuthToken, clearUserProfile, getAuthToken } from './authStorage';
+import { clearSessionAlive, clearUserProfile, isSessionAlive } from './authStorage';
 
 const BAN_SESSION_KEY      = 'ocean_ban_info';
 const SESSION_EXPIRED_KEY  = 'ocean_session_expired';
@@ -25,10 +25,11 @@ function isBanResponse(status: number, data: any): boolean {
 
 function detectSessionExpired(status: number, data: any): SessionExpiredInfo | null {
 	if (status !== 401) return null;
-	if (data?.hint === 'no_token_sent') return null;
-	if (data?.hint === 'cvat_returned_401') return { reason: 'token_invalid', detail: data?.error || null };
-	if (data?.hint === 'cvat_unreachable')  return { reason: 'cvat_unreachable', detail: data?.error || null };
-	if (data?.error === 'Invalid or expired CVAT token') return { reason: 'token_invalid', detail: data.error };
+	if (data?.hint === 'no_cookie')          return null;
+	if (data?.hint === 'cvat_unreachable')   return { reason: 'cvat_unreachable', detail: data?.error || null };
+	if (data?.hint === 'expired' || data?.hint === 'idle_timeout' || data?.hint === 'unknown_session' || data?.hint?.startsWith?.('cvat_returned_')) {
+		return { reason: 'token_invalid', detail: data?.error || null };
+	}
 	if (typeof data?.detail === 'string' && data.detail !== 'Authentication credentials were not provided.') {
 		return { reason: 'token_invalid', detail: data.detail };
 	}
@@ -37,7 +38,7 @@ function detectSessionExpired(status: number, data: any): SessionExpiredInfo | n
 
 async function clearAndRedirect(): Promise<boolean> {
 	if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
-	try { await clearAuthToken(); } catch {}
+	clearSessionAlive();
 	clearUserProfile();
 	if (window.location.pathname !== LOGIN_PATH) {
 		window.location.href = LOGIN_PATH;
@@ -70,9 +71,8 @@ export function attachBanInterceptor(client: AxiosInstance): void {
 
 			const expired = detectSessionExpired(status, data);
 			if (expired) {
-				let hadToken = false;
-				try { hadToken = (await getAuthToken()) !== null; } catch {}
-				if (hadToken) {
+				const hadSession = isSessionAlive();
+				if (hadSession) {
 					try {
 						sessionStorage.setItem(SESSION_EXPIRED_KEY, JSON.stringify(expired));
 					} catch {}

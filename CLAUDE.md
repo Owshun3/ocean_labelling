@@ -207,6 +207,46 @@ Layout : sidebar gauche 290 px (outils + zoom + propositions + opacité + color 
 
 **Rang annotateur** (`curator_certifications`) : tables prêtes, calcul UI à construire séparément. Composant `AnnotatorBadge.tsx` réserve un slot vertical avec commentaire `// TODO rank badge`.
 
+## Authentification & sessions (ADR-012)
+
+**Décision** : pas de token CVAT côté navigateur. App-api est l'autorité de session, CVAT n'est plus appelé directement depuis le frontend.
+
+**Flux** :
+1. `POST /app-api/auth/login {username, password, remember_me}` → app-api appelle `POST /api/auth/login` côté CVAT, récupère le token, INSERT dans `app_sessions(id UUID, cvat_user_id, cvat_token, remember, expires_at, last_seen_at, user_agent, ip)`, émet cookie `ocean_session=<uuid>; HttpOnly; SameSite=Lax; Secure(prod)`.
+2. `POST /app-api/auth/logout` → DELETE session row, clear cookie.
+3. Middleware `requireAuth` lit le cookie, vérifie idle/expiration, refresh `last_seen_at`, expose `req.cvatUser` + `req.cvatToken`.
+4. `*  /app-api/cvat/*` → proxy générique qui forwarde vers `${CVAT_API}/*` en ré-injectant `Authorization: Token <stocké en DB>` côté serveur. Le proxy **doit** être monté avant `express.json()` (`src/index.js`) pour que les bodies multipart (upload) ne soient pas consommés.
+
+**Politiques** :
+- Idle 30 min (touché à chaque requête).
+- Absolu 12 h sans « se souvenir de moi », 30 j si coché (`REMEMBER_LIFETIME_MS`).
+- Cookie session-only (pas de `Max-Age`) si non coché → tombe à la fermeture du navigateur.
+
+**Frontend** :
+- `apiClient` (axiosClient.ts) — `baseURL: /app-api/cvat`, `withCredentials: true`, plus aucun interceptor d'auth. Toutes les anciennes routes CVAT en `/api/...` sont remplacées par `/app-api/cvat/...`.
+- Tous les services app-api (`AppApiService`, `CuratorService`, `StudioService`, `ModerationService`, `SpeciesService`, `MediaMetadataService`) ont `withCredentials: true` et n'injectent plus de Bearer.
+- `authStorage.ts` : ne stocke plus de token. Garde `cvat_user_profile` (nav role) et `ocean_session_alive` (flag non sensible pour multi-onglets).
+- Multi-onglets : logout dans un onglet → `clearSessionAlive()` → storage event → autres onglets redirigent vers `/login` (listener dans `app/_layout.tsx`).
+- LoginScreen : checkbox « Se souvenir de moi (30 jours) » passe `rememberMe` à `CvatAuthService.login()`.
+
+**banInterceptor** : détecte 401 par `data.hint` (`expired`, `idle_timeout`, `unknown_session`, `cvat_returned_*`) et redirige. Vérifie `isSessionAlive()` plutôt que la présence du token.
+
+**Studio CVAT injecté legacy** (ADR-006) : ne fonctionne plus, car il dépendait du cookie `sessionid` que CVAT mettait directement. Le studio custom (ADR-007) reste pleinement opérationnel via le proxy.
+
+**Sécurité — pourquoi un cookie HttpOnly est le bon choix** :
+- Un seul cookie utilisé : `ocean_session`, valeur = UUID opaque (pas de payload). Pas de JWT côté client, pas de token CVAT exposé.
+- `HttpOnly` → inaccessible à `document.cookie` / JavaScript → immunisé XSS (contrairement à localStorage qui en serait la cible n°1).
+- `SameSite=Lax` → blocage CSRF cross-origin standard. Pour les opérations critiques, on peut durcir à `Strict`.
+- `Secure` actif en prod (HTTPS obligatoire). En dev `localhost`, le navigateur ignore la contrainte.
+- Tout l'état (token CVAT, expirations, ban, user-agent, IP) vit côté serveur dans `app_sessions` — révocable instantanément (DELETE row → cookie devient inerte).
+
+**Portage mobile (RN natif)** :
+- `axios` sur RN utilise NSURLSession (iOS) / OkHttp (Android) qui gèrent les cookies de façon transparente. `withCredentials: true` suffit, pas besoin de `react-native-cookies`.
+- `authStorage.ts` bascule automatiquement : `localStorage` sur web, `expo-secure-store` sur mobile. Ne contient que des données non sensibles (profil pour UI role-gating + flag `ocean_session_alive`).
+- Storage event multi-onglets : web uniquement (mobile n'a pas la notion d'onglets partagés).
+
+**Production** : NGINX doit forwarder `Cookie` et `Set-Cookie` (par défaut OK). Avec HTTPS, `Secure` cookie automatique côté Express. En dev (`localhost`), les navigateurs ignorent la contrainte `Secure`.
+
 ## Studio CVAT injecté (legacy, ADR-006) — coexiste avec ADR-007
 ```
 nginx/static/

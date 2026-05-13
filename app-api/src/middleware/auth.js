@@ -3,10 +3,15 @@ const { pool } = require('../db');
 
 const CVAT_API = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
 
-async function resolveCvatUser(authHeader) {
+const SESSION_COOKIE = 'ocean_session';
+const IDLE_TIMEOUT_MS     = 30 * 60 * 1000;
+const ABSOLUTE_LIFETIME_MS = 12 * 60 * 60 * 1000;
+const REMEMBER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+
+async function resolveCvatUser(token) {
   const resp = await axios.get(`${CVAT_API}/users/self`, {
     headers: {
-      Authorization: authHeader,
+      Authorization: `Token ${token}`,
       Accept: 'application/vnd.cvat+json',
       Host: 'localhost',
     },
@@ -43,34 +48,75 @@ function denyBanned(res, ban) {
   });
 }
 
+function deny401(res, hint, extra = {}) {
+  res.clearCookie(SESSION_COOKIE, { path: '/' });
+  return res.status(401).json({ error: 'Session invalide ou expirée', hint, ...extra });
+}
+
+async function loadSession(sessionId) {
+  const { rows } = await pool.query(
+    `SELECT id, cvat_user_id, cvat_token, remember, last_seen_at, expires_at
+     FROM app_sessions WHERE id = $1`,
+    [sessionId],
+  );
+  return rows[0] || null;
+}
+
+async function touchSession(sessionId) {
+  await pool.query(
+    'UPDATE app_sessions SET last_seen_at = NOW() WHERE id = $1',
+    [sessionId],
+  );
+}
+
+async function dropSession(sessionId) {
+  await pool.query('DELETE FROM app_sessions WHERE id = $1', [sessionId]);
+}
+
 async function authenticate(req, res) {
-  const auth = req.headers['authorization'];
-  if (!auth) {
-    res.status(401).json({ error: 'Authorization header required', hint: 'no_token_sent' });
+  const sessionId = req.cookies?.[SESSION_COOKIE];
+  if (!sessionId) {
+    res.status(401).json({ error: 'Session manquante', hint: 'no_cookie' });
     return null;
   }
+  const sess = await loadSession(sessionId);
+  if (!sess) return deny401(res, 'unknown_session'), null;
+
+  const now = Date.now();
+  if (new Date(sess.expires_at).getTime() <= now) {
+    await dropSession(sessionId);
+    return deny401(res, 'expired'), null;
+  }
+  const idleMs = now - new Date(sess.last_seen_at).getTime();
+  if (idleMs > IDLE_TIMEOUT_MS) {
+    await dropSession(sessionId);
+    return deny401(res, 'idle_timeout'), null;
+  }
+
+  let cvatUser;
   try {
-    const cvatUser = await resolveCvatUser(auth);
-    const isStaff = cvatUser.is_superuser || cvatUser.is_staff;
-    if (!isStaff) {
-      const ban = await getActiveBan(cvatUser.id);
-      if (ban) {
-        denyBanned(res, ban);
-        return null;
-      }
-    }
-    return cvatUser;
+    cvatUser = await resolveCvatUser(sess.cvat_token);
   } catch (err) {
     const cvatStatus = err?.response?.status;
-    const cvatPayload = err?.response?.data;
-    console.warn('[auth] resolveCvatUser failed:', { cvatStatus, cvatPayload, message: err?.message });
-    res.status(401).json({
-      error: 'Invalid or expired CVAT token',
-      hint: cvatStatus ? `cvat_returned_${cvatStatus}` : 'cvat_unreachable',
-      cvat_status: cvatStatus ?? null,
-    });
-    return null;
+    console.warn('[auth] CVAT token rejected:', { cvatStatus, message: err?.message });
+    await dropSession(sessionId);
+    return deny401(res, cvatStatus ? `cvat_returned_${cvatStatus}` : 'cvat_unreachable'), null;
   }
+
+  const isStaff = cvatUser.is_superuser || cvatUser.is_staff;
+  if (!isStaff) {
+    const ban = await getActiveBan(cvatUser.id);
+    if (ban) {
+      await dropSession(sessionId);
+      denyBanned(res, ban);
+      return null;
+    }
+  }
+
+  await touchSession(sessionId);
+  req.cvatSession = sess;
+  req.cvatToken   = sess.cvat_token;
+  return cvatUser;
 }
 
 async function fetchAppRole(cvatUserId) {
@@ -118,4 +164,8 @@ async function requireModeratorOrAbove(req, res, next) {
   return res.status(403).json({ error: 'Moderator access required' });
 }
 
-module.exports = { requireAuth, requireAdmin, requireCuratorOrAbove, requireModeratorOrAbove };
+module.exports = {
+  requireAuth, requireAdmin, requireCuratorOrAbove, requireModeratorOrAbove,
+  resolveCvatUser, dropSession,
+  SESSION_COOKIE, IDLE_TIMEOUT_MS, ABSOLUTE_LIFETIME_MS, REMEMBER_LIFETIME_MS,
+};
