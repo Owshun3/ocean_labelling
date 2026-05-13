@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, StyleSheet, Switch, Modal } from 'react-native';
 import { AdminService, SettingItem } from '@/services/api/AdminService';
+import { refreshPublicSettings } from '@/services/api/publicSettings';
 import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
@@ -81,6 +82,7 @@ export const AdminSettingsScreen: React.FC = () => {
 			await service.updateSetting(it.key, value);
 			toast.success(`Paramètre « ${it.label} » mis à jour.`);
 			await load();
+			if (it.is_public) void refreshPublicSettings();
 		} catch (err: any) {
 			toast.error(err?.response?.data?.error ?? err?.message ?? 'Mise à jour impossible.');
 		} finally {
@@ -97,7 +99,7 @@ export const AdminSettingsScreen: React.FC = () => {
 			// turning OFF → save immediately
 			setDraft(it.key, false);
 			void service.updateSetting(it.key, false)
-				.then(() => { toast.success('Mode maintenance désactivé.'); load(); })
+				.then(() => { toast.success('Mode maintenance désactivé.'); load(); refreshPublicSettings(); })
 				.catch((err) => toast.error(err?.response?.data?.error ?? err?.message ?? 'Mise à jour impossible.'));
 		}
 	};
@@ -110,6 +112,7 @@ export const AdminSettingsScreen: React.FC = () => {
 			await service.updateSetting(MAINTENANCE_KEY, true);
 			toast.success('Mode maintenance activé.');
 			await load();
+			void refreshPublicSettings();
 		} catch (err: any) {
 			toast.error(err?.response?.data?.error ?? err?.message ?? 'Mise à jour impossible.');
 			setDraft(MAINTENANCE_KEY, false);
@@ -154,7 +157,11 @@ export const AdminSettingsScreen: React.FC = () => {
 													else {
 														setDraft(it.key, next);
 														void service.updateSetting(it.key, next)
-															.then(() => { toast.success(`Paramètre « ${it.label} » mis à jour.`); load(); })
+															.then(() => {
+																toast.success(`Paramètre « ${it.label} » mis à jour.`);
+																load();
+																if (it.is_public) refreshPublicSettings();
+															})
 															.catch((err) => toast.error(err?.response?.data?.error ?? err?.message ?? 'Mise à jour impossible.'));
 													}
 												}}

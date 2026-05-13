@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const { pool } = require('../db');
 const { requireAdmin, requireAuth } = require('../middleware/auth');
+const { recordAction } = require('../lib/auditLog');
 
 const router = express.Router();
 const CVAT_API = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -366,6 +367,9 @@ router.patch('/:id/active', requireAdmin, async (req, res) => {
     }
 
     await cvatPatchUser(id, { is_active });
+    recordAction(req.cvatUser.id, 'user.active_changed', {
+      targetType: 'user', targetId: id, payload: { is_active },
+    });
     res.json({ id, is_active });
   } catch (err) {
     res.status(err.response?.status ?? 500).json({ error: err.response?.data ?? err.message });
@@ -382,6 +386,7 @@ router.patch('/:id/role', requireAdmin, async (req, res) => {
   }
 
   try {
+    const prev = (await pool.query('SELECT role FROM user_roles WHERE cvat_user_id = $1', [id])).rows[0]?.role ?? null;
     await pool.query(`
       INSERT INTO user_roles (cvat_user_id, role, updated_at)
       VALUES ($1, $2, NOW())
@@ -390,6 +395,9 @@ router.patch('/:id/role', requireAdmin, async (req, res) => {
         updated_at = EXCLUDED.updated_at
     `, [id, role]);
 
+    recordAction(req.cvatUser.id, 'user.role_changed', {
+      targetType: 'user', targetId: id, payload: { from: prev, to: role },
+    });
     res.json({ id, role });
   } catch (err) {
     res.status(500).json({ error: err.message });

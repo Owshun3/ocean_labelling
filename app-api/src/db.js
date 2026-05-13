@@ -194,6 +194,19 @@ async function _createSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_app_sessions_user ON app_sessions (cvat_user_id);
     CREATE INDEX IF NOT EXISTS idx_app_sessions_exp  ON app_sessions (expires_at);
+
+    CREATE TABLE IF NOT EXISTS admin_actions (
+      id           SERIAL      PRIMARY KEY,
+      actor_id     INTEGER     NOT NULL,
+      action       TEXT        NOT NULL,
+      target_type  TEXT,
+      target_id    INTEGER,
+      payload      JSONB,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_admin_actions_actor   ON admin_actions (actor_id);
+    CREATE INDEX IF NOT EXISTS idx_admin_actions_action  ON admin_actions (action);
   `);
 
   const { ensureSchema: ensureSettingsSchema } = require('./lib/settingsRegistry');

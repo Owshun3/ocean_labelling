@@ -3,6 +3,7 @@
 const express = require('express');
 const { pool } = require('../../db');
 const { cvatGet, cvatDelete } = require('../../lib/cvatAdmin');
+const { recordAction } = require('../../lib/auditLog');
 
 const router = express.Router();
 
@@ -227,6 +228,10 @@ router.post('/resolve', async (req, res) => {
       }
     }
   }
+
+  recordAction(adminId, 'contestation.resolved', {
+    payload: { action, contestation_ids: ids, cvat_delete_errors: deleteErrors.length },
+  });
 
   res.json({
     resolved:       ids.length,

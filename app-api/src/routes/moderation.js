@@ -4,6 +4,7 @@ const express = require('express');
 const axios   = require('axios');
 const { pool } = require('../db');
 const { requireAuth, requireModeratorOrAbove } = require('../middleware/auth');
+const { recordAction } = require('../lib/auditLog');
 
 const router = express.Router();
 const CVAT   = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -395,6 +396,7 @@ router.post('/media/validate', requireModeratorOrAbove, async (req, res) => {
       SET status = 'validated', reviewed_by = $1, reviewed_at = NOW(), review_comment = NULL
       WHERE cvat_task_id = ANY($2) AND status = 'pending'
     `, [req.cvatUser.id, ids]);
+    if (rowCount > 0) recordAction(req.cvatUser.id, 'media.validated', { payload: { task_ids: ids, count: rowCount } });
     res.json({ updated: rowCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -416,6 +418,7 @@ router.post('/media/reject', requireModeratorOrAbove, async (req, res) => {
       SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_comment = $2
       WHERE cvat_task_id = ANY($3) AND status = 'pending'
     `, [req.cvatUser.id, comment, ids]);
+    if (rowCount > 0) recordAction(req.cvatUser.id, 'media.rejected', { payload: { task_ids: ids, count: rowCount, reason: comment } });
     res.json({ updated: rowCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -470,6 +473,11 @@ router.post('/users/:id/ban', requireModeratorOrAbove, async (req, res) => {
   } catch (err) {
     console.warn(`[moderation] failed to deactivate CVAT user ${userId}:`, err.response?.data ?? err.message);
   }
+
+  recordAction(req.cvatUser.id, 'user.banned', {
+    targetType: 'user', targetId: userId,
+    payload: { duration_days: durationDays ?? null, expires_at: expiresAt, reason },
+  });
 
   res.json({ ok: true, expires_at: expiresAt, cvat_deactivated: cvatDeactivated });
 });

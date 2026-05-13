@@ -89,6 +89,32 @@ export interface HealthService {
 	detail: string | null;
 }
 
+export type AuditAction =
+	| 'user.banned'
+	| 'user.active_changed'
+	| 'user.role_changed'
+	| 'contestation.resolved'
+	| 'setting.changed'
+	| 'media.validated'
+	| 'media.rejected';
+
+export interface AuditEntry {
+	id: number;
+	actor: { id: number; username: string | null; role: string };
+	action: AuditAction;
+	target_type: string | null;
+	target_id: number | null;
+	payload: any;
+	created_at: string;
+}
+
+export interface ActivityListResponse {
+	results: AuditEntry[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
 export interface HealthReport {
 	checked_at: string;
 	probe_duration_ms: number;
@@ -137,6 +163,16 @@ export class AdminService {
 
 	async getHealth(): Promise<HealthReport> {
 		const resp = await adminClient.get<HealthReport>('/health');
+		return resp.data;
+	}
+
+	async listActivity(opts: { limit?: number; offset?: number; action?: AuditAction | ''; actor_id?: number | null } = {}): Promise<ActivityListResponse> {
+		const params: Record<string, any> = {};
+		if (opts.limit  !== undefined) params.limit  = opts.limit;
+		if (opts.offset !== undefined) params.offset = opts.offset;
+		if (opts.action)               params.action = opts.action;
+		if (opts.actor_id != null)     params.actor_id = opts.actor_id;
+		const resp = await adminClient.get<ActivityListResponse>('/activity', { params });
 		return resp.data;
 	}
 

@@ -4,6 +4,7 @@ const express = require('express');
 const { pool } = require('../../db');
 const { REGISTRY_BY_KEY, GROUP_LABELS, coerceFromString, validateForType } = require('../../lib/settingsRegistry');
 const { invalidateMaintenanceCache } = require('../../lib/maintenance');
+const { recordAction } = require('../../lib/auditLog');
 
 const router = express.Router();
 
@@ -45,6 +46,7 @@ router.patch('/:key', async (req, res) => {
   }
 
   try {
+    const prev = (await pool.query('SELECT value FROM app_settings WHERE key = $1', [key])).rows[0]?.value ?? null;
     await pool.query(`
       INSERT INTO app_settings (key, value, type, label, description, group_name, is_public)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -52,6 +54,11 @@ router.patch('/:key', async (req, res) => {
     `, [key, stored, meta.type, meta.label, meta.description, meta.group_name, meta.is_public]);
 
     if (key === 'platform.maintenance_mode') invalidateMaintenanceCache();
+
+    recordAction(req.cvatUser.id, 'setting.changed', {
+      targetType: 'setting',
+      payload: { key, from: prev, to: stored },
+    });
 
     res.json({ key, value: coerceFromString(meta.type, stored) });
   } catch (err) {
