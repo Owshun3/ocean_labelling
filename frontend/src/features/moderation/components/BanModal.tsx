@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, Modal, TextInput, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, Modal, TextInput, StyleSheet } from 'react-native';
+import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -48,7 +49,7 @@ export const BanModal: React.FC<Props> = ({ visible, userLabel, submitting, onCa
 		if (mode === 'perm') return onConfirm(null, reason);
 		const n = Number(value);
 		if (!Number.isFinite(n) || n <= 0) {
-			Alert.alert('Durée invalide', 'Indique une valeur strictement positive.');
+			toast.error('Durée invalide — indique une valeur strictement positive.');
 			return;
 		}
 		const days = n * UNIT_TO_DAYS[unit];

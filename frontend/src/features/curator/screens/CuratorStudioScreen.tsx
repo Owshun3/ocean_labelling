@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href } from 'expo-router';
 import { CuratorService, Proposal } from '@/services/api/CuratorService';
 import { StudioTool } from '@/features/studio/types';
@@ -193,10 +194,11 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				rejected_proposals: rejected,
 			});
 
+			toast.success('Annotation certifiée.');
 			router.replace('/(main)/curator/done' as Href);
 		} catch (err: any) {
 			const detail = err?.response?.data?.error ?? err?.message ?? 'Certification impossible.';
-			Alert.alert('Erreur', typeof detail === 'string' ? detail : JSON.stringify(detail));
+			toast.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
 			setSubmitting(false);
 		}
 	}, [canCertify, submitting, data, state.mode, state.curatorBbox, selectedProposal, proposals, service, taskId, jobId, species, comment, router]);

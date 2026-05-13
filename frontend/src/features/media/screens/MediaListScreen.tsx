@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Platform } from 'react-native';
+import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { CvatMediaService } from '@/services/api/CvatMediaService';
@@ -139,10 +140,11 @@ export const MediaListScreen: React.FC = () => {
 			setSubmitting(true);
 			try {
 				await Promise.all(ids.map((id) => cvatService.deleteTask(id)));
+				toast.success(ids.length === 1 ? 'Média supprimé.' : `${ids.length} médias supprimés.`);
 				setSelected(new Set());
 				await loadTasks();
 			} catch {
-				Alert.alert('Erreur', 'Impossible de supprimer la sélection.');
+				toast.error('Impossible de supprimer la sélection.');
 			} finally {
 				setSubmitting(false);
 			}
@@ -160,12 +162,14 @@ export const MediaListScreen: React.FC = () => {
 	const handleConfirmContest = async (message: string) => {
 		if (!canContest || submitting) return;
 		setSubmitting(true);
+		const count = selected.size;
 		try {
 			await appService.contestRejection(Array.from(selected), message);
+			toast.success(count === 1 ? 'Contestation envoyée.' : `${count} contestations envoyées.`);
 			setContestOpen(false);
 			setSelected(new Set());
 		} catch (err: any) {
-			Alert.alert('Erreur', err?.response?.data?.error || err?.message || 'Contestation impossible.');
+			toast.error(err?.response?.data?.error || err?.message || 'Contestation impossible.');
 		} finally {
 			setSubmitting(false);
 		}

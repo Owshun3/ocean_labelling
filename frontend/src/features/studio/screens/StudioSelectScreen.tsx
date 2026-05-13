@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { toast } from '@/shared/toast/Toast';
 import { useFocusEffect, useRouter, Href } from 'expo-router';
 import { AnnotationState, FeedTask, StudioFeed, StudioService } from '@/services/api/StudioService';
 import { StudioFeedTile } from '../components/StudioFeedTile';
@@ -35,7 +36,7 @@ export const StudioSelectScreen: React.FC = () => {
 	const openTask = async (task: FeedTask) => {
 		if (claiming) return;
 		if (task.annotation_state === 'curator_validated') {
-			Alert.alert('Vue annotation finale', 'Cette vue sera disponible quand le studio curator sera construit.');
+			toast.info('Vue annotation finale disponible quand le studio curator sera construit.');
 			return;
 		}
 		setClaiming(true);
@@ -44,7 +45,7 @@ export const StudioSelectScreen: React.FC = () => {
 			router.push(`/(main)/studio/${task.cvat_task_id}/${jobId}` as Href);
 		} catch (err: any) {
 			const msg = err?.response?.data?.error ?? err?.message ?? 'Impossible de réserver ce média.';
-			Alert.alert('Erreur', typeof msg === 'string' ? msg : JSON.stringify(msg));
+			toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
 		} finally {
 			setClaiming(false);
 		}
@@ -56,10 +57,10 @@ export const StudioSelectScreen: React.FC = () => {
 		try {
 			await service.contestAnnotation(contestTarget.cvat_task_id, message);
 			setContestTarget(null);
-			Alert.alert('Contestation envoyée', 'Ton message sera relayé à un administrateur.');
+			toast.success('Contestation envoyée. Un administrateur en sera informé.');
 		} catch (err: any) {
 			const msg = err?.response?.data?.error ?? err?.message ?? 'Contestation impossible.';
-			Alert.alert('Erreur', typeof msg === 'string' ? msg : JSON.stringify(msg));
+			toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
 		} finally {
 			setContestSubmitting(false);
 		}

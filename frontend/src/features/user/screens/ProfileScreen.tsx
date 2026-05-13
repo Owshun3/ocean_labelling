@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
+import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href, useFocusEffect } from 'expo-router';
 import { AppApiService, UserProfile } from '@/services/api/AppApiService';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
@@ -42,7 +43,7 @@ export const ProfileScreen: React.FC = () => {
 			await authService.logout();
 			router.replace('/(auth)/login' as Href);
 		} catch {
-			Alert.alert('Erreur', 'Déconnexion impossible.');
+			toast.error('Déconnexion impossible.');
 		}
 	};
 

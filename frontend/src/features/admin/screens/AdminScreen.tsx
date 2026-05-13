@@ -11,6 +11,7 @@ import { AppApiService, AppRole, AccountState, UserWithRole } from '@/services/a
 import { getUserProfile } from '@/services/api/authStorage';
 import { BanModal } from '@/features/moderation/components/BanModal';
 import { formatRemaining } from '@/services/api/banInterceptor';
+import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -75,8 +76,9 @@ function StateSelect({ user, onSetActive, onRequestBan }: StateSelectProps) {
 					setSaving(true);
 					try {
 						await onSetActive(next === 'active');
+						toast.success(next === 'active' ? 'Compte activé.' : 'Compte désactivé.');
 					} catch (err: any) {
-						window.alert(err?.response?.data?.error ?? 'Impossible de modifier l\'état du compte.');
+						toast.error(err?.response?.data?.error ?? 'Impossible de modifier l\'état du compte.');
 					} finally {
 						setSaving(false);
 					}
@@ -124,9 +126,10 @@ function RoleSelect({ user, onSave }: { user: UserWithRole; onSave: (role: AppRo
 					setSaving(true);
 					try {
 						await onSave(newRole);
+						toast.success(`Rôle modifié : ${ROLE_LABELS[newRole]}.`);
 					} catch (err: any) {
 						setLocalRole(prevRole);
-						window.alert(err?.response?.data?.error ?? 'Impossible de modifier le rôle.');
+						toast.error(err?.response?.data?.error ?? 'Impossible de modifier le rôle.');
 					} finally {
 						setSaving(false);
 					}
@@ -182,10 +185,11 @@ export const AdminScreen: React.FC = () => {
 		setBanSubmitting(true);
 		try {
 			await service.banUser(banTarget.id, durationDays, reason);
+			toast.success(`Utilisateur banni : ${banTarget.username}.`);
 			setBanTarget(null);
 			await reload();
 		} catch (err: any) {
-			window.alert(err?.response?.data?.error ?? 'Bannissement impossible.');
+			toast.error(err?.response?.data?.error ?? 'Bannissement impossible.');
 		} finally {
 			setBanSubmitting(false);
 		}

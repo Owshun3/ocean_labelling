@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href } from 'expo-router';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -53,20 +54,21 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 		if (submitting) return;
 		const missing = shapes.filter((s) => !s.speciesName).length;
 		if (missing > 0) {
-			Alert.alert('Espèces manquantes', `${missing} rectangle(s) sans espèce.`);
+			toast.error(`${missing} rectangle(s) sans espèce — renseigne-les avant de soumettre.`);
 			return;
 		}
 		setSubmitting(true);
 		try {
 			const updated = await studio.validateAll(taskId, jobId, shapes);
 			setShapes(updated);
+			toast.success('Annotation soumise.');
 			router.replace('/(main)/studio/select' as Href);
 		} catch (err: any) {
 			const detail = err?.response?.data?.error
 				?? err?.response?.data?.detail
 				?? err?.message
 				?? 'Validation impossible.';
-			Alert.alert('Erreur', typeof detail === 'string' ? detail : JSON.stringify(detail));
+			toast.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
 		} finally {
 			setSubmitting(false);
 		}

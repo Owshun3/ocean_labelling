@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href } from 'expo-router';
 import { ModerationService, ModerationQueueEntry } from '@/services/api/ModerationService';
 import { COLORS } from '@/shared/theme/colors';
@@ -18,7 +19,7 @@ export const ModerationQueueScreen: React.FC = () => {
 			const data = await service.getQueue();
 			setEntries(data);
 		} catch (err: any) {
-			Alert.alert('Erreur', err?.message || 'Impossible de charger la file de modération.');
+			toast.error(err?.message || 'Impossible de charger la file de modération.');
 		} finally {
 			setLoading(false);
 		}

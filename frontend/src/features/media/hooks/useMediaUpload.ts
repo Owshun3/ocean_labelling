@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import * as exifr from 'exifr';
 import { CvatMediaService } from '@/services/api/CvatMediaService';
 import { AppApiService } from '@/services/api/AppApiService';
 import { MediaMetadataService } from '@/services/api/MediaMetadataService';
+import { toast } from '@/shared/toast/Toast';
 
 async function extractExif(asset: any): Promise<{
 	gps_latitude?: number; gps_longitude?: number;
@@ -94,12 +95,9 @@ export const useMediaUpload = () => {
 			}
 
 			if (moderationErrors.length > 0) {
-				const summary = moderationErrors
-					.map((m) => `task ${m.taskId} (${m.status ?? 'no status'}) : ${m.message}`)
-					.join('\n');
-				Alert.alert(
-					'Modération non enregistrée',
-					`${moderationErrors.length}/${files.length} média(s) uploadé(s) mais non inscrit(s) dans la file de modération :\n\n${summary}\n\nLes fichiers sont sur CVAT mais invisibles pour le modérateur.`
+				console.warn('[upload] moderation queue errors', moderationErrors);
+				toast.error(
+					`${moderationErrors.length}/${files.length} média(s) uploadé(s) mais non inscrit(s) dans la file de modération. Détails dans la console.`,
 				);
 			}
 			return taskIds;

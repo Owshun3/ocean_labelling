@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Button, Image, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, Button, Image, Pressable, ScrollView, StyleSheet, Animated, Easing } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { AppApiService } from '@/services/api/AppApiService';
+import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 
@@ -41,6 +42,23 @@ export const UploadScreen: React.FC = () => {
 	const fillPct  = Math.min(100, (totalBytes / maxBatchBytes) * 100);
 	const overLimit = totalBytes > maxBatchBytes;
 
+	const uploadProgressPct = progress.total > 0
+		? Math.round((progress.current / progress.total) * 100)
+		: 0;
+	const animatedFill = useRef(new Animated.Value(0)).current;
+	useEffect(() => {
+		Animated.timing(animatedFill, {
+			toValue: uploadProgressPct,
+			duration: 350,
+			easing: Easing.out(Easing.cubic),
+			useNativeDriver: false,
+		}).start();
+	}, [uploadProgressPct, animatedFill]);
+	const animatedWidth = animatedFill.interpolate({
+		inputRange: [0, 100],
+		outputRange: ['0%', '100%'],
+	});
+
 	const pickImage = async () => {
 		const result = await ImagePicker.launchImageLibraryAsync({
 			mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -61,9 +79,16 @@ export const UploadScreen: React.FC = () => {
 		if (overLimit) return;
 		try {
 			const taskIds = await upload(selectedImages);
-			if (taskIds.length > 0) router.replace('/(main)/media');
+			if (taskIds.length > 0) {
+				toast.success(
+					taskIds.length === 1
+						? 'Média téléversé et soumis à la modération.'
+						: `${taskIds.length} médias téléversés et soumis à la modération.`,
+				);
+				router.replace('/(main)/media');
+			}
 		} catch (error: any) {
-			Alert.alert('Erreur', error?.message || "L'envoi a échoué. Vérifiez la connexion.");
+			toast.error(error?.message || "L'envoi a échoué. Vérifiez la connexion.");
 		}
 	};
 
@@ -109,11 +134,21 @@ export const UploadScreen: React.FC = () => {
 			{selectedImages.length > 0 && (
 				<View style={styles.footer}>
 					{isUploading ? (
-						<View style={styles.progressRow}>
-							<ActivityIndicator color={COLORS.primary} />
-							<Text style={styles.progressText}>
-								Téléversement {progress.current} / {progress.total}
-							</Text>
+						<View style={styles.uploadProgressBox}>
+							<View style={styles.uploadProgressHeader}>
+								<Text style={styles.uploadProgressLabel}>
+									Téléversement en cours · {progress.current} / {progress.total}
+								</Text>
+								<Text style={styles.uploadProgressPct}>{uploadProgressPct}%</Text>
+							</View>
+							<View style={styles.uploadProgressTrack}>
+								<Animated.View
+									style={[
+										styles.uploadProgressFill,
+										{ width: animatedWidth },
+									]}
+								/>
+							</View>
 						</View>
 					) : (
 						<Button
@@ -158,6 +193,28 @@ const styles = StyleSheet.create({
 	gaugeError: { fontSize: 13, color: COLORS.danger, fontWeight: '600' },
 	gaugeTrack: { height: 8, backgroundColor: COLORS.background.main, borderRadius: 4, overflow: 'hidden' },
 	gaugeFill: { height: '100%', borderRadius: 4 },
-	progressRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, justifyContent: 'center' },
-	progressText: { fontSize: 14, color: COLORS.text.secondary },
+	uploadProgressBox: {
+		padding: SPACING.md,
+		backgroundColor: COLORS.background.card,
+		borderRadius: 8,
+		borderWidth: 1,
+		borderColor: COLORS.border,
+		gap: SPACING.sm,
+	},
+	uploadProgressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+	uploadProgressLabel: { fontSize: 14, color: COLORS.text.primary, fontWeight: '500' },
+	uploadProgressPct: { fontSize: 18, color: COLORS.primary, fontWeight: '700', fontVariant: ['tabular-nums'] },
+	uploadProgressTrack: {
+		height: 12,
+		backgroundColor: COLORS.background.main,
+		borderRadius: 6,
+		overflow: 'hidden',
+		borderWidth: 1,
+		borderColor: COLORS.border,
+	},
+	uploadProgressFill: {
+		height: '100%',
+		backgroundColor: COLORS.primary,
+		borderRadius: 6,
+	},
 });

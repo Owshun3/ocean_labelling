@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
 	View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
-	Alert, Platform,
+	Platform,
 } from 'react-native';
+import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href } from 'expo-router';
 import { ModerationService, ModerationMediaEntry, ModerationUploader } from '@/services/api/ModerationService';
 import { appApiClient } from '@/services/api/AppApiService';
@@ -49,7 +50,7 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 			setSelected(new Set());
 			setLastClicked(null);
 		} catch (err: any) {
-			Alert.alert('Erreur', err?.response?.data?.error || err?.message || 'Chargement impossible.');
+			toast.error(err?.response?.data?.error || err?.message || 'Chargement impossible.');
 		} finally {
 			setLoading(false);
 		}
@@ -95,11 +96,13 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 	const handleValidate = async () => {
 		if (selected.size === 0 || submitting) return;
 		setSubmitting(true);
+		const count = selected.size;
 		try {
 			await service.validateMedia(Array.from(selected));
+			toast.success(count === 1 ? 'Média validé.' : `${count} médias validés.`);
 			await load();
 		} catch (err: any) {
-			Alert.alert('Erreur', err?.response?.data?.error || err?.message || 'Validation impossible.');
+			toast.error(err?.response?.data?.error || err?.message || 'Validation impossible.');
 		} finally {
 			setSubmitting(false);
 		}
@@ -117,12 +120,13 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 		setSubmitting(true);
 		try {
 			await service.rejectMedia(Array.from(selected), rejectComment || undefined);
+			toast.success(count === 1 ? 'Média rejeté.' : `${count} médias rejetés.`);
 			setRejectComment('');
 			await load();
 			setSubmitting(false);
 			if (proposeBanAfterReject(count)) setBanModalOpen(true);
 		} catch (err: any) {
-			Alert.alert('Erreur', err?.response?.data?.error || err?.message || 'Rejet impossible.');
+			toast.error(err?.response?.data?.error || err?.message || 'Rejet impossible.');
 			setSubmitting(false);
 		}
 	};
@@ -132,10 +136,11 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 		setSubmitting(true);
 		try {
 			await service.banUser(user.id, { duration_days: durationDays, reason });
+			toast.success('Utilisateur banni.');
 			setBanModalOpen(false);
 			router.replace('/(main)/moderation' as Href);
 		} catch (err: any) {
-			Alert.alert('Erreur', err?.response?.data?.error || err?.message || 'Bannissement impossible.');
+			toast.error(err?.response?.data?.error || err?.message || 'Bannissement impossible.');
 		} finally {
 			setSubmitting(false);
 		}

@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { router } from 'expo-router';
 import { CuratorService, CuratorTask } from '@/services/api/CuratorService';
 import { CuratorTile } from '../components/CuratorTile';
+import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -10,7 +11,7 @@ import { TYPOGRAPHY } from '@/shared/theme/typography';
 export function openCurationStudio(task: CuratorTask): void {
 	const jobId = task.jobs?.[0]?.id;
 	if (!jobId) {
-		window.alert('Aucun job d\'annotation disponible pour ce média.');
+		toast.error('Aucun job d\'annotation disponible pour ce média.');
 		return;
 	}
 	router.push(`/(main)/curator/studio/${task.id}/${jobId}` as any);
