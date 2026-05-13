@@ -184,13 +184,7 @@ router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
 
     const orphans = allTaskIds.filter((id) => !validTaskIds.has(id));
     if (orphans.length > 0) {
-      await pool.query(`
-        UPDATE media_moderation
-        SET status = 'rejected',
-            review_comment = COALESCE(review_comment, 'Auto-rejeté : tâche CVAT introuvable'),
-            reviewed_at = NOW()
-        WHERE cvat_task_id = ANY($1) AND status = 'pending'
-      `, [orphans]);
+      console.warn(`[moderation] queue: ${orphans.length} pending row(s) without matching CVAT task:`, orphans);
     }
 
     const validEntries = entries.filter((e) => validTaskIds.has(e.cvat_task_id));
@@ -302,13 +296,7 @@ router.get('/users/:id/media', requireModeratorOrAbove, async (req, res) => {
 
     const orphans = ids.filter((id) => !tasksById[id]);
     if (orphans.length > 0) {
-      await pool.query(`
-        UPDATE media_moderation
-        SET status = 'rejected',
-            review_comment = COALESCE(review_comment, 'Auto-rejeté : tâche CVAT introuvable'),
-            reviewed_at = NOW()
-        WHERE cvat_task_id = ANY($1) AND status = 'pending'
-      `, [orphans]);
+      console.warn(`[moderation] ${orphans.length} pending media row(s) without matching CVAT task for user ${userId}:`, orphans);
     }
 
     const results = rows
@@ -382,8 +370,10 @@ router.post('/media/reject', requireModeratorOrAbove, async (req, res) => {
   const ids = Array.isArray(req.body?.ids)
     ? req.body.ids.filter((n) => Number.isInteger(n) && n > 0)
     : [];
-  const comment = typeof req.body?.comment === 'string' ? req.body.comment.slice(0, 1000) : null;
+  const rawComment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
   if (ids.length === 0) return res.status(400).json({ error: 'ids required (non-empty integer array)' });
+  if (!rawComment) return res.status(400).json({ error: 'Un motif de rejet est obligatoire.' });
+  const comment = rawComment.slice(0, 1000);
 
   try {
     const { rowCount } = await pool.query(`

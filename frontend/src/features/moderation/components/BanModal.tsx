@@ -26,11 +26,12 @@ interface Props {
 	visible: boolean;
 	userLabel: string;
 	submitting: boolean;
+	defaultReason?: string;
 	onCancel: () => void;
 	onConfirm: (durationDays: number | null, reason: string) => void;
 }
 
-export const BanModal: React.FC<Props> = ({ visible, userLabel, submitting, onCancel, onConfirm }) => {
+export const BanModal: React.FC<Props> = ({ visible, userLabel, submitting, defaultReason, onCancel, onConfirm }) => {
 	const [mode, setMode] = useState<BanMode>('temp');
 	const [unit, setUnit] = useState<BanUnit>('days');
 	const [value, setValue] = useState('7');
@@ -41,19 +42,24 @@ export const BanModal: React.FC<Props> = ({ visible, userLabel, submitting, onCa
 			setMode('temp');
 			setUnit('days');
 			setValue('7');
-			setReason('');
+			setReason(defaultReason ?? '');
 		}
-	}, [visible]);
+	}, [visible, defaultReason]);
 
 	const submit = () => {
-		if (mode === 'perm') return onConfirm(null, reason);
+		const trimmedReason = reason.trim();
+		if (!trimmedReason) {
+			toast.error('Indique un motif de bannissement.');
+			return;
+		}
+		if (mode === 'perm') return onConfirm(null, trimmedReason);
 		const n = Number(value);
 		if (!Number.isFinite(n) || n <= 0) {
 			toast.error('Durée invalide — indique une valeur strictement positive.');
 			return;
 		}
 		const days = n * UNIT_TO_DAYS[unit];
-		onConfirm(days, reason);
+		onConfirm(days, trimmedReason);
 	};
 
 	return (

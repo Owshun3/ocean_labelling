@@ -98,8 +98,13 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 		setSubmitting(true);
 		const count = selected.size;
 		try {
-			await service.validateMedia(Array.from(selected));
-			toast.success(count === 1 ? 'Média validé.' : `${count} médias validés.`);
+			const result = await service.validateMedia(Array.from(selected));
+			const updated = result?.updated ?? count;
+			if (updated !== count) {
+				toast.info(`${updated} média(s) validé(s) (sur ${count} demandés — certains n'étaient plus en attente).`);
+			} else {
+				toast.success(count === 1 ? 'Média validé.' : `${count} médias validés.`);
+			}
 			await load();
 		} catch (err: any) {
 			toast.error(err?.response?.data?.error || err?.message || 'Validation impossible.');
@@ -116,11 +121,20 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 
 	const handleReject = async () => {
 		if (selected.size === 0 || submitting) return;
+		if (!rejectComment.trim()) {
+			toast.error('Sélectionne un motif avant de rejeter.');
+			return;
+		}
 		const count = selected.size;
 		setSubmitting(true);
 		try {
-			await service.rejectMedia(Array.from(selected), rejectComment || undefined);
-			toast.success(count === 1 ? 'Média rejeté.' : `${count} médias rejetés.`);
+			const result = await service.rejectMedia(Array.from(selected), rejectComment.trim());
+			const updated = result?.updated ?? count;
+			if (updated !== count) {
+				toast.info(`${updated} média(s) rejeté(s) (sur ${count} demandés — certains n'étaient plus en attente).`);
+			} else {
+				toast.success(count === 1 ? 'Média rejeté.' : `${count} médias rejetés.`);
+			}
 			setRejectComment('');
 			await load();
 			setSubmitting(false);
@@ -276,6 +290,7 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 				visible={banModalOpen}
 				userLabel={`${user.username}#${user.id}`}
 				submitting={submitting}
+				defaultReason={rejectComment}
 				onCancel={() => setBanModalOpen(false)}
 				onConfirm={handleBan}
 			/>

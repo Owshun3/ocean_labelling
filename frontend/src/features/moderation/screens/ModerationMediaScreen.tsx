@@ -62,9 +62,13 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 
 	const handleReject = async () => {
 		if (submitting) return;
+		if (!rejectComment.trim()) {
+			toast.error('Sélectionne un motif avant de rejeter.');
+			return;
+		}
 		setSubmitting(true);
 		try {
-			await service.rejectMedia([taskId], rejectComment || undefined);
+			await service.rejectMedia([taskId], rejectComment.trim());
 			toast.success('Média rejeté.');
 			if (proposeBanAfterReject()) {
 				setSubmitting(false);
@@ -190,6 +194,7 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 				visible={banModalOpen}
 				userLabel={`${uploader.username}#${uploader.id}`}
 				submitting={submitting}
+				defaultReason={rejectComment}
 				onCancel={() => setBanModalOpen(false)}
 				onConfirm={handleBan}
 			/>
