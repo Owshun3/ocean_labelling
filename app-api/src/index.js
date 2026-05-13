@@ -14,6 +14,7 @@ app.use('/cvat', require('./routes/cvatProxy'));
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/auth', require('./routes/auth'));
+app.use('/admin', require('./routes/admin'));
 app.use('/users', require('./routes/users'));
 app.use('/upload-history', require('./routes/history'));
 app.use('/curator', require('./routes/curator'));
