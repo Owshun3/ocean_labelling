@@ -1,46 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Button, StyleSheet, ActivityIndicator } from 'react-native';
+import React from 'react';
+import { View, Text, Button, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
-import { AppConfigService } from '@/services/api/AppConfigService';
 import { appApiClient } from '@/services/api/AppApiService';
 import { getUserProfile, saveUserProfile } from '@/services/api/authStorage';
+import { usePublicSettings } from '@/shared/hooks/usePublicSettings';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 
 export const WelcomeScreen: React.FC = () => {
-	const [message, setMessage] = useState<string>('');
-	const [isLoading, setIsLoading] = useState<boolean>(true);
 	const router = useRouter();
-
-	useEffect(() => {
-		let isMounted = true;
-		
-		const fetchMessage = async () => {
-			try {
-				const configService = new AppConfigService();
-				const msg = await configService.getWelcomeMessage();
-				if (isMounted) {
-					setMessage(msg);
-				}
-			} catch (error) {
-				if (isMounted) {
-					setMessage("Bienvenue.");
-				}
-			} finally {
-				if (isMounted) {
-					setIsLoading(false);
-				}
-			}
-		};
-
-		fetchMessage();
-
-		return () => {
-			isMounted = false;
-		};
-	}, []);
+	const settings = usePublicSettings();
+	const message = settings['platform.welcome_message'] || 'Bienvenue.';
 
 	const acknowledgeWelcome = async () => {
 		try {
@@ -56,11 +28,7 @@ export const WelcomeScreen: React.FC = () => {
 			<View style={styles.card}>
 				<Text style={styles.title}>Première Connexion</Text>
 				
-				{isLoading ? (
-					<ActivityIndicator size="large" color={COLORS.primary} />
-				) : (
-					<Text style={styles.message}>{message}</Text>
-				)}
+				<Text style={styles.message}>{message}</Text>
 				
 				<Button title="Commencer" onPress={acknowledgeWelcome} color={COLORS.primary} />
 			</View>

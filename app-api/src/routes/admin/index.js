@@ -7,5 +7,6 @@ router.use(requireAdmin);
 
 router.use('/dashboard', require('./dashboard'));
 router.use('/contestations', require('./contestations'));
+router.use('/settings', require('./settings'));
 
 module.exports = router;

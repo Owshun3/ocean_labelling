@@ -6,6 +6,7 @@ import { useRouter, Href } from 'expo-router';
 import axios from 'axios';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
 import { consumeBanInfo, consumeSessionExpired, formatRemaining, BanSessionInfo, SessionExpiredInfo } from '@/services/api/banInterceptor';
+import { usePublicSettings } from '@/shared/hooks/usePublicSettings';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -29,6 +30,7 @@ export const LoginScreen: React.FC = () => {
 	const [sessionExpired, setSessionExpired] = useState<SessionExpiredInfo | null>(null);
 	const [, forceRerender] = useState(0);
 	const router = useRouter();
+	const settings = usePublicSettings();
 
 	useEffect(() => {
 		const banInfo: BanSessionInfo | null = consumeBanInfo();
@@ -88,6 +90,7 @@ export const LoginScreen: React.FC = () => {
 	return (
 		<SafeAreaView style={styles.container}>
 			<View style={styles.card}>
+				<Text style={styles.brand}>{settings['platform.name']}</Text>
 				<Text style={styles.title}>Connexion</Text>
 
 				{ban ? (
@@ -163,6 +166,14 @@ export const LoginScreen: React.FC = () => {
 						<Text style={styles.link}>Créer un compte</Text>
 					</Pressable>
 				</View>
+
+				{(settings['platform.contact_email'] || settings['platform.contact_phone'] || settings['platform.contact_hours']) ? (
+					<View style={styles.contactBlock}>
+						{settings['platform.contact_email'] ? <Text style={styles.contactLine}>✉ {settings['platform.contact_email']}</Text> : null}
+						{settings['platform.contact_phone'] ? <Text style={styles.contactLine}>☎ {settings['platform.contact_phone']}</Text> : null}
+						{settings['platform.contact_hours'] ? <Text style={styles.contactLine}>🕐 {settings['platform.contact_hours']}</Text> : null}
+					</View>
+				) : null}
 			</View>
 		</SafeAreaView>
 	);
@@ -171,6 +182,7 @@ export const LoginScreen: React.FC = () => {
 const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: COLORS.background.main, justifyContent: 'center', padding: SPACING.md },
 	card: { backgroundColor: COLORS.background.card, padding: SPACING.lg, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, maxWidth: 400, width: '100%', alignSelf: 'center' },
+	brand: { fontSize: 13, color: COLORS.text.secondary, textAlign: 'center', fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: SPACING.sm },
 	title: { ...TYPOGRAPHY.h1, marginBottom: SPACING.lg, textAlign: 'center' },
 	errorText: { color: COLORS.danger, marginBottom: SPACING.md, textAlign: 'center' },
 	banBox: {
@@ -204,6 +216,8 @@ const styles = StyleSheet.create({
 	checkbox: { width: 18, height: 18, borderRadius: 3, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background.main, alignItems: 'center', justifyContent: 'center' },
 	checkboxChecked: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
 	rememberLabel: { ...TYPOGRAPHY.body, color: COLORS.text.primary, fontSize: 13 },
+	contactBlock: { marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, gap: 4, alignItems: 'center' },
+	contactLine: { fontSize: 12, color: COLORS.text.secondary },
 	switchContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.xl, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
 	switchText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },
 	link: { ...TYPOGRAPHY.body, color: COLORS.primary, fontWeight: 'bold' }

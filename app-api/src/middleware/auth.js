@@ -127,9 +127,24 @@ async function fetchAppRole(cvatUserId) {
   return rows[0]?.role ?? 'annotator';
 }
 
+async function isAppAdmin(cvatUser) {
+  if (cvatUser.is_superuser || cvatUser.is_staff) return true;
+  return (await fetchAppRole(cvatUser.id)) === 'admin';
+}
+
+async function guardMaintenance(req, res, cvatUser) {
+  const { getMaintenanceState } = require('../lib/maintenance');
+  const { active, message } = await getMaintenanceState();
+  if (!active) return false;
+  if (await isAppAdmin(cvatUser)) return false;
+  res.status(503).json({ error: 'maintenance', maintenance: true, message });
+  return true;
+}
+
 async function requireAuth(req, res, next) {
   const cvatUser = await authenticate(req, res);
   if (!cvatUser) return;
+  if (await guardMaintenance(req, res, cvatUser)) return;
   req.cvatUser = cvatUser;
   next();
 }
@@ -147,6 +162,7 @@ async function requireAdmin(req, res, next) {
 async function requireCuratorOrAbove(req, res, next) {
   const cvatUser = await authenticate(req, res);
   if (!cvatUser) return;
+  if (await guardMaintenance(req, res, cvatUser)) return;
   req.cvatUser = cvatUser;
   if (cvatUser.is_superuser || cvatUser.is_staff) return next();
   const role = await fetchAppRole(cvatUser.id);
@@ -157,6 +173,7 @@ async function requireCuratorOrAbove(req, res, next) {
 async function requireModeratorOrAbove(req, res, next) {
   const cvatUser = await authenticate(req, res);
   if (!cvatUser) return;
+  if (await guardMaintenance(req, res, cvatUser)) return;
   req.cvatUser = cvatUser;
   if (cvatUser.is_superuser || cvatUser.is_staff) return next();
   const role = await fetchAppRole(cvatUser.id);

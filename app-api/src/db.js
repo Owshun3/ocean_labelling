@@ -195,6 +195,10 @@ async function _createSchema() {
     CREATE INDEX IF NOT EXISTS idx_app_sessions_user ON app_sessions (cvat_user_id);
     CREATE INDEX IF NOT EXISTS idx_app_sessions_exp  ON app_sessions (expires_at);
   `);
+
+  const { ensureSchema: ensureSettingsSchema } = require('./lib/settingsRegistry');
+  await ensureSettingsSchema(pool);
+
   console.log('[app-api] DB schema ready');
 }
 

@@ -59,6 +59,26 @@ export interface ContestationUploaderDetail {
 
 export type ContestationAction = 'overturned' | 'upheld';
 
+export type SettingType = 'string' | 'int' | 'bool';
+
+export interface SettingItem {
+	key: string;
+	value: string | number | boolean;
+	raw_value: string;
+	type: SettingType;
+	label: string;
+	description: string;
+	group_name: string;
+	group_label: string;
+	is_public: boolean;
+	known: boolean;
+}
+
+export interface SettingsListResponse {
+	groups: Record<string, string>;
+	items: SettingItem[];
+}
+
 export class AdminService {
 	async getDashboardSummary(): Promise<DashboardSummary> {
 		const resp = await adminClient.get<DashboardSummary>('/dashboard/summary');
@@ -79,6 +99,19 @@ export class AdminService {
 		const resp = await adminClient.post<{ resolved: number; cvat_delete_errors?: any[] }>(
 			'/contestations/resolve',
 			{ contestation_ids: ids, action },
+		);
+		return resp.data;
+	}
+
+	async listSettings(): Promise<SettingsListResponse> {
+		const resp = await adminClient.get<SettingsListResponse>('/settings');
+		return resp.data;
+	}
+
+	async updateSetting(key: string, value: string | number | boolean): Promise<{ key: string; value: any }> {
+		const resp = await adminClient.patch<{ key: string; value: any }>(
+			`/settings/${encodeURIComponent(key)}`,
+			{ value },
 		);
 		return resp.data;
 	}

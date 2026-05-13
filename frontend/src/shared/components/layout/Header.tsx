@@ -5,6 +5,7 @@ import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { getUserProfile } from '@/services/api/authStorage';
+import { usePublicSettings } from '@/shared/hooks/usePublicSettings';
 
 interface NavRoute {
 	name: string;
@@ -24,6 +25,7 @@ const NAV_ROUTES: NavRoute[] = [
 
 export const Header: React.FC = () => {
 	const router = useRouter();
+	const settings = usePublicSettings();
 	const [userRole, setUserRole] = useState<string>('annotator');
 
 	useEffect(() => {
@@ -36,7 +38,7 @@ export const Header: React.FC = () => {
 
 	return (
 		<View style={styles.header}>
-			<Text style={styles.logo}>CVAT Hub</Text>
+			<Text style={styles.logo}>{settings['platform.name']}</Text>
 			<View style={styles.navContainer}>
 				{authorizedRoutes.map((route) => (
 					<Pressable 
