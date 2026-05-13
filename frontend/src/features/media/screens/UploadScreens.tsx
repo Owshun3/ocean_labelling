@@ -94,6 +94,10 @@ export const UploadScreen: React.FC = () => {
 
 	return (
 		<ScrollView contentContainerStyle={styles.container}>
+			<Text style={styles.limitHint}>
+				Limite par lot : <Text style={styles.limitHintStrong}>{limitMB.toFixed(0)} Mo</Text>
+			</Text>
+
 			<Button title="Sélectionner des photos" onPress={pickImage} />
 
 			<View style={styles.grid}>
@@ -166,6 +170,8 @@ export const UploadScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
 	container: { padding: SPACING.lg },
+	limitHint: { fontSize: 12, color: COLORS.text.secondary, marginBottom: SPACING.sm, textAlign: 'center' },
+	limitHintStrong: { fontWeight: '700', color: COLORS.text.primary },
 	grid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, marginVertical: SPACING.xl },
 	thumbnailWrapper: { position: 'relative', width: 100, height: 100 },
 	thumbnail: { width: 100, height: 100, borderRadius: 4 },
