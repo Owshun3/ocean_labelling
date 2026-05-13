@@ -157,9 +157,17 @@ router.get('/feed', requireAuth, async (req, res) => {
 
     const taskIds = rows.map((r) => r.cvat_task_id);
     const token = await getAdminToken();
-    const tasksResp = await cvatGet(`/tasks?id__in=${taskIds.join(',')}&page_size=${taskIds.length}`, token);
     const tasksById = new Map();
-    (tasksResp.data.results ?? []).forEach((t) => tasksById.set(t.id, t));
+    await Promise.all(taskIds.map(async (id) => {
+      try {
+        const r = await cvatGet(`/tasks/${id}`, token);
+        tasksById.set(id, r.data);
+      } catch (err) {
+        if (err.response?.status !== 404) {
+          console.warn(`[studio] failed to fetch task ${id}:`, err.message);
+        }
+      }
+    }));
 
     const jobsByTask = new Map();
     await Promise.all(Array.from(tasksById.keys()).map(async (id) => {

@@ -48,6 +48,8 @@ Compte admin : `username=admin`, mot de passe défini dans `.env` → `CVAT_ADMI
 Hiérarchie des rôles (haut → bas) : `admin` > `moderator` > `curator` ≥ `chercheur` > `annotator` > `guest`.
 Stockage : table `user_roles(cvat_user_id PK, role)`. Utilisateurs non présents = `annotator` par défaut.
 
+**Rôle CVAT par défaut** : tout compte créé via `/auth/register` hérite du groupe CVAT `user` (comportement natif CVAT). On garde ce défaut, on ne descend PAS en `worker`. Raison : depuis ADR-012 le navigateur n'a plus de token CVAT, tous les appels passent par le proxy app-api authentifié par cookie. La défense en profondeur d'un rôle CVAT plus bas n'a donc plus de surface d'attaque utile — le choke point est app-api, pas CVAT. `user` suffit pour empêcher les actions cross-utilisateur côté CVAT.
+
 **Rôle chercheur — détail :**
 Profil hybride pour usage scientifique. Peut uploader des médias, annoter, et **agir comme curator** (validation, fusion). **Ne peut pas** modérer. **Export limité** à un périmètre de données autorisé en amont (à définir : table d'autorisations explicites par utilisateur×scope). Cas typique : étudiant chercheur invité qui contribue à un sous-ensemble de données validées par l'admin.
 Côté code : middleware `requireCuratorOrAbove` doit accepter `chercheur`. Middleware `requireModeratorOrAbove` l'exclut. Nouveau middleware ou logique d'export contrôle les bornes d'accès aux données.
@@ -336,5 +338,7 @@ formData.append('client_files', file.file, fileName);        // ✗ silencieusem
 **Labels CVAT — sémantique merge sur PATCH `/tasks/{id}` :** v2.62 fait merge (append) et non replace ; les labels existants sont conservés. Confirmé par smoke test. Pas besoin de lire d'abord la liste pour append. Pour récupérer le `label_id` du nouveau label : refaire un `GET /labels?task_id=X` après le PATCH (le retour du PATCH ne contient pas inline les labels).
 
 **Annotations format CVAT v2 :** `PUT /jobs/{id}/annotations` body `{ version, tags, shapes, tracks }`. Chaque shape rectangle : `{ type:'rectangle', points:[x1,y1,x2,y2], frame, label_id, occluded:false, outside:false, z_order:0, rotation:0, group:0, source:'manual', attributes:[] }`. Inclure `id` pour update (CVAT préserve), omettre pour create. CVAT alloue/préserve les ids selon présence.
+
+**CVAT `?id__in=` IGNORÉ silencieusement sur `/tasks` :** v2.62 ne filtre PAS par `id__in`, il retourne les `page_size` premières tâches en ordre par défaut (id DESC). Bug silencieux : tant que les IDs demandés sont les plus récents, ça « marche » par hasard. Dès qu'il y a des tâches plus récentes que celles demandées, on récupère les mauvaises et nos `tasksById[id]` deviennent `undefined` → médias filtrés à tort comme orphelins. Toujours faire des `GET /tasks/{id}` individuels en parallèle (`Promise.all`) pour récupérer un set de tâches par IDs.
 
 **CVAT permission task owner :** le owner d'une tâche (= uploader CVAT) a accès à TOUS les jobs de sa tâche, contournant l'isolement par assignee. Pour bloquer ça (cas où l'uploader ne doit pas voir les annotations des autres annotateurs sur SA tâche), passer par un proxy app-api qui vérifie strictement `job.assignee.id === cvatUser.id`. Modèle utilisé pour `/app-api/studio/jobs/:id/annotations`.

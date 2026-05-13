@@ -164,12 +164,28 @@ export const MediaListScreen: React.FC = () => {
 		setSubmitting(true);
 		const count = selected.size;
 		try {
-			await appService.contestRejection(Array.from(selected), message);
-			toast.success(count === 1 ? 'Contestation envoyée.' : `${count} contestations envoyées.`);
+			const result = await appService.contestRejection(Array.from(selected), message);
+			const alreadyContested = result.already_contested ?? 0;
+			if (result.created === 0 && alreadyContested > 0) {
+				toast.error(alreadyContested === 1
+					? 'Ce média a déjà été contesté.'
+					: `Ces ${alreadyContested} médias ont déjà été contestés.`);
+			} else if (alreadyContested > 0) {
+				toast.info(`${result.created} contestation(s) envoyée(s), ${alreadyContested} déjà contesté(s).`);
+			} else {
+				toast.success(count === 1 ? 'Contestation envoyée.' : `${result.created} contestations envoyées.`);
+			}
 			setContestOpen(false);
 			setSelected(new Set());
 		} catch (err: any) {
-			toast.error(err?.response?.data?.error || err?.message || 'Contestation impossible.');
+			const data = err?.response?.data;
+			if (err?.response?.status === 409 && data?.already_contested) {
+				toast.error(data.already_contested === 1
+					? 'Ce média a déjà été contesté.'
+					: `Ces ${data.already_contested} médias ont déjà été contestés.`);
+			} else {
+				toast.error(data?.error || err?.message || 'Contestation impossible.');
+			}
 		} finally {
 			setSubmitting(false);
 		}

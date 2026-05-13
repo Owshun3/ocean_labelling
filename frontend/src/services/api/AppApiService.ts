@@ -114,8 +114,8 @@ export class AppApiService {
 		return resp.data;
 	}
 
-	async contestRejection(ids: number[], message: string): Promise<{ created: number; ignored: number }> {
-		const resp = await appApiClient.post<{ created: number; ignored: number }>(
+	async contestRejection(ids: number[], message: string): Promise<{ created: number; ignored: number; already_contested?: number }> {
+		const resp = await appApiClient.post<{ created: number; ignored: number; already_contested?: number }>(
 			'/moderation/contest',
 			{ ids, message },
 		);

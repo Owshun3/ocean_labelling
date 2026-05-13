@@ -132,15 +132,33 @@ router.post('/contest', requireAuth, async (req, res) => {
     }
 
     const eligibleIds = eligible.map((r) => r.cvat_task_id);
-    const inserts = eligibleIds.map((id) =>
+
+    const { rows: already } = await pool.query(`
+      SELECT DISTINCT cvat_task_id FROM moderation_contestations
+      WHERE cvat_task_id = ANY($1)
+    `, [eligibleIds]);
+    const alreadyContestedIds = new Set(already.map((r) => r.cvat_task_id));
+    const toCreate = eligibleIds.filter((id) => !alreadyContestedIds.has(id));
+
+    if (toCreate.length === 0) {
+      return res.status(409).json({
+        error: 'Tous les médias sélectionnés ont déjà été contestés.',
+        already_contested: eligibleIds.length,
+      });
+    }
+
+    await Promise.all(toCreate.map((id) =>
       pool.query(`
         INSERT INTO moderation_contestations (cvat_task_id, contester_id, message)
         VALUES ($1, $2, $3)
       `, [id, req.cvatUser.id, message])
-    );
-    await Promise.all(inserts);
+    ));
 
-    res.json({ created: eligibleIds.length, ignored: ids.length - eligibleIds.length });
+    res.json({
+      created:           toCreate.length,
+      already_contested: alreadyContestedIds.size,
+      ignored:           ids.length - eligibleIds.length,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -179,8 +197,17 @@ router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
 
     const token = await getAdminToken();
     const allTaskIds = entries.map((e) => e.cvat_task_id);
-    const tasksResp = await cvatGet(`/tasks?id__in=${allTaskIds.join(',')}&page_size=${allTaskIds.length}`, token);
-    const validTaskIds = new Set((tasksResp.data.results || []).map((t) => t.id));
+    const validTaskIds = new Set();
+    await Promise.all(allTaskIds.map(async (id) => {
+      try {
+        await cvatGet(`/tasks/${id}`, token);
+        validTaskIds.add(id);
+      } catch (err) {
+        if (err.response?.status !== 404) {
+          console.warn(`[moderation] queue: failed to fetch task ${id}:`, err.message);
+        }
+      }
+    }));
 
     const orphans = allTaskIds.filter((id) => !validTaskIds.has(id));
     if (orphans.length > 0) {
@@ -290,9 +317,17 @@ router.get('/users/:id/media', requireModeratorOrAbove, async (req, res) => {
     if (rows.length === 0) return res.json({ user: userPayload, results: [] });
 
     const ids = rows.map((r) => r.cvat_task_id);
-    const tasksResp = await cvatGet(`/tasks?id__in=${ids.join(',')}&page_size=${ids.length}`, token);
     const tasksById = {};
-    (tasksResp.data.results || []).forEach((t) => { tasksById[t.id] = t; });
+    await Promise.all(ids.map(async (id) => {
+      try {
+        const r = await cvatGet(`/tasks/${id}`, token);
+        tasksById[id] = r.data;
+      } catch (err) {
+        if (err.response?.status !== 404) {
+          console.warn(`[moderation] failed to fetch task ${id}:`, err.message);
+        }
+      }
+    }));
 
     const orphans = ids.filter((id) => !tasksById[id]);
     if (orphans.length > 0) {
