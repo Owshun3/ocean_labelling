@@ -8,5 +8,6 @@ router.use(requireAdmin);
 router.use('/dashboard', require('./dashboard'));
 router.use('/contestations', require('./contestations'));
 router.use('/settings', require('./settings'));
+router.use('/health', require('./health'));
 
 module.exports = router;

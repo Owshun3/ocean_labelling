@@ -79,6 +79,33 @@ export interface SettingsListResponse {
 	items: SettingItem[];
 }
 
+export type HealthStatus = 'ok' | 'down';
+
+export interface HealthService {
+	id: string;
+	name: string;
+	status: HealthStatus;
+	latency_ms: number;
+	detail: string | null;
+}
+
+export interface HealthReport {
+	checked_at: string;
+	probe_duration_ms: number;
+	services: HealthService[];
+	storage: { postgres_db_bytes: number | null };
+	process: { uptime_seconds: number; node_version: string; rss_bytes: number; heap_used_bytes: number };
+	system: {
+		mem_total_bytes: number | null;
+		mem_available_bytes: number | null;
+		loadavg_1m: number | null;
+		loadavg_5m: number | null;
+		loadavg_15m: number | null;
+		cpu_count: number;
+	};
+	sessions: { active: number | null };
+}
+
 export class AdminService {
 	async getDashboardSummary(): Promise<DashboardSummary> {
 		const resp = await adminClient.get<DashboardSummary>('/dashboard/summary');
@@ -105,6 +132,11 @@ export class AdminService {
 
 	async listSettings(): Promise<SettingsListResponse> {
 		const resp = await adminClient.get<SettingsListResponse>('/settings');
+		return resp.data;
+	}
+
+	async getHealth(): Promise<HealthReport> {
+		const resp = await adminClient.get<HealthReport>('/health');
 		return resp.data;
 	}
 
