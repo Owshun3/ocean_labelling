@@ -16,6 +16,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
 	'setting.changed':       'Paramètre modifié',
 	'media.validated':       'Médias validés',
 	'media.rejected':        'Médias rejetés',
+	'media.auto_deleted':    'Nettoyage automatique',
 };
 
 const ACTION_COLORS: Record<AuditAction, string> = {
@@ -26,6 +27,7 @@ const ACTION_COLORS: Record<AuditAction, string> = {
 	'setting.changed':       '#0ea5e9',
 	'media.validated':       '#16a34a',
 	'media.rejected':        COLORS.danger,
+	'media.auto_deleted':    '#6b7280',
 };
 
 const FILTER_OPTIONS: { value: AuditAction | ''; label: string }[] = [
@@ -37,6 +39,7 @@ const FILTER_OPTIONS: { value: AuditAction | ''; label: string }[] = [
 	{ value: 'setting.changed',        label: 'Paramètres' },
 	{ value: 'media.validated',        label: 'Validations' },
 	{ value: 'media.rejected',         label: 'Rejets' },
+	{ value: 'media.auto_deleted',     label: 'Nettoyage auto' },
 ];
 
 function fmtTime(iso: string): string {
@@ -66,6 +69,8 @@ function describePayload(entry: AuditEntry): string {
 		case 'media.validated':
 		case 'media.rejected':
 			return `${p.count ?? p.task_ids?.length ?? 0} média(s)${p.reason ? ` — « ${p.reason} »` : ''}`;
+		case 'media.auto_deleted':
+			return `${p.deleted_count ?? 0} média(s) supprimé(s) après ${p.retention_days ?? '?'} j${p.errors ? ` — ${p.errors} échec(s)` : ''}`;
 		default:
 			return '';
 	}

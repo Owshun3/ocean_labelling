@@ -31,5 +31,8 @@ app.use((_err, _req, res, _next) => {
 const PORT = process.env.PORT || 3000;
 
 init()
-  .then(() => app.listen(PORT, () => console.log(`[app-api] listening on :${PORT}`)))
+  .then(() => {
+    app.listen(PORT, () => console.log(`[app-api] listening on :${PORT}`));
+    require('./lib/cleanup').startScheduler();
+  })
   .catch(err => { console.error('[app-api] DB init failed:', err.message); process.exit(1); });

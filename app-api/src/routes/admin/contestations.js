@@ -215,17 +215,27 @@ router.post('/resolve', async (req, res) => {
   client.release();
 
   const deleteErrors = [];
+  const successfullyCleaned = [];
   if (action === 'upheld' && tasksToDeleteOnCvat.length > 0) {
     for (const taskId of tasksToDeleteOnCvat) {
       try {
         await cvatDelete(`/tasks/${taskId}`);
+        successfullyCleaned.push(taskId);
       } catch (err) {
         const status = err.response?.status;
-        if (status !== 404) {
+        if (status === 404) {
+          successfullyCleaned.push(taskId);
+        } else {
           deleteErrors.push({ task_id: taskId, status, message: err.message });
           console.warn(`[admin/contestations] CVAT delete failed for task ${taskId}:`, err.response?.data ?? err.message);
         }
       }
+    }
+    if (successfullyCleaned.length > 0) {
+      await pool.query(
+        'UPDATE media_moderation SET binaries_deleted_at = NOW() WHERE cvat_task_id = ANY($1)',
+        [successfullyCleaned],
+      );
     }
   }
 

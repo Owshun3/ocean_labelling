@@ -14,7 +14,10 @@ const KNOWN_ACTIONS = [
   'setting.changed',
   'media.validated',
   'media.rejected',
+  'media.auto_deleted',
 ];
+
+const SYSTEM_ACTOR_ID = 0;
 
 router.get('/', async (req, res) => {
   const limitRaw  = Number(req.query.limit);
@@ -54,6 +57,10 @@ router.get('/', async (req, res) => {
     const actorIds = [...new Set(rows.map((r) => r.actor_id))];
     const usersById = {};
     await Promise.all(actorIds.map(async (id) => {
+      if (id === SYSTEM_ACTOR_ID) {
+        usersById[id] = { id, username: 'Système', is_superuser: false, is_staff: false, system: true };
+        return;
+      }
       try {
         const r = await cvatGet(`/users/${id}`);
         usersById[id] = { id: r.data.id, username: r.data.username, is_superuser: r.data.is_superuser, is_staff: r.data.is_staff };
@@ -68,7 +75,9 @@ router.get('/', async (req, res) => {
 
     const results = rows.map((r) => {
       const u = usersById[r.actor_id];
-      const role = (u?.is_superuser || u?.is_staff) ? 'admin' : (rolesById[r.actor_id] ?? 'annotator');
+      const role = u?.system ? 'system'
+        : (u?.is_superuser || u?.is_staff) ? 'admin'
+        : (rolesById[r.actor_id] ?? 'annotator');
       return {
         id:           r.id,
         actor:        { id: r.actor_id, username: u?.username ?? null, role },

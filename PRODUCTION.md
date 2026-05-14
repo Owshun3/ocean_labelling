@@ -285,6 +285,44 @@ systemctl --user restart expo                       # si frontend/.env a changé
 
 Section à exécuter le jour où on bascule la plateforme du dev (`localhost`) vers une IP/domaine universitaire. **Faire un smoke test d'une demi-journée sur IP HTTP dès le début du stage** pour repérer les casses listées plus bas, puis revenir en `localhost` pour la suite du dev. Le vrai switch n'est à faire qu'en fin de stage, idéalement avec HTTPS.
 
+### Demande DSI — phases de l'ouverture réseau
+
+Étapes à suivre dans l'ordre. Phase 1 = accès LAN basique pour tester, Phase 2 = production publique.
+
+**Phase 1 — ouverture des ports (semaine en cours)**
+- Demander à la DSI l'ouverture en entrée sur l'IP de la VM, depuis le réseau interne UPF :
+  - `8888` (gateway NGINX — API + studio + proxy CVAT) — **obligatoire**
+  - `8081` (Expo dev server — frontend bundle) — **obligatoire tant qu'on n'a pas bundlé statiquement** (voir Phase 2)
+  - `8080` (Traefik CVAT) → **JAMAIS** : c'est l'entrée brute de CVAT, censée rester interne. Tout est déjà proxyfié via `/api` sur 8888.
+- Sur la VM, avant que d'autres postes puissent se connecter, mettre à jour `frontend/.env` avec l'IP réelle :
+  ```env
+  EXPO_PUBLIC_API_URL=http://<ip-vm>:8888/api
+  EXPO_PUBLIC_APP_API_URL=http://<ip-vm>:8888/app-api
+  EXPO_PUBLIC_CVAT_UI_URL=http://<ip-vm>:8888
+  ```
+  Sinon le bundle servi à un autre poste pointera `localhost` → API injoignable.
+- Et `.env` racine : `CSRF_TRUSTED_ORIGINS=http://<ip-vm>:8081,http://<ip-vm>:8888`
+- Recreate `cvat_server` + redémarrer Expo (vider cache Metro).
+- Cookie session : tant que `NODE_ENV` n'est pas `production` dans le container app-api, le cookie n'a pas le flag `Secure` → fonctionne en HTTP plain. **Login + navigation + lecture marchent**.
+- **Ce qui ne marchera PAS en HTTP plain** : `expo-image-picker` (upload), `navigator.clipboard`, `getUserMedia` — bloqués par les navigateurs hors `localhost` / HTTPS (secure context). Le test peut couvrir tout sauf l'upload.
+
+**Phase 2 — domaine + HTTPS (semaine de la mise en prod)**
+- Demander à la DSI :
+  - **Un sous-domaine** type `ocean.upf.pf` pointant vers l'IP de la VM (un FQDN — un certificat HTTPS s'émet quasi toujours pour un nom DNS, pas pour une IP nue ; Let's Encrypt refuse les IPs).
+  - **Un certificat HTTPS** pour ce sous-domaine (PKI interne UPF ou Let's Encrypt si l'hôte est joignable en 80/443).
+- À ce moment, **bundler statiquement** le frontend (`npx expo export -p web -o frontend/dist`), faire servir le bundle par nginx sur 8888 → **un seul port à exposer publiquement (443)**, plus besoin de 8081. Suppression du dev server fragile.
+- Activer HTTPS — voir sous-section ci-dessous (« Si HTTPS »).
+- Activer `NODE_ENV=production` côté app-api pour que le cookie devienne `Secure` (sera transmis uniquement en HTTPS).
+- L'upload, la clipboard, etc. fonctionnent à nouveau (secure context restauré).
+
+**Modèle de message DSI** (Phase 1 seule, à recopier/adapter) :
+
+> Bonjour,
+>
+> Dans le cadre de mon stage, je déploie une plateforme web sur la VM `<nom>` (IP `<x.y.z.w>`). Pour permettre aux autres postes du réseau interne de la tester, j'ai besoin de l'ouverture en entrée des ports `8081` et `8888` sur cette IP, depuis le réseau UPF.
+>
+> La semaine prochaine, à la mise en production, je vous solliciterai pour un sous-domaine universitaire + certificat HTTPS — sans HTTPS, plusieurs fonctionnalités (notamment l'upload d'images) sont bloquées par les navigateurs.
+
 ### Pourquoi c'est risqué de découvrir tard
 
 - **HTTPS-only APIs** : les browsers traitent `localhost` comme « secure context » même en HTTP. Sur une IP en HTTP plain, `expo-image-picker`, `navigator.clipboard`, `getUserMedia` sont **bloqués** par le browser. Donc on bascule en IP **en même temps** qu'on met HTTPS, jamais avant.
@@ -362,6 +400,10 @@ curl -I http://<IP>:8888/api/server/about
 - [ ] Remplacer `$http_origin` dans `nginx/nginx.conf` par l'origine exacte du frontend en production
 - [ ] Ajouter rate limiting NGINX sur `/api/auth/login` (brute-force)
 - [ ] Bloquer le port 8080 CVAT au niveau firewall VM (pas iptables — inefficace sous WSL2/Docker Desktop)
+- [ ] Bloquer le port 8081 (Expo dev) au niveau firewall une fois le frontend bundlé statiquement servi via 8888
+- [ ] Vérifier `NODE_ENV=production` dans le Dockerfile app-api (cookie session devient `Secure`, requiert HTTPS)
+- [ ] Tester le mode maintenance en pré-prod : activer depuis l'admin, vérifier que /auth/login reste joignable, désactiver
+- [ ] Confirmer que `media_retention_rejected_days` est à la valeur souhaitée — le job de nettoyage tourne toutes les heures et supprime les CVAT tasks rejetées non contestées
 
 ---
 

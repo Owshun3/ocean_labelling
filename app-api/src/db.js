@@ -66,6 +66,7 @@ async function _createSchema() {
     CREATE INDEX IF NOT EXISTS idx_media_moderation_uploader ON media_moderation(uploader_id);
     ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS curator_validated_at TIMESTAMPTZ;
     ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS curator_validated_by INTEGER;
+    ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS binaries_deleted_at  TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS user_bans (
       id            SERIAL      PRIMARY KEY,

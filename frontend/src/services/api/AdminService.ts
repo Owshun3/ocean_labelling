@@ -96,7 +96,8 @@ export type AuditAction =
 	| 'contestation.resolved'
 	| 'setting.changed'
 	| 'media.validated'
-	| 'media.rejected';
+	| 'media.rejected'
+	| 'media.auto_deleted';
 
 export interface AuditEntry {
 	id: number;
