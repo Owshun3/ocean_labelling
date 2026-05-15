@@ -4,6 +4,7 @@ import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 import { Species, SpeciesService } from '@/services/api/SpeciesService';
+import { RankBadge } from '@/shared/components/RankBadge';
 
 interface Props {
 	value: { id?: number; name: string } | null;
@@ -93,6 +94,14 @@ export const SpeciesAutocomplete: React.FC<Props> = ({ value, onPick }) => {
 								{r.scientific_name ? (
 									<Text style={styles.itemScientific}>{r.scientific_name}</Text>
 								) : null}
+								{r.status === 'pending' && r.proposer ? (
+									<View style={styles.proposerRow}>
+										<Text style={styles.proposerText}>
+											proposée par {r.proposer.username ?? '?'}
+										</Text>
+										<RankBadge actions={r.proposer.actions_validated_total} size="sm" />
+									</View>
+								) : null}
 							</View>
 							{r.status === 'pending' ? (
 								<Text style={styles.pendingTag}>en attente de validation</Text>
@@ -144,6 +153,8 @@ const styles = StyleSheet.create({
 	itemName:  { fontSize: 13, color: COLORS.text.primary, fontWeight: '500' },
 	itemPoly:  { fontSize: 12, color: COLORS.text.secondary, fontWeight: '400' },
 	itemScientific: { fontSize: 11, color: COLORS.text.placeholder, fontStyle: 'italic' },
+	proposerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+	proposerText: { fontSize: 10, color: COLORS.text.secondary, fontStyle: 'italic' },
 	pendingTag: { fontSize: 10, color: COLORS.warning, fontWeight: '600', textTransform: 'uppercase' },
 	proposeItem: { backgroundColor: `${COLORS.warning}11` },
 	proposeText: { fontSize: 12, color: COLORS.text.primary, flex: 1 },

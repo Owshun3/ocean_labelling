@@ -22,6 +22,7 @@ export interface ModerationUploader {
   role: string;
   is_active: boolean;
   date_joined: string | null;
+  actions_validated_total: number;
 }
 
 export interface CvatTaskSummary {

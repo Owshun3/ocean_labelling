@@ -4,6 +4,7 @@ import {
 	Platform,
 } from 'react-native';
 import { toast } from '@/shared/toast/Toast';
+import { RankBadge } from '@/shared/components/RankBadge';
 import { useRouter, Href } from 'expo-router';
 import { ModerationService, ModerationMediaEntry, ModerationUploader } from '@/services/api/ModerationService';
 import { appApiClient } from '@/services/api/AppApiService';
@@ -196,7 +197,9 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 						<View style={styles.roleBadge}>
 							<Text style={styles.roleBadgeText}>{user.role}</Text>
 						</View>
-						<Text style={styles.rankPlaceholder}>Rang : —</Text>
+						<View style={{ marginTop: SPACING.sm }}>
+							<RankBadge actions={user.actions_validated_total ?? 0} size="md" withCount />
+						</View>
 					</View>
 
 					<View style={styles.card}>

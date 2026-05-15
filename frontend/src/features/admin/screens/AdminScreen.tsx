@@ -12,6 +12,7 @@ import { getUserProfile } from '@/services/api/authStorage';
 import { BanModal } from '@/features/moderation/components/BanModal';
 import { formatRemaining } from '@/services/api/banInterceptor';
 import { toast } from '@/shared/toast/Toast';
+import { RankBadge } from '@/shared/components/RankBadge';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -237,6 +238,7 @@ export const AdminScreen: React.FC = () => {
 							{item.is_superuser && (
 								<Text style={styles.superuserBadge}>superuser</Text>
 							)}
+							<RankBadge actions={item.actions_validated_total ?? 0} size="sm" withCount />
 						</View>
 						<Text style={[styles.colEmail, styles.cell]}>{item.email || '—'}</Text>
 						<RoleSelect

@@ -4,6 +4,7 @@ const express = require('express');
 const axios   = require('axios');
 const { pool } = require('../db');
 const { requireCuratorOrAbove } = require('../middleware/auth');
+const { fetchActionsTotals } = require('../lib/userStats');
 
 const router  = express.Router();
 const CVAT    = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -264,7 +265,8 @@ router.get('/tasks/:taskId/proposals', requireCuratorOrAbove, async (req, res) =
     if (labels.length > 0) {
       const names = labels.map((l) => l.name);
       const { rows } = await pool.query(
-        `SELECT id, name, scientific_name, usage_name, polynesian_name, tags, status
+        `SELECT id, name, scientific_name, usage_name, polynesian_name, tags, status,
+                description, description_source, reference_image_url
          FROM species
          WHERE name = ANY($1)`,
         [names],
@@ -308,6 +310,12 @@ router.get('/tasks/:taskId/proposals', requireCuratorOrAbove, async (req, res) =
 
     const flatProposals = proposals.flat();
     console.log(`[curator] proposals task=${taskId} jobs=${jobs.length} shapes=${flatProposals.length}`);
+
+    const annotatorIds = [...new Set(flatProposals.map((p) => p.annotator_id).filter(Boolean))];
+    const annotatorTotals = await fetchActionsTotals(annotatorIds);
+    flatProposals.forEach((p) => {
+      p.annotator_actions_total = annotatorTotals[p.annotator_id] ?? 0;
+    });
 
     let metadata = null;
     try {

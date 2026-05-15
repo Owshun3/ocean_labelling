@@ -1,8 +1,32 @@
 'use strict';
 
 const express = require('express');
+const axios = require('axios');
 const { pool } = require('../db');
 const { requireAuth, requireCuratorOrAbove } = require('../middleware/auth');
+const { fetchActionsTotals } = require('../lib/userStats');
+const { cvatGet } = require('../lib/cvatAdmin');
+
+async function decorateProposers(species) {
+  const ids = [...new Set(species.map((s) => s.proposed_by).filter(Boolean))];
+  if (ids.length === 0) return species;
+  const totals = await fetchActionsTotals(ids);
+  const usernames = {};
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const r = await cvatGet(`/users/${id}`);
+      usernames[id] = r.data.username;
+    } catch { /* ignore */ }
+  }));
+  return species.map((s) => ({
+    ...s,
+    proposer: s.proposed_by ? {
+      id: s.proposed_by,
+      username: usernames[s.proposed_by] ?? null,
+      actions_validated_total: totals[s.proposed_by] ?? 0,
+    } : null,
+  }));
+}
 
 const router = express.Router();
 
@@ -27,13 +51,13 @@ router.get('/', requireAuth, async (req, res) => {
             OR LOWER(COALESCE(polynesian_name, '')) LIKE $1`;
     }
     const { rows } = await pool.query(`
-      SELECT id, name, scientific_name, polynesian_name, category, description, description_source, status, usage_count
+      SELECT id, name, scientific_name, polynesian_name, category, description, description_source, status, usage_count, proposed_by
       FROM species
       ${where}
       ORDER BY LOWER(name) ASC
       LIMIT 10
     `, params);
-    res.json({ results: rows });
+    res.json({ results: await decorateProposers(rows) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -50,13 +74,13 @@ router.get('/search', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT id, name, scientific_name, usage_name, polynesian_name, tags,
-             description, description_source, status, usage_count
+             description, description_source, status, usage_count, proposed_by
       FROM species
       WHERE LOWER(COALESCE(${column}, '')) LIKE $1
       ORDER BY LOWER(${column}) ASC
       LIMIT 10
     `, [`%${q.toLowerCase()}%`]);
-    res.json({ results: rows });
+    res.json({ results: await decorateProposers(rows) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -165,9 +189,11 @@ router.patch('/:id', requireCuratorOrAbove, async (req, res) => {
     return true;
   };
 
-  if (!stringField('scientific_name')) return res.status(400).json({ error: 'scientific_name must be string|null' });
-  if (!stringField('polynesian_name')) return res.status(400).json({ error: 'polynesian_name must be string|null' });
-  if (!stringField('description'))     return res.status(400).json({ error: 'description must be string|null' });
+  if (!stringField('scientific_name'))      return res.status(400).json({ error: 'scientific_name must be string|null' });
+  if (!stringField('polynesian_name'))      return res.status(400).json({ error: 'polynesian_name must be string|null' });
+  if (!stringField('usage_name'))           return res.status(400).json({ error: 'usage_name must be string|null' });
+  if (!stringField('description'))          return res.status(400).json({ error: 'description must be string|null' });
+  if (!stringField('reference_image_url'))  return res.status(400).json({ error: 'reference_image_url must be string|null' });
 
   if ('category' in body) {
     const v = body.category;
@@ -194,7 +220,8 @@ router.patch('/:id', requireCuratorOrAbove, async (req, res) => {
     const { rows } = await pool.query(`
       UPDATE species SET ${fields.join(', ')}
       WHERE id = $${params.length}
-      RETURNING id, name, scientific_name, polynesian_name, category, description, description_source, status, usage_count
+      RETURNING id, name, scientific_name, usage_name, polynesian_name, category, tags,
+                description, description_source, reference_image_url, status, usage_count
     `, params);
     if (rows.length === 0) return res.status(404).json({ error: 'species not found' });
     res.json(rows[0]);
@@ -215,6 +242,67 @@ router.patch('/:id/approve', requireCuratorOrAbove, async (req, res) => {
     `, [req.cvatUser.id, id]);
     if (rows.length === 0) return res.status(404).json({ error: 'species not found' });
     res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, name, scientific_name, usage_name, polynesian_name, category, tags,
+             description, description_source, reference_image_url, status, usage_count,
+             proposed_by, approved_by, created_at
+      FROM species WHERE id = $1
+    `, [id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'species not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/wikipedia', requireCuratorOrAbove, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
+  const lang = ['fr', 'en'].includes(String(req.query.lang)) ? String(req.query.lang) : 'fr';
+  try {
+    const { rows } = await pool.query(
+      'SELECT scientific_name, usage_name, name FROM species WHERE id = $1',
+      [id],
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'species not found' });
+    const candidates = [rows[0].scientific_name, rows[0].usage_name, rows[0].name].filter(Boolean);
+    if (candidates.length === 0) return res.status(400).json({ error: 'aucun nom disponible pour la recherche Wikipédia' });
+
+    let summary = null;
+    for (const term of candidates) {
+      try {
+        const resp = await axios.get(
+          `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(term)}`,
+          { timeout: 5000, headers: { 'User-Agent': 'OceanLabelling/1.0' } },
+        );
+        if (resp.data?.type === 'standard' && resp.data?.extract) {
+          summary = {
+            term,
+            lang,
+            title:      resp.data.title,
+            extract:    resp.data.extract,
+            page_url:   resp.data.content_urls?.desktop?.page ?? null,
+            thumbnail:  resp.data.thumbnail?.source ?? null,
+          };
+          break;
+        }
+      } catch (err) {
+        if (err.response?.status !== 404) {
+          console.warn(`[species] wiki lookup failed for "${term}":`, err.message);
+        }
+      }
+    }
+    if (!summary) return res.status(404).json({ error: 'aucune page Wikipédia trouvée pour cette espèce' });
+    res.json(summary);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

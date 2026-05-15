@@ -10,6 +10,7 @@ import {
 import { appApiClient } from '@/services/api/AppApiService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { toast } from '@/shared/toast/Toast';
+import { RankBadge } from '@/shared/components/RankBadge';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -125,9 +126,14 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 
 	const { uploader, lots } = detail;
 	const totalItems = lots.reduce((s, l) => s + l.items.length, 0);
-	const moderators = Array.from(new Set(
-		lots.flatMap((l) => l.items.map((i) => i.moderator?.username).filter(Boolean))
-	));
+	const moderatorMap = new Map<string, { username: string; actions: number }>();
+	lots.forEach((l) => l.items.forEach((i) => {
+		const m = i.moderator;
+		if (!m?.username) return;
+		const existing = moderatorMap.get(m.username);
+		if (!existing) moderatorMap.set(m.username, { username: m.username, actions: m.actions_validated_total ?? 0 });
+	}));
+	const moderators = Array.from(moderatorMap.values());
 
 	return (
 		<View style={styles.container}>
@@ -149,6 +155,9 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 						<View style={styles.roleBadge}>
 							<Text style={styles.roleBadgeText}>{uploader.role}</Text>
 						</View>
+						<View style={{ marginTop: 4 }}>
+							<RankBadge actions={uploader.actions_validated_total ?? 0} size="sm" withCount />
+						</View>
 						{uploader.is_active === false ? (
 							<Text style={styles.banWarn}>⚠ Compte actuellement désactivé</Text>
 						) : null}
@@ -159,7 +168,10 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 						{moderators.length === 0 ? (
 							<Text style={styles.subdued}>Inconnu</Text>
 						) : moderators.map((m) => (
-							<Text key={m as string} style={styles.modName}>{m}</Text>
+							<View key={m.username} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+								<Text style={styles.modName}>{m.username}</Text>
+								<RankBadge actions={m.actions} size="sm" />
+							</View>
 						))}
 					</View>
 

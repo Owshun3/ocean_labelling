@@ -5,6 +5,7 @@ const axios   = require('axios');
 const { pool } = require('../db');
 const { requireAuth, requireModeratorOrAbove } = require('../middleware/auth');
 const { recordAction } = require('../lib/auditLog');
+const { fetchActionsTotals } = require('../lib/userStats');
 
 const router = express.Router();
 const CVAT   = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -306,6 +307,7 @@ router.get('/users/:id/media', requireModeratorOrAbove, async (req, res) => {
     const userResp = await cvatGet(`/users/${userId}`, token);
     const rolesById = await fetchAppRoles([userId]);
 
+    const actionsTotals = await fetchActionsTotals([userId]);
     const userPayload = {
       id: userResp.data.id,
       username: userResp.data.username,
@@ -313,6 +315,7 @@ router.get('/users/:id/media', requireModeratorOrAbove, async (req, res) => {
       role: rolesById[userId] || 'annotator',
       is_active: userResp.data.is_active,
       date_joined: userResp.data.date_joined,
+      actions_validated_total: actionsTotals[userId] ?? 0,
     };
 
     if (rows.length === 0) return res.json({ user: userPayload, results: [] });

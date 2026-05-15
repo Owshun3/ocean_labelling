@@ -283,7 +283,7 @@ systemctl --user restart expo                       # si frontend/.env a changé
 
 ## Passage de localhost à une vraie IP / domaine universitaire
 
-Section à exécuter le jour où on bascule la plateforme du dev (`localhost`) vers une IP/domaine universitaire. **Faire un smoke test d'une demi-journée sur IP HTTP dès le début du stage** pour repérer les casses listées plus bas, puis revenir en `localhost` pour la suite du dev. Le vrai switch n'est à faire qu'en fin de stage, idéalement avec HTTPS.
+Section à exécuter le jour où on bascule la plateforme du dev (`localhost`) vers une IP/domaine universitaire. **Faire un smoke test d'une demi-journée sur IP HTTP dès le début du stage** pour repérer les casses listées plus bas, puis revenir en `localhost` pour la suite du dev. Le vrai switch (Phase 2) **exige HTTPS** — ce n'est pas une option : sans HTTPS, le cookie de session app-api (flag `Secure` activé par `NODE_ENV=production`) n'est plus transmis, l'upload d'image est bloqué par les navigateurs (secure context), et l'origine cross-site n'est plus de confiance. Tout est détaillé en Phase 2 ci-dessous.
 
 ### Demande DSI — phases de l'ouverture réseau
 
@@ -307,13 +307,114 @@ Section à exécuter le jour où on bascule la plateforme du dev (`localhost`) v
 - **Ce qui ne marchera PAS en HTTP plain** : `expo-image-picker` (upload), `navigator.clipboard`, `getUserMedia` — bloqués par les navigateurs hors `localhost` / HTTPS (secure context). Le test peut couvrir tout sauf l'upload.
 
 **Phase 2 — domaine + HTTPS (semaine de la mise en prod)**
-- Demander à la DSI :
-  - **Un sous-domaine** type `ocean.upf.pf` pointant vers l'IP de la VM (un FQDN — un certificat HTTPS s'émet quasi toujours pour un nom DNS, pas pour une IP nue ; Let's Encrypt refuse les IPs).
-  - **Un certificat HTTPS** pour ce sous-domaine (PKI interne UPF ou Let's Encrypt si l'hôte est joignable en 80/443).
-- À ce moment, **bundler statiquement** le frontend (`npx expo export -p web -o frontend/dist`), faire servir le bundle par nginx sur 8888 → **un seul port à exposer publiquement (443)**, plus besoin de 8081. Suppression du dev server fragile.
-- Activer HTTPS — voir sous-section ci-dessous (« Si HTTPS »).
-- Activer `NODE_ENV=production` côté app-api pour que le cookie devienne `Secure` (sera transmis uniquement en HTTPS).
-- L'upload, la clipboard, etc. fonctionnent à nouveau (secure context restauré).
+
+HTTPS est le déclencheur, mais entraîne mécaniquement une chaîne de modifications. À faire dans l'ordre.
+
+**a. Pré-requis externes (DSI)**
+- **Sous-domaine** type `ocean.upf.pf` pointant vers l'IP de la VM. Indispensable car un certificat HTTPS s'émet quasi toujours pour un nom DNS, pas pour une IP nue (Let's Encrypt refuse les IPs).
+- **Certificat HTTPS** pour ce sous-domaine (PKI interne UPF ou Let's Encrypt si l'hôte est joignable en 80/443 depuis Internet).
+- **Ouverture du port 443** uniquement (LAN universitaire ou Internet selon scope). Le 8081 peut être fermé après le bundling statique.
+
+**b. Bundling statique du frontend** — supprime le dev server Expo
+```bash
+cd frontend && npx expo export -p web -o dist/
+```
+Puis monter `frontend/dist/` dans le container `gateway` et ajouter dans `nginx.conf` :
+```nginx
+location / {
+  root /usr/share/nginx/ocean-frontend;
+  try_files $uri $uri/ /index.html;
+}
+```
+Avantage : un seul port (443), pas de HMR fragile en prod, chargement plus rapide.
+
+**c. Variables d'environnement**
+
+`frontend/.env` (utilisé au bundling) :
+```env
+EXPO_PUBLIC_API_URL=https://<nom-dns>/api
+EXPO_PUBLIC_APP_API_URL=https://<nom-dns>/app-api
+EXPO_PUBLIC_CVAT_UI_URL=https://<nom-dns>
+```
+
+`.env` racine :
+```env
+CSRF_TRUSTED_ORIGINS=https://<nom-dns>
+```
+
+`docker-compose.yml` — passer app-api en mode production (active `Secure` sur le cookie session) :
+```yaml
+app-api:
+  environment:
+    - NODE_ENV=production
+```
+
+**d. Configuration Django CVAT** — `cvat-extras/ocean.py` :
+```python
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+```
+Le `SECURE_PROXY_SSL_HEADER` est crucial : Django croit recevoir du HTTP plain (nginx termine HTTPS et proxifie en clair en interne) — ce header lui dit « en fait c'est HTTPS, ne génère pas de redirection HTTP infinie ».
+
+**e. NGINX gateway** — terminaison TLS + entêtes de sécurité
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name <nom-dns>;
+
+  ssl_certificate     /etc/letsencrypt/live/<nom-dns>/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/<nom-dns>/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+  # Sur tous les proxy_pass :
+  proxy_set_header X-Forwarded-Proto https;
+
+  # … le reste de la config existante
+}
+
+# Redirection HTTP → HTTPS
+server {
+  listen 80;
+  server_name <nom-dns>;
+  return 301 https://$server_name$request_uri;
+}
+```
+Et **figer le CORS** : remplacer les `$http_origin` (4 occurrences, lignes 17/25/36/44) par `https://<nom-dns>` en dur, ou une `map` whitelistée. Sinon n'importe quel site externe peut faire des requêtes au nom des utilisateurs connectés.
+
+**f. Rate limiting** — anti brute-force sur le login
+```nginx
+limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+
+location = /app-api/auth/login {
+  limit_req zone=login burst=5 nodelay;
+  proxy_pass http://app-api:3000;
+}
+```
+
+**g. Durcissement Docker**
+- Passer `restart: unless-stopped` → `restart: always` sur tous les services (auto-restart au reboot VM).
+- Vérifier qu'aucun port n'est exposé inutilement dans `docker-compose.yml` (seul `gateway` doit publier vers l'hôte).
+
+**h. Sauvegardes**
+- Cron quotidien `pg_dump` sur le volume `pg_data`, rotation 30 jours, stockage hors VM.
+
+**i. Tests à effectuer avant ouverture publique**
+
+Liste minimale à valider en pré-prod :
+- [ ] Login (vérifier que le cookie `ocean_session` est transmis avec `Secure` et que la session persiste)
+- [ ] Logout (cookie cleared)
+- [ ] Multi-onglets (logout dans un onglet → autres redirigés)
+- [ ] Welcome screen (vérifier `hasSeenWelcome` persisté en BD)
+- [ ] Upload de média (test critique — le secure context doit autoriser `expo-image-picker`)
+- [ ] Studio annotation : claim job, tracer une bbox, espèce, valider
+- [ ] Modération : valider, rejeter avec motif, bannir un compte
+- [ ] Contestation : depuis un compte non-admin, contester un rejet, puis depuis admin résoudre overturn + uphold
+- [ ] Mode maintenance : activer depuis admin → vérifier que `/auth/login` reste joignable depuis un autre navigateur (sinon site verrouillé)
+- [ ] Job de nettoyage : forcer un `POST /admin/cleanup/run-now` et vérifier l'entrée dans logs d'activité
+- [ ] HSTS : recharger en HTTP, vérifier la redirection 301 vers HTTPS
 
 **Modèle de message DSI** (Phase 1 seule, à recopier/adapter) :
 
@@ -338,21 +439,13 @@ Reste un seul fichier de code à toucher pour la prod (recommandé, pas bloquant
 
 **`nginx/nginx.conf`** — figer l'origine CORS. Remplacer les `$http_origin` (lignes 17, 25, 36, 44) par l'origine exacte ou une `map` qui whitelist 1-2 valeurs. Aujourd'hui n'importe quelle origine est acceptée → trou de sécurité en prod publique. Cette modif **est** suivie par git mais elle est commune à tout déploiement futur, donc OK à committer.
 
-### Si HTTPS (recommandé sur réseau université)
+### HTTPS — obligatoire en prod
 
-Ajouter dans `cvat-extras/ocean.py` :
+Détails techniques (Django settings, nginx, certificat) consolidés dans **Phase 2 ci-dessus** (`a`–`e`). Pourquoi c'est non-négociable :
 
-```python
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-```
-
-Et dans `nginx/nginx.conf`, sur tous les `proxy_pass`, ajouter :
-
-```nginx
-proxy_set_header X-Forwarded-Proto https;
-```
+- Le cookie de session `ocean_session` (auth app-api) porte le flag `Secure` dès que `NODE_ENV=production` → ne sera transmis qu'en HTTPS. Sans HTTPS : plus de login.
+- Les navigateurs modernes bloquent `expo-image-picker`, `navigator.clipboard`, `getUserMedia`, etc. hors « secure context » (HTTPS ou `localhost`). Sans HTTPS : upload média cassé.
+- `CSRF_TRUSTED_ORIGINS` doit lister l'origine exacte ; une origine HTTP plain peut être spoofée triviallement sur un LAN partagé.
 
 Options pour le certificat :
 - Certificat universitaire pour un sous-domaine (le plus simple si dispo).

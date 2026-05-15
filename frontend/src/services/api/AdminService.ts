@@ -27,6 +27,7 @@ export interface ContestationModerator {
 	id: number;
 	username: string | null;
 	role: string;
+	actions_validated_total?: number;
 }
 
 export interface ContestationItem {
@@ -53,6 +54,7 @@ export interface ContestationUploaderDetail {
 		email: string | null;
 		is_active: boolean | null;
 		role: string;
+		actions_validated_total?: number;
 	};
 	lots: ContestationLot[];
 }

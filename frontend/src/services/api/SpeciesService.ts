@@ -11,6 +11,12 @@ export type SpeciesStatus = 'pending' | 'approved' | 'rejected';
 export type SpeciesCategory = 'terrestrial_fauna' | 'marine_fauna' | 'flora' | 'other';
 export type DescriptionSource = 'manual' | 'wikipedia' | 'annotator_proposal';
 
+export interface SpeciesProposer {
+	id: number;
+	username: string | null;
+	actions_validated_total: number;
+}
+
 export interface Species {
 	id: number;
 	name: string;
@@ -21,8 +27,19 @@ export interface Species {
 	tags?: string[];
 	description: string | null;
 	description_source: DescriptionSource | null;
+	reference_image_url?: string | null;
 	status: SpeciesStatus;
 	usage_count: number;
+	proposer?: SpeciesProposer | null;
+}
+
+export interface WikipediaSummary {
+	term: string;
+	lang: string;
+	title: string;
+	extract: string;
+	page_url: string | null;
+	thumbnail: string | null;
 }
 
 export type SpeciesSearchField = 'scientific' | 'usage' | 'polynesian';
@@ -37,10 +54,12 @@ export interface SpeciesFullInput {
 
 export interface SpeciesEditPayload {
 	scientific_name?: string | null;
+	usage_name?: string | null;
 	polynesian_name?: string | null;
 	category?: SpeciesCategory | null;
 	description?: string | null;
 	description_source?: DescriptionSource | null;
+	reference_image_url?: string | null;
 }
 
 export class SpeciesService {
@@ -70,6 +89,16 @@ export class SpeciesService {
 
 	async createFull(payload: SpeciesFullInput): Promise<Species> {
 		const resp = await speciesClient.post<Species>('/full', payload);
+		return resp.data;
+	}
+
+	async getOne(id: number): Promise<Species> {
+		const resp = await speciesClient.get<Species>(`/${id}`);
+		return resp.data;
+	}
+
+	async fetchWikipedia(id: number, lang: 'fr' | 'en' = 'fr'): Promise<WikipediaSummary> {
+		const resp = await speciesClient.get<WikipediaSummary>(`/${id}/wikipedia`, { params: { lang } });
 		return resp.data;
 	}
 }

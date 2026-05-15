@@ -32,7 +32,7 @@ export const BboxTooltip: React.FC<Props> = ({ proposal, x, y, annotatorColor })
 			) : null}
 			{isPending ? <Text style={styles.pending}>en attente de validation</Text> : null}
 			<View style={styles.spacer} />
-			<AnnotatorBadge username={proposal.annotator_username} color={annotatorColor} />
+			<AnnotatorBadge username={proposal.annotator_username} color={annotatorColor} actionsTotal={proposal.annotator_actions_total} />
 		</View>
 	);
 };

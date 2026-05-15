@@ -70,6 +70,7 @@ export interface Proposal {
   cvat_job_id: number;
   annotator_id: number;
   annotator_username: string;
+  annotator_actions_total?: number;
   points: number[];
   x: number; y: number; width: number; height: number;
   label_id: number;

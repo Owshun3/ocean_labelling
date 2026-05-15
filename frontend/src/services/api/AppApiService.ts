@@ -72,6 +72,7 @@ export interface UserWithRole {
 	role: AppRole;
 	state: AccountState;
 	ban: BanInfo | null;
+	actions_validated_total: number;
 }
 
 export class AppApiService {

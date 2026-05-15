@@ -278,6 +278,7 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				task={data.task}
 				speciesLocked={speciesLocked}
 				speciesLockedName={selectedSpeciesOpt?.displayName ?? null}
+				speciesLockedId={selectedSpeciesOpt?.species?.id ?? null}
 				onSpeciesChange={(v) => {
 					setSpecies(v);
 					if (speciesLocked) setSpeciesLocked(false);

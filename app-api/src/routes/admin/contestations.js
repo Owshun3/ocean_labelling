@@ -4,6 +4,7 @@ const express = require('express');
 const { pool } = require('../../db');
 const { cvatGet, cvatDelete } = require('../../lib/cvatAdmin');
 const { recordAction } = require('../../lib/auditLog');
+const { fetchActionsTotals } = require('../../lib/userStats');
 
 const router = express.Router();
 
@@ -112,10 +113,13 @@ router.get('/uploaders/:id', async (req, res) => {
       }
     }));
 
+    const actionsTotals = await fetchActionsTotals([...userIdsToFetch]);
+
     const uploader = usersById[userId] ? {
       ...usersById[userId],
       role: rolesById[userId] || 'annotator',
-    } : { id: userId, username: null, email: null, is_active: null, role: 'annotator' };
+      actions_validated_total: actionsTotals[userId] ?? 0,
+    } : { id: userId, username: null, email: null, is_active: null, role: 'annotator', actions_validated_total: 0 };
 
     const lotsByMessage = new Map();
     rows.forEach((r) => {
@@ -145,6 +149,7 @@ router.get('/uploaders/:id', async (req, res) => {
           id: moderator.id,
           username: moderator.username,
           role: rolesById[moderator.id] || 'annotator',
+          actions_validated_total: actionsTotals[moderator.id] ?? 0,
         } : null,
       });
     });

@@ -3,6 +3,7 @@ const axios = require('axios');
 const { pool } = require('../db');
 const { requireAdmin, requireAuth } = require('../middleware/auth');
 const { recordAction } = require('../lib/auditLog');
+const { fetchActionsTotals } = require('../lib/userStats');
 
 const router = express.Router();
 const CVAT_API = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -315,6 +316,8 @@ router.get('/', requireAdmin, async (req, res) => {
       }
     }));
 
+    const actionsTotals = await fetchActionsTotals(cvatUsers.map((u) => u.id));
+
     const users = cvatUsers.map(u => {
       const ban = lastBanByUser.get(u.id);
       const banState = classifyBan(ban);
@@ -338,6 +341,7 @@ router.get('/', requireAdmin, async (req, res) => {
         ban: state === 'banned'
           ? { reason: ban.reason, expires_at: ban.expires_at, banned_at: ban.banned_at }
           : null,
+        actions_validated_total: actionsTotals[u.id] ?? 0,
       };
     });
 

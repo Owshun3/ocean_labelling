@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
+import { useRouter, Href } from 'expo-router';
 import { SpeciesTriFieldForm, SpeciesTriValue } from './SpeciesTriFieldForm';
 import { ImageMetadata } from './ImageMetadata';
 import type { ProposalsPayload } from '@/services/api/CuratorService';
@@ -17,6 +18,7 @@ interface Props {
 	task:     ProposalsPayload['task'];
 	speciesLocked: boolean;
 	speciesLockedName: string | null;
+	speciesLockedId?: number | null;
 	onSpeciesChange: (v: SpeciesTriValue) => void;
 	onUnlockSpecies: () => void;
 	onCommentChange: (s: string) => void;
@@ -25,12 +27,21 @@ interface Props {
 
 export const CuratorSidebarRight: React.FC<Props> = ({
 	speciesValue, comment, canCertify, submitting, disabledHint,
-	metadata, task, speciesLocked, speciesLockedName,
+	metadata, task, speciesLocked, speciesLockedName, speciesLockedId,
 	onSpeciesChange, onUnlockSpecies, onCommentChange, onCertify,
-}) => (
+}) => {
+	const router = useRouter();
+	return (
 	<View style={styles.col}>
 		<View style={styles.block}>
-			<Text style={styles.heading}>Espèce</Text>
+			<View style={styles.headingRow}>
+				<Text style={styles.heading}>Espèce</Text>
+				{speciesLockedId ? (
+					<Pressable onPress={() => router.push(`/(main)/species/${speciesLockedId}` as Href)}>
+						<Text style={styles.fichLink}>Voir la fiche ↗</Text>
+					</Pressable>
+				) : null}
+			</View>
 			{speciesLocked ? (
 				<View style={styles.lockBanner}>
 					<Text style={styles.lockBannerText}>
@@ -81,7 +92,8 @@ export const CuratorSidebarRight: React.FC<Props> = ({
 			) : null}
 		</View>
 	</View>
-);
+	);
+};
 
 const styles = StyleSheet.create({
 	col: {
@@ -94,7 +106,9 @@ const styles = StyleSheet.create({
 		gap: SPACING.md,
 	},
 	block: { gap: SPACING.xs },
+	headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 	heading: { fontSize: 11, color: COLORS.text.secondary, fontWeight: '700', textTransform: 'uppercase' },
+	fichLink: { fontSize: 11, color: COLORS.primary, fontWeight: '700', textDecorationLine: 'underline' },
 
 	textarea: {
 		borderWidth: 1, borderColor: COLORS.border, borderRadius: 6,
