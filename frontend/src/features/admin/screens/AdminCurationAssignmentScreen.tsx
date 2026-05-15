@@ -126,10 +126,26 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 	return (
 		<View style={styles.container}>
 			<View style={styles.headerRow}>
-				<Text style={styles.title}>Attribution des curations</Text>
-				<Text style={styles.subtitle}>
-					{pool.length} média(s) en attente d'attribution · {selected.size} sélectionné(s)
-				</Text>
+				<View style={{ flex: 1 }}>
+					<Text style={styles.title}>Attribution des curations</Text>
+					<Text style={styles.subtitle}>
+						{pool.length} média(s) en attente d'attribution · {selected.size} sélectionné(s)
+					</Text>
+				</View>
+				<Pressable
+					onPress={async () => {
+						try {
+							const r = await service.refreshCurationCounts();
+							toast.success(`Compteurs synchronisés (${r.refreshed} média(s) revérifiés).`);
+							await load();
+						} catch (err: any) {
+							toast.error(err?.response?.data?.error ?? err?.message ?? 'Refresh impossible.');
+						}
+					}}
+					style={styles.refreshBtn}
+				>
+					<Text style={styles.refreshBtnText}>↻ Resynchroniser</Text>
+				</Pressable>
 			</View>
 
 			<View style={styles.row}>
@@ -261,7 +277,9 @@ const styles = StyleSheet.create({
 	container: { flex: 1, padding: SPACING.lg, gap: SPACING.sm },
 	center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-	headerRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm, marginBottom: SPACING.sm },
+	headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, marginBottom: SPACING.sm },
+	refreshBtn: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, backgroundColor: COLORS.background.card, borderWidth: 1, borderColor: COLORS.border },
+	refreshBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.text.primary },
 	title: { ...TYPOGRAPHY.h1 },
 	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary },
 

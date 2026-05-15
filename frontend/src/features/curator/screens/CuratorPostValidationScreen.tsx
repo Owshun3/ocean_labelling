@@ -23,7 +23,7 @@ export const CuratorPostValidationScreen: React.FC<Props> = ({ completedTaskId }
 		setLoading(true);
 		setError(null);
 		service.getTasks()
-			.then((all) => setTasks(all.filter((t) => t.id !== completedTaskId)))
+			.then((resp) => setTasks(resp.results.filter((t) => t.id !== completedTaskId)))
 			.catch((err) => setError(err?.response?.data?.error ?? err.message))
 			.finally(() => setLoading(false));
 	}, [service, completedTaskId]);

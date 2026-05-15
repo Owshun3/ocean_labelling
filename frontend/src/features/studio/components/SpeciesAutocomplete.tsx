@@ -4,7 +4,6 @@ import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 import { Species, SpeciesService } from '@/services/api/SpeciesService';
-import { RankBadge } from '@/shared/components/RankBadge';
 
 interface Props {
 	value: { id?: number; name: string } | null;
@@ -93,14 +92,6 @@ export const SpeciesAutocomplete: React.FC<Props> = ({ value, onPick }) => {
 								</Text>
 								{r.scientific_name ? (
 									<Text style={styles.itemScientific}>{r.scientific_name}</Text>
-								) : null}
-								{r.status === 'pending' && r.proposer ? (
-									<View style={styles.proposerRow}>
-										<Text style={styles.proposerText}>
-											proposée par {r.proposer.username ?? '?'}
-										</Text>
-										<RankBadge actions={r.proposer.actions_validated_total} size="sm" />
-									</View>
 								) : null}
 							</View>
 							{r.status === 'pending' ? (

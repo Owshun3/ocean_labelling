@@ -5,6 +5,7 @@ const { pool } = require('../../db');
 const { cvatGet } = require('../../lib/cvatAdmin');
 const { recordAction } = require('../../lib/auditLog');
 const { fetchActionsTotals } = require('../../lib/userStats');
+const { getConsensusThreshold, refreshAllPending } = require('../../lib/curationGate');
 
 const router = express.Router();
 
@@ -14,16 +15,18 @@ const ELIGIBLE_CURATOR_ROLES = new Set(['admin', 'moderator', 'curator', 'cherch
 //   passés en modération (validated), non encore curés, binaires intacts, sans attribution.
 router.get('/pool', async (_req, res) => {
   try {
+    const threshold = await getConsensusThreshold();
     const { rows } = await pool.query(`
-      SELECT cvat_task_id, uploader_id, reviewed_at
+      SELECT cvat_task_id, uploader_id, reviewed_at, annotated_jobs_count
       FROM media_moderation
       WHERE status = 'validated'
         AND curator_validated_at IS NULL
         AND binaries_deleted_at IS NULL
         AND assigned_curator_id IS NULL
+        AND annotated_jobs_count >= $1
       ORDER BY reviewed_at ASC
       LIMIT 500
-    `);
+    `, [threshold]);
     if (rows.length === 0) return res.json({ results: [] });
 
     const uploaderIds = [...new Set(rows.map((r) => r.uploader_id))];
@@ -55,9 +58,10 @@ router.get('/pool', async (_req, res) => {
         task_name:    tasksById[r.cvat_task_id].name,
         reviewed_at:  r.reviewed_at,
         uploader: usersById[r.uploader_id] ?? { id: r.uploader_id, username: null },
+        annotated_jobs_count: r.annotated_jobs_count,
       }));
 
-    res.json({ results });
+    res.json({ results, threshold });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -126,6 +130,15 @@ router.get('/curators', async (_req, res) => {
       .sort((a, b) => a.username.localeCompare(b.username, 'fr'));
 
     res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/refresh-counts', async (_req, res) => {
+  try {
+    const result = await refreshAllPending();
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -148,11 +148,14 @@ async function countShapesInJob(jobId, token) {
 router.get('/feed', requireAuth, async (req, res) => {
   const me = req.cvatUser.id;
   try {
+    // Pour le studio annotateur : seuls les médias passés en modération sont annotables.
+    // Mes pending/rejected n'apparaissent pas dans "Mes médias" du studio (ils sont visibles
+    // dans /media qui est la vraie page de suivi modération).
     const { rows } = await pool.query(`
       SELECT cvat_task_id, uploader_id, status, created_at, curator_validated_at
       FROM media_moderation
-      WHERE uploader_id = $1 OR status = 'validated'
-    `, [me]);
+      WHERE status = 'validated'
+    `, []);
     if (rows.length === 0) return res.json({ own: [], community: [] });
 
     const taskIds = rows.map((r) => r.cvat_task_id);
@@ -330,6 +333,8 @@ router.put('/jobs/:jobId/annotations', requireAuth, async (req, res) => {
     const token = await getAdminToken();
     await ensureJobAccess(jobId, req.cvatUser, token);
     const putResp = await cvatPut(`/jobs/${jobId}/annotations`, req.body, token);
+    // Met à jour le compteur dénormalisé pour ce task (fire-and-forget, ne bloque pas la réponse)
+    require('../lib/curationGate').recomputeFromJob(jobId).catch(() => {});
     res.json(putResp.data);
   } catch (err) {
     if (err.statusCode === 403) return res.status(403).json({ error: err.message });

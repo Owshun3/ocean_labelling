@@ -197,6 +197,11 @@ export class AdminService {
 		return resp.data.results;
 	}
 
+	async refreshCurationCounts(): Promise<{ refreshed: number }> {
+		const resp = await adminClient.post<{ refreshed: number }>('/curation/refresh-counts');
+		return resp.data;
+	}
+
 	async listCurators(): Promise<CurationCandidate[]> {
 		const resp = await adminClient.get<{ results: CurationCandidate[] }>('/curation/curators');
 		return resp.data.results;

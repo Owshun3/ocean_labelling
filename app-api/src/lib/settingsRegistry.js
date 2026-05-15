@@ -63,7 +63,8 @@ const REGISTRY = [
   {
     key: 'consensus_replicas_default', type: 'int', default: '2', is_public: false,
     group_name: 'policies', label: 'Replicas de consensus par nouvelle tâche',
-    description: 'Nombre de jobs créés par tâche pour permettre la curation (≥2). Paramètre non rétroactif : ne touche que les nouveaux uploads.',
+    description: 'Nombre de jobs créés par tâche pour permettre la curation. Minimum 2 (contrainte CVAT). Paramètre non rétroactif : ne touche que les nouveaux uploads.',
+    min: 2,
   },
   {
     key: 'username_change_cooldown_days', type: 'int', default: '30', is_public: false,
@@ -101,13 +102,19 @@ function coerceFromString(type, str) {
   return String(str);
 }
 
-function validateForType(type, raw) {
+function validateForType(type, raw, meta) {
   // raw is whatever the client sent: bool, number or string
   if (type === 'int') {
     if (typeof raw === 'string') raw = raw.trim();
     const n = Number(raw);
     if (!Number.isInteger(n)) throw new Error('valeur entière attendue');
     if (n < 0) throw new Error('valeur positive ou nulle requise');
+    if (meta && Number.isInteger(meta.min) && n < meta.min) {
+      throw new Error(`valeur minimum : ${meta.min}`);
+    }
+    if (meta && Number.isInteger(meta.max) && n > meta.max) {
+      throw new Error(`valeur maximum : ${meta.max}`);
+    }
     return String(n);
   }
   if (type === 'bool') {

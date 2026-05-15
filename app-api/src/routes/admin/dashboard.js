@@ -11,7 +11,11 @@ router.get('/summary', async (_req, res) => {
         (SELECT COUNT(*) FROM annotation_contestations    WHERE resolved_at IS NULL) AS open_annotation_contestations,
         (SELECT COUNT(*) FROM media_moderation
            WHERE status = 'validated' AND curator_validated_at IS NULL
-             AND binaries_deleted_at IS NULL AND assigned_curator_id IS NULL)         AS media_awaiting_curation,
+             AND binaries_deleted_at IS NULL AND assigned_curator_id IS NULL
+             AND annotated_jobs_count >= COALESCE(
+               (SELECT value::int FROM app_settings WHERE key = 'consensus_replicas_default'),
+               2
+             ))                                                                       AS media_awaiting_curation,
         (SELECT COUNT(*) FROM app_sessions WHERE expires_at > NOW())                  AS active_sessions,
         (SELECT COUNT(*) FROM user_bans
            WHERE released_at IS NULL AND (expires_at IS NULL OR expires_at > NOW()))  AS active_bans,

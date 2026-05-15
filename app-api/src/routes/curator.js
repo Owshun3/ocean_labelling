@@ -5,6 +5,7 @@ const axios   = require('axios');
 const { pool } = require('../db');
 const { requireCuratorOrAbove } = require('../middleware/auth');
 const { fetchActionsTotals } = require('../lib/userStats');
+const { getConsensusThreshold } = require('../lib/curationGate');
 
 const router  = express.Router();
 const CVAT    = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -93,15 +94,18 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
     }
     const treatAsAdmin = isAdmin || appRole === 'admin';
 
+    const threshold = await getConsensusThreshold();
+    const params = treatAsAdmin ? [threshold] : [me.id, threshold];
     const assignmentFilter = treatAsAdmin ? '' : 'AND assigned_curator_id = $1';
-    const params = treatAsAdmin ? [] : [me.id];
+    const thresholdIdx = treatAsAdmin ? 1 : 2;
 
     const { rows: eligibleRows } = await pool.query(`
-      SELECT cvat_task_id, assigned_curator_id
+      SELECT cvat_task_id, assigned_curator_id, annotated_jobs_count
       FROM media_moderation
       WHERE status = 'validated'
         AND curator_validated_at IS NULL
         AND binaries_deleted_at IS NULL
+        AND annotated_jobs_count >= $${thresholdIdx}
         ${assignmentFilter}
       ORDER BY reviewed_at ASC
       LIMIT 200
@@ -180,7 +184,8 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
       }
     }));
 
-    res.json({ results: withJobs, count: withJobs.length, admin_view: treatAsAdmin });
+    // Le gate par seuil est déjà appliqué côté SQL (annotated_jobs_count >= $threshold).
+    res.json({ results: withJobs, count: withJobs.length, admin_view: treatAsAdmin, threshold });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }

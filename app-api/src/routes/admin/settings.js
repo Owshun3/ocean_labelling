@@ -40,7 +40,7 @@ router.patch('/:key', async (req, res) => {
 
   let stored;
   try {
-    stored = validateForType(meta.type, req.body?.value);
+    stored = validateForType(meta.type, req.body?.value, meta);
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }

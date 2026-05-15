@@ -34,5 +34,6 @@ init()
   .then(() => {
     app.listen(PORT, () => console.log(`[app-api] listening on :${PORT}`));
     require('./lib/cleanup').startScheduler();
+    require('./lib/curationGate').startScheduler();
   })
   .catch(err => { console.error('[app-api] DB init failed:', err.message); process.exit(1); });
