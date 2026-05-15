@@ -175,14 +175,19 @@ router.get('/feed', requireAuth, async (req, res) => {
       catch { jobsByTask.set(id, []); }
     }));
 
-    const ownRows = rows.filter((r) => r.uploader_id === me && tasksById.has(r.cvat_task_id));
+    // Calcule "mes shapes par task" pour TOUTES les tâches où j'ai un job (own + community).
+    // Sert à : (a) marquer ma tâche perso en "annotated", (b) filtrer le mur communautaire
+    // pour faire disparaître les médias que j'ai déjà annotés.
     const myShapesCounts = new Map();
-    await Promise.all(ownRows.map(async (row) => {
+    await Promise.all(rows.map(async (row) => {
+      if (!tasksById.has(row.cvat_task_id)) return;
       const jobs = jobsByTask.get(row.cvat_task_id) ?? [];
       const myJob = jobs.find((j) => j.assignee?.id === me);
       if (!myJob) { myShapesCounts.set(row.cvat_task_id, 0); return; }
       myShapesCounts.set(row.cvat_task_id, await countShapesInJob(myJob.id, token));
     }));
+
+    const ownRows = rows.filter((r) => r.uploader_id === me && tasksById.has(r.cvat_task_id));
 
     // Mes contestations annotation déjà déposées pour la certification courante
     const certifiedOwnIds = ownRows
@@ -235,8 +240,15 @@ router.get('/feed', requireAuth, async (req, res) => {
 
       if (row.uploader_id === me) {
         own.push(summary);
-      } else if (row.status === 'validated' && (myAssigned || freeJobs.length > 0)) {
-        community.push(summary);
+      } else if (row.status === 'validated') {
+        const myShapes = myShapesCounts.get(row.cvat_task_id) ?? 0;
+        const myJobDone = myAssigned?.state === 'completed';
+        // Une fois que j'ai déjà annoté (≥1 shape) ou que mon job est complété,
+        // le média disparaît de MON mur communautaire.
+        if (myShapes > 0 || myJobDone) continue;
+        if (myAssigned || freeJobs.length > 0) {
+          community.push(summary);
+        }
       }
     }
 
