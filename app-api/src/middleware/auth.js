@@ -184,5 +184,6 @@ async function requireModeratorOrAbove(req, res, next) {
 module.exports = {
   requireAuth, requireAdmin, requireCuratorOrAbove, requireModeratorOrAbove,
   resolveCvatUser, dropSession,
+  fetchAppRole, isAppAdmin,
   SESSION_COOKIE, IDLE_TIMEOUT_MS, ABSOLUTE_LIFETIME_MS, REMEMBER_LIFETIME_MS,
 };

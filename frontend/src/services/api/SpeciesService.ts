@@ -60,6 +60,16 @@ export interface SpeciesEditPayload {
 	description?: string | null;
 	description_source?: DescriptionSource | null;
 	reference_image_url?: string | null;
+	tags?: string[];
+}
+
+export interface SpeciesEditRequestRow {
+	id: number;
+	species_id: number;
+	proposed_by: number;
+	proposed_at: string;
+	proposed_payload: SpeciesEditPayload;
+	status: 'pending' | 'approved' | 'rejected';
 }
 
 export class SpeciesService {
@@ -100,5 +110,24 @@ export class SpeciesService {
 	async fetchWikipedia(id: number, lang: 'fr' | 'en' = 'fr'): Promise<WikipediaSummary> {
 		const resp = await speciesClient.get<WikipediaSummary>(`/${id}/wikipedia`, { params: { lang } });
 		return resp.data;
+	}
+
+	async proposeEdit(id: number, payload: SpeciesEditPayload): Promise<SpeciesEditRequestRow> {
+		const resp = await speciesClient.post<SpeciesEditRequestRow>(`/${id}/edit-request`, payload);
+		return resp.data;
+	}
+
+	async getPendingEdit(id: number): Promise<SpeciesEditRequestRow | null> {
+		try {
+			const resp = await speciesClient.get<SpeciesEditRequestRow>(`/${id}/edit-request`);
+			return resp.data;
+		} catch (err: any) {
+			if (err?.response?.status === 404) return null;
+			throw err;
+		}
+	}
+
+	async withdrawEdit(id: number): Promise<void> {
+		await speciesClient.delete(`/${id}/edit-request`);
 	}
 }

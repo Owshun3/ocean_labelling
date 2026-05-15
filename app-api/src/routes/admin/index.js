@@ -12,5 +12,6 @@ router.use('/health', require('./health'));
 router.use('/activity', require('./activity'));
 router.use('/cleanup', require('./cleanup'));
 router.use('/curation', require('./curation'));
+router.use('/requests', require('./requests'));
 
 module.exports = router;

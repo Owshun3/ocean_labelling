@@ -3,9 +3,10 @@
 const express = require('express');
 const axios = require('axios');
 const { pool } = require('../db');
-const { requireAuth, requireCuratorOrAbove } = require('../middleware/auth');
+const { requireAuth, requireCuratorOrAbove, requireAdmin, isAppAdmin } = require('../middleware/auth');
 const { fetchActionsTotals } = require('../lib/userStats');
 const { cvatGet } = require('../lib/cvatAdmin');
+const { recordAction } = require('../lib/auditLog');
 
 async function decorateProposers(species) {
   const ids = [...new Set(species.map((s) => s.proposed_by).filter(Boolean))];
@@ -188,7 +189,8 @@ router.post('/', requireAuth, async (req, res) => {
 const VALID_CATEGORIES = ['terrestrial_fauna', 'marine_fauna', 'flora', 'other'];
 const VALID_DESC_SOURCES = ['manual', 'wikipedia', 'annotator_proposal'];
 
-router.patch('/:id', requireCuratorOrAbove, async (req, res) => {
+// Édition directe : admin uniquement. Les curators passent par /:id/edit-request.
+router.patch('/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
 
@@ -230,10 +232,26 @@ router.patch('/:id', requireCuratorOrAbove, async (req, res) => {
     fields.push(`description_source = $${params.length}`);
   }
 
+  if ('tags' in body) {
+    if (!Array.isArray(body.tags) || body.tags.some((t) => typeof t !== 'string')) {
+      return res.status(400).json({ error: 'tags must be string[]' });
+    }
+    const cleanTags = [...new Set(body.tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0 && t.length <= 40))];
+    params.push(cleanTags);
+    fields.push(`tags = $${params.length}`);
+  }
+
   if (fields.length === 0) return res.status(400).json({ error: 'no editable fields provided' });
 
   params.push(id);
   try {
+    const { rows: before } = await pool.query(
+      `SELECT scientific_name, usage_name, polynesian_name, description, description_source, reference_image_url, tags
+       FROM species WHERE id = $1`,
+      [id],
+    );
+    if (before.length === 0) return res.status(404).json({ error: 'species not found' });
+
     const { rows } = await pool.query(`
       UPDATE species SET ${fields.join(', ')}
       WHERE id = $${params.length}
@@ -241,7 +259,130 @@ router.patch('/:id', requireCuratorOrAbove, async (req, res) => {
                 description, description_source, reference_image_url, status, usage_count
     `, params);
     if (rows.length === 0) return res.status(404).json({ error: 'species not found' });
+
+    recordAction(req.cvatUser.id, 'species.edited', {
+      targetType: 'species',
+      targetId:   id,
+      payload:    { before: before[0], after: rows[0], direct: true },
+    });
     res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Snapshot complet stocké côté demande : facilite l'affichage du diff même si
+// la fiche évolue entre-temps. Validé par tags string[] propre côté écriture.
+function sanitizeEditPayload(body) {
+  const out = {};
+  for (const k of ['scientific_name', 'usage_name', 'polynesian_name', 'description', 'reference_image_url']) {
+    if (k in body) {
+      const v = body[k];
+      if (v !== null && typeof v !== 'string') return { error: `${k} must be string|null` };
+      out[k] = v === null ? null : v.trim().slice(0, 4000) || null;
+    }
+  }
+  if ('description_source' in body) {
+    const v = body.description_source;
+    if (v !== null && (typeof v !== 'string' || !VALID_DESC_SOURCES.includes(v))) {
+      return { error: `description_source must be null or one of ${VALID_DESC_SOURCES.join(', ')}` };
+    }
+    out.description_source = v;
+  }
+  if ('tags' in body) {
+    if (!Array.isArray(body.tags) || body.tags.some((t) => typeof t !== 'string')) {
+      return { error: 'tags must be string[]' };
+    }
+    out.tags = [...new Set(body.tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0 && t.length <= 40))];
+  }
+  return { payload: out };
+}
+
+// Demande d'édition (curator+). Une seule en cours par espèce (contrainte DB partielle).
+router.post('/:id/edit-request', requireCuratorOrAbove, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
+
+  const { payload, error } = sanitizeEditPayload(req.body || {});
+  if (error) return res.status(400).json({ error });
+  if (!payload || Object.keys(payload).length === 0) {
+    return res.status(400).json({ error: 'aucun champ à modifier' });
+  }
+
+  try {
+    const existing = await pool.query(
+      `SELECT id, proposed_by FROM species_edit_requests WHERE species_id = $1 AND status = 'pending' LIMIT 1`,
+      [id],
+    );
+    if (existing.rows.length > 0 && existing.rows[0].proposed_by !== req.cvatUser.id) {
+      return res.status(409).json({ error: 'une autre demande est déjà en attente sur cette fiche.' });
+    }
+
+    const speciesRow = await pool.query('SELECT id FROM species WHERE id = $1', [id]);
+    if (speciesRow.rows.length === 0) return res.status(404).json({ error: 'species not found' });
+
+    if (existing.rows.length > 0) {
+      const { rows } = await pool.query(`
+        UPDATE species_edit_requests
+        SET proposed_payload = $1, proposed_at = NOW()
+        WHERE id = $2
+        RETURNING id, species_id, proposed_by, proposed_at, proposed_payload, status
+      `, [JSON.stringify(payload), existing.rows[0].id]);
+      recordAction(req.cvatUser.id, 'species_edit.proposed', {
+        targetType: 'species', targetId: id,
+        payload: { request_id: rows[0].id, payload, replaces_previous: true },
+      });
+      return res.json(rows[0]);
+    }
+
+    const { rows } = await pool.query(`
+      INSERT INTO species_edit_requests (species_id, proposed_by, proposed_payload)
+      VALUES ($1, $2, $3)
+      RETURNING id, species_id, proposed_by, proposed_at, proposed_payload, status
+    `, [id, req.cvatUser.id, JSON.stringify(payload)]);
+    recordAction(req.cvatUser.id, 'species_edit.proposed', {
+      targetType: 'species', targetId: id,
+      payload: { request_id: rows[0].id, payload, replaces_previous: false },
+    });
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Lecture de la demande en cours (curator pour la sienne, admin pour toutes).
+router.get('/:id/edit-request', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, species_id, proposed_by, proposed_at, proposed_payload, status
+       FROM species_edit_requests WHERE species_id = $1 AND status = 'pending' LIMIT 1`,
+      [id],
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'aucune demande en cours' });
+    const own = rows[0].proposed_by === req.cvatUser.id;
+    const admin = await isAppAdmin(req.cvatUser);
+    if (!own && !admin) return res.status(403).json({ error: 'not your request' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Retrait par le proposeur tant que la demande est pending.
+router.delete('/:id/edit-request', requireCuratorOrAbove, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM species_edit_requests
+       WHERE species_id = $1 AND status = 'pending' AND proposed_by = $2`,
+      [id, req.cvatUser.id],
+    );
+    if (rowCount === 0) return res.status(404).json({ error: 'aucune demande à retirer' });
+    recordAction(req.cvatUser.id, 'species_edit.withdrawn', { targetType: 'species', targetId: id });
+    res.json({ withdrawn: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -60,12 +60,12 @@ export const AdminDashboardScreen: React.FC = () => {
 				/>
 
 				<AdminCard
-					title="Contestations"
-					href={'/(main)/admin/contestations' as Href}
+					title="Requêtes"
+					href={'/(main)/admin/requests' as Href}
 					icon="alert-circle"
 					kpiValue={summary?.contestations.total ?? 0}
 					kpiLabel="en attente"
-					description={`${summary?.contestations.media ?? 0} média(s), ${summary?.contestations.annotation ?? 0} annotation(s)`}
+					description={`Contestations : ${summary?.contestations.media ?? 0} média / ${summary?.contestations.annotation ?? 0} annotation · fiches d'espèces, accès chercheurs`}
 					severity={contestSev}
 				/>
 

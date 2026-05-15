@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, TextInput, Image, StyleSheet, Linking } from 'react-native';
 import { useRouter, Href } from 'expo-router';
-import { SpeciesService, Species, WikipediaSummary } from '@/services/api/SpeciesService';
+import { SpeciesService, Species, WikipediaSummary, SpeciesEditRequestRow } from '@/services/api/SpeciesService';
 import { getUserProfile } from '@/services/api/authStorage';
 import { toast } from '@/shared/toast/Toast';
 import { BackButton } from '@/shared/components/BackButton';
@@ -20,6 +20,8 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const CURATOR_ROLES = new Set(['admin', 'moderator', 'curator', 'chercheur']);
 
+const PRESET_TAGS = ['terrestrial_fauna', 'marine_fauna', 'flora', 'endemic', 'other'];
+
 export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 	const router = useRouter();
 	const service = useMemo(() => new SpeciesService(), []);
@@ -29,12 +31,19 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 	const [submitting, setSubmitting] = useState(false);
 	const [wikiLoading, setWikiLoading] = useState(false);
 
+	const [draftScientific,     setDraftScientific]     = useState('');
+	const [draftUsage,          setDraftUsage]          = useState('');
+	const [draftPolynesian,     setDraftPolynesian]     = useState('');
 	const [draftDescription,    setDraftDescription]    = useState('');
 	const [draftSource,         setDraftSource]         = useState<'manual'|'wikipedia'|'annotator_proposal'|null>(null);
 	const [draftImageUrl,       setDraftImageUrl]       = useState('');
+	const [draftTags,           setDraftTags]           = useState<string[]>([]);
+	const [newTagText,          setNewTagText]          = useState('');
 	const [wikiPreview,         setWikiPreview]         = useState<WikipediaSummary | null>(null);
+	const [pendingRequest,      setPendingRequest]      = useState<SpeciesEditRequestRow | null>(null);
 
 	const profile = getUserProfile();
+	const isAdmin = profile?.appRole === 'admin' || profile?.is_superuser === true;
 	const canEdit = !!profile && CURATOR_ROLES.has(profile.appRole);
 
 	const load = useCallback(async () => {
@@ -42,10 +51,18 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 		try {
 			const s = await service.getOne(speciesId);
 			setSpecies(s);
+			setDraftScientific(s.scientific_name ?? '');
+			setDraftUsage(s.usage_name ?? '');
+			setDraftPolynesian(s.polynesian_name ?? '');
 			setDraftDescription(s.description ?? '');
 			setDraftSource(s.description_source ?? null);
 			setDraftImageUrl(s.reference_image_url ?? '');
+			setDraftTags([...(s.tags ?? [])]);
 			setWikiPreview(null);
+			try {
+				const pending = await service.getPendingEdit(speciesId);
+				setPendingRequest(pending);
+			} catch { setPendingRequest(null); }
 		} catch (err: any) {
 			toast.error(err?.response?.data?.error ?? err?.message ?? 'Espèce introuvable.');
 		} finally {
@@ -81,15 +98,28 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 		if (submitting) return;
 		setSubmitting(true);
 		try {
-			const updated = await service.update(speciesId, {
+			const payload = {
+				scientific_name:      draftScientific.trim() || null,
+				usage_name:           draftUsage.trim() || null,
+				polynesian_name:      draftPolynesian.trim() || null,
 				description:          draftDescription.trim() || null,
 				description_source:   draftSource ?? null,
 				reference_image_url:  draftImageUrl.trim() || null,
-			});
-			setSpecies(updated);
-			setEditing(false);
-			setWikiPreview(null);
-			toast.success('Fiche espèce mise à jour.');
+				tags:                 draftTags,
+			};
+			if (isAdmin) {
+				const updated = await service.update(speciesId, payload);
+				setSpecies(updated);
+				setEditing(false);
+				setWikiPreview(null);
+				toast.success('Fiche espèce mise à jour.');
+			} else {
+				const req = await service.proposeEdit(speciesId, payload);
+				setPendingRequest(req);
+				setEditing(false);
+				setWikiPreview(null);
+				toast.success('Demande envoyée à l\'administrateur pour validation.');
+			}
 		} catch (err: any) {
 			toast.error(err?.response?.data?.error ?? err?.message ?? 'Mise à jour impossible.');
 		} finally {
@@ -99,11 +129,36 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 
 	const cancel = () => {
 		if (!species) return;
+		setDraftScientific(species.scientific_name ?? '');
+		setDraftUsage(species.usage_name ?? '');
+		setDraftPolynesian(species.polynesian_name ?? '');
 		setDraftDescription(species.description ?? '');
 		setDraftSource(species.description_source ?? null);
 		setDraftImageUrl(species.reference_image_url ?? '');
+		setDraftTags([...(species.tags ?? [])]);
+		setNewTagText('');
 		setWikiPreview(null);
 		setEditing(false);
+	};
+
+	const addTag = (raw: string) => {
+		const t = raw.trim().toLowerCase().slice(0, 40);
+		if (!t || draftTags.includes(t)) return;
+		setDraftTags([...draftTags, t]);
+		setNewTagText('');
+	};
+
+	const removeTag = (t: string) => setDraftTags(draftTags.filter((x) => x !== t));
+
+	const withdrawProposal = async () => {
+		if (!pendingRequest) return;
+		try {
+			await service.withdrawEdit(speciesId);
+			setPendingRequest(null);
+			toast.success('Demande retirée.');
+		} catch (err: any) {
+			toast.error(err?.response?.data?.error ?? err?.message ?? 'Retrait impossible.');
+		}
 	};
 
 	if (loading) {
@@ -130,6 +185,27 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 				</View>
 			) : null}
 
+			{pendingRequest && !isAdmin ? (
+				<View style={styles.pendingProposalBanner}>
+					<Text style={styles.pendingProposalText}>
+						Vous avez une demande de modification en attente de validation.
+					</Text>
+					<Pressable onPress={withdrawProposal}>
+						<Text style={styles.pendingProposalAction}>Retirer la demande</Text>
+					</Pressable>
+				</View>
+			) : null}
+			{pendingRequest && isAdmin ? (
+				<View style={styles.pendingProposalBanner}>
+					<Text style={styles.pendingProposalText}>
+						Une demande de modification est en attente. Allez sur la page Requêtes pour la traiter.
+					</Text>
+					<Pressable onPress={() => router.push('/(main)/admin/requests' as Href)}>
+						<Text style={styles.pendingProposalAction}>Ouvrir les requêtes ↗</Text>
+					</Pressable>
+				</View>
+			) : null}
+
 			<View style={styles.card}>
 				<Text style={styles.sectionLabel}>Noms</Text>
 				<NameRow label="Nom scientifique" value={species.scientific_name} />
@@ -142,21 +218,80 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 
 			<View style={styles.card}>
 				<View style={styles.descHeader}>
+					<Text style={styles.sectionLabel}>Tags</Text>
+				</View>
+				<View style={styles.tagsDisplay}>
+					{(species.tags ?? []).length === 0 ? (
+						<Text style={styles.empty}>Aucun tag.</Text>
+					) : (
+						(species.tags ?? []).map((t) => (
+							<View key={t} style={styles.tagChipDisplay}><Text style={styles.tagChipDisplayText}>{t}</Text></View>
+						))
+					)}
+				</View>
+			</View>
+
+			<View style={styles.card}>
+				<View style={styles.descHeader}>
 					<Text style={styles.sectionLabel}>Description</Text>
 					{species.description_source ? (
 						<Text style={styles.sourceBadge}>
 							{SOURCE_LABELS[species.description_source] || species.description_source}
 						</Text>
 					) : null}
-					{canEdit && !editing ? (
+					{canEdit && !editing && !pendingRequest ? (
 						<Pressable onPress={() => setEditing(true)} style={styles.editBtn}>
-							<Text style={styles.editBtnText}>{species.description ? 'Modifier' : 'Rédiger'}</Text>
+							<Text style={styles.editBtnText}>{isAdmin ? 'Modifier' : 'Proposer modification'}</Text>
 						</Pressable>
 					) : null}
 				</View>
 
 				{editing && canEdit ? (
 					<View style={{ gap: SPACING.sm }}>
+						<Text style={styles.fieldLabel}>Nom scientifique</Text>
+						<TextInput value={draftScientific} onChangeText={setDraftScientific} editable={!submitting}
+							placeholder="Chelonia mydas" placeholderTextColor={COLORS.text.placeholder} style={styles.input} autoCapitalize="words" />
+
+						<Text style={styles.fieldLabel}>Nom d'usage</Text>
+						<TextInput value={draftUsage} onChangeText={setDraftUsage} editable={!submitting}
+							placeholder="tortue verte" placeholderTextColor={COLORS.text.placeholder} style={styles.input} autoCapitalize="none" />
+
+						<Text style={styles.fieldLabel}>Nom polynésien</Text>
+						<TextInput value={draftPolynesian} onChangeText={setDraftPolynesian} editable={!submitting}
+							placeholder="honu" placeholderTextColor={COLORS.text.placeholder} style={styles.input} autoCapitalize="none" />
+
+						<Text style={styles.fieldLabel}>Tags</Text>
+						<View style={styles.tagEditorRow}>
+							{draftTags.length === 0 ? <Text style={styles.empty}>Aucun</Text> : null}
+							{draftTags.map((t) => (
+								<Pressable key={t} onPress={() => removeTag(t)} style={styles.tagChipEditable}>
+									<Text style={styles.tagChipEditableText}>{t} ×</Text>
+								</Pressable>
+							))}
+						</View>
+						<View style={styles.tagEditorRow}>
+							{PRESET_TAGS.filter((t) => !draftTags.includes(t)).map((t) => (
+								<Pressable key={t} onPress={() => addTag(t)} style={styles.tagPreset}>
+									<Text style={styles.tagPresetText}>+ {t}</Text>
+								</Pressable>
+							))}
+						</View>
+						<View style={styles.tagAddRow}>
+							<TextInput
+								value={newTagText}
+								onChangeText={setNewTagText}
+								onSubmitEditing={() => addTag(newTagText)}
+								editable={!submitting}
+								placeholder="Tag personnalisé…"
+								placeholderTextColor={COLORS.text.placeholder}
+								autoCapitalize="none"
+								style={[styles.input, { flex: 1 }]}
+							/>
+							<Pressable onPress={() => addTag(newTagText)} disabled={!newTagText.trim()} style={[styles.editBtn, !newTagText.trim() && styles.btnDisabled]}>
+								<Text style={styles.editBtnText}>Ajouter</Text>
+							</Pressable>
+						</View>
+
 						<View style={styles.wikiRow}>
 							<Pressable onPress={importWikipedia} disabled={wikiLoading} style={[styles.wikiBtn, wikiLoading && styles.btnDisabled]}>
 								<Text style={styles.wikiBtnText}>{wikiLoading ? 'Chargement…' : 'Importer depuis Wikipédia'}</Text>
@@ -223,7 +358,9 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 								<Text style={styles.cancelBtnText}>Annuler</Text>
 							</Pressable>
 							<Pressable onPress={save} disabled={submitting} style={[styles.actionBtn, styles.saveBtn, submitting && styles.btnDisabled]}>
-								<Text style={styles.saveBtnText}>{submitting ? 'Enregistrement…' : 'Enregistrer'}</Text>
+								<Text style={styles.saveBtnText}>
+									{submitting ? 'Envoi…' : (isAdmin ? 'Enregistrer' : 'Envoyer la demande')}
+								</Text>
 							</Pressable>
 						</View>
 					</View>
@@ -333,4 +470,25 @@ const styles = StyleSheet.create({
 	refImage: { width: '100%', height: 320, borderRadius: 6, backgroundColor: COLORS.background.main },
 
 	footer: { marginTop: SPACING.lg },
+
+	pendingProposalBanner: {
+		flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+		paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+		borderRadius: 8, borderLeftWidth: 3, borderLeftColor: COLORS.warning,
+		backgroundColor: `${COLORS.warning}11`,
+	},
+	pendingProposalText:   { flex: 1, fontSize: 12, color: COLORS.text.primary },
+	pendingProposalAction: { fontSize: 12, color: COLORS.primary, fontWeight: '700', textDecorationLine: 'underline' },
+
+	tagsDisplay: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+	tagChipDisplay: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 99, backgroundColor: COLORS.background.main, borderWidth: 1, borderColor: COLORS.border },
+	tagChipDisplayText: { fontSize: 11, color: COLORS.text.primary, fontWeight: '600' },
+	empty: { fontSize: 12, color: COLORS.text.placeholder, fontStyle: 'italic' },
+
+	tagEditorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+	tagChipEditable: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 99, backgroundColor: `${COLORS.primary}22`, borderWidth: 1, borderColor: COLORS.primary },
+	tagChipEditableText: { fontSize: 11, color: COLORS.primary, fontWeight: '700' },
+	tagPreset: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 99, backgroundColor: COLORS.background.main, borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed' },
+	tagPresetText: { fontSize: 11, color: COLORS.text.secondary, fontWeight: '600' },
+	tagAddRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
 });

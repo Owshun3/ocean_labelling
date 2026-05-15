@@ -32,7 +32,9 @@ function fmtRelative(iso: string): string {
 	return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-export const AdminContestationsListScreen: React.FC = () => {
+interface ListProps { embedded?: boolean }
+
+export const AdminContestationsListScreen: React.FC<ListProps> = ({ embedded }) => {
 	const router = useRouter();
 	const service = useMemo(() => new AdminService(), []);
 	const [entries, setEntries] = useState<ContestationUploaderEntry[]>([]);
@@ -68,13 +70,15 @@ export const AdminContestationsListScreen: React.FC = () => {
 	const tabHint = KIND_TABS.find((t) => t.value === kind)?.hint ?? '';
 
 	return (
-		<View style={styles.container}>
-			<View style={styles.headerRow}>
-				<Text style={styles.title}>Contestations</Text>
-				<Text style={styles.subtitle}>
-					{entries.length} utilisateur{entries.length > 1 ? 's' : ''} avec contestation(s) ouverte(s)
-				</Text>
-			</View>
+		<View style={embedded ? styles.containerEmbedded : styles.container}>
+			{embedded ? null : (
+				<View style={styles.headerRow}>
+					<Text style={styles.title}>Contestations</Text>
+					<Text style={styles.subtitle}>
+						{entries.length} utilisateur{entries.length > 1 ? 's' : ''} avec contestation(s) ouverte(s)
+					</Text>
+				</View>
+			)}
 
 			<View style={styles.tabBar}>
 				{KIND_TABS.map((t) => {
@@ -141,6 +145,7 @@ export const AdminContestationsListScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
 	container: { flex: 1, padding: SPACING.lg, gap: SPACING.sm },
+	containerEmbedded: { flex: 1, gap: SPACING.sm },
 	center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
 	headerRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm },

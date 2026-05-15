@@ -107,13 +107,43 @@ export type AuditAction =
 	| 'media.validated'
 	| 'media.rejected'
 	| 'media.auto_deleted'
-	| 'curation.assigned';
+	| 'curation.assigned'
+	| 'species.edited'
+	| 'species_edit.proposed'
+	| 'species_edit.withdrawn'
+	| 'species_edit.resolved';
 
 export interface CurationPoolItem {
 	cvat_task_id: number;
 	task_name: string;
 	reviewed_at: string;
 	uploader: { id: number; username: string | null };
+}
+
+export interface RequestsSummary {
+	contestations: number;
+	contestations_breakdown: { media: number; annotation: number };
+	species_edits: number;
+	researcher_access: number;
+}
+
+export interface SpeciesEditSnapshot {
+	scientific_name: string | null;
+	usage_name: string | null;
+	polynesian_name: string | null;
+	description: string | null;
+	description_source: string | null;
+	reference_image_url: string | null;
+	tags: string[];
+}
+
+export interface SpeciesEditRequest {
+	id: number;
+	species_id: number;
+	proposed_at: string;
+	proposer: { id: number; username: string | null };
+	current:  SpeciesEditSnapshot;
+	proposed: Partial<SpeciesEditSnapshot>;
 }
 
 export interface AutoAssignSlot {
@@ -226,6 +256,24 @@ export class AdminService {
 		const resp = await adminClient.post<{ assigned: number; requested: number; curator_id: number }>(
 			'/curation/assign',
 			{ task_ids: taskIds, curator_id: curatorId },
+		);
+		return resp.data;
+	}
+
+	async getRequestsSummary(): Promise<RequestsSummary> {
+		const resp = await adminClient.get<RequestsSummary>('/requests/summary');
+		return resp.data;
+	}
+
+	async listSpeciesEditRequests(): Promise<SpeciesEditRequest[]> {
+		const resp = await adminClient.get<{ results: SpeciesEditRequest[] }>('/requests/species-edits');
+		return resp.data.results;
+	}
+
+	async resolveSpeciesEditRequest(id: number, action: 'approve' | 'reject', comment?: string): Promise<{ resolved: boolean; action: string }> {
+		const resp = await adminClient.post<{ resolved: boolean; action: string }>(
+			`/requests/species-edits/${id}/resolve`,
+			{ action, comment },
 		);
 		return resp.data;
 	}

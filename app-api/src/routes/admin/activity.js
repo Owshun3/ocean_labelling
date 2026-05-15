@@ -16,6 +16,10 @@ const KNOWN_ACTIONS = [
   'media.rejected',
   'media.auto_deleted',
   'curation.assigned',
+  'species.edited',
+  'species_edit.proposed',
+  'species_edit.withdrawn',
+  'species_edit.resolved',
 ];
 
 const SYSTEM_ACTOR_ID = 0;

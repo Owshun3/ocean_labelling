@@ -82,8 +82,9 @@ Aucune fonctionnalité native CVAT ne couvre la modération de contenu : ni queu
 Tables app-api (db.js) :
 - `media_moderation(cvat_task_id PK, uploader_id, status pending|validated|rejected, reviewed_by, review_comment, created_at, reviewed_at)` — entrée auto-créée à chaque upload (`POST /upload-history` insère `pending`).
 - `user_bans(id, cvat_user_id, banned_by, reason, banned_at, expires_at, released_at, released_by)` — `released_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())` = ban actif. Distinguer `released_at` (levé manuellement) de `expires_at <= NOW()` (expiration naturelle) est critique pour l'auto-réactivation.
-- `moderation_contestations(id, cvat_task_id, contester_id, message, created_at, resolved_at, resolved_by, resolution upheld|overturned)` — déposée par l'uploadeur sur ses médias rejetés. Côté UI uploadeur : ✅ **construit** (page « Mes Médias », sélection multi-rejetés → ContestModal). Côté admin/modérateur : ⏳ **À construire** — file de contestations ouvertes, lecture du message, résolution `overturned` (re-validation, repasser le `media_moderation.status` à `validated` + `released_at` du ban éventuel) ou `upheld` (clore sans changer).
-- `annotation_contestations(id, cvat_task_id, contester_id, message, created_at, resolved_at, resolved_by, resolution upheld|overturned)` — déposée par n'importe quel annotateur sur une tâche dont l'annotation finale a été validée par le curator (`media_moderation.curator_validated_at IS NOT NULL`). UI uploadeur : ✅ **construit** (bouton « Contester » sur tuile « Validé » de `/studio/select`). UI admin : ⏳ **À construire** — file des contestations annotation, possibilité de réouvrir la curation (reset `curator_validated_at`).
+- `moderation_contestations(id, cvat_task_id, contester_id, message, created_at, resolved_at, resolved_by, resolution upheld|overturned)` — déposée par l'uploadeur sur ses médias rejetés. UI uploadeur ✅, UI admin ✅ via `/admin/requests` onglet Contestations.
+- `annotation_contestations(id, cvat_task_id, contester_id, message, created_at, resolved_at, resolved_by, resolution upheld|overturned)` — déposée par n'importe quel annotateur sur une tâche dont l'annotation finale a été validée par le curator (`media_moderation.curator_validated_at IS NOT NULL`). UI uploadeur ✅, UI admin ✅ via `/admin/requests` onglet Contestations.
+- `species_edit_requests(id, species_id, proposed_by, proposed_at, proposed_payload JSONB, status pending|approved|rejected, reviewed_by, reviewed_at, review_comment)` — demande d'édition d'une fiche d'espèce soumise par un curator. Index unique partiel sur `species_id` pour empêcher deux demandes en cours sur la même fiche. Résolu via `/admin/requests` onglet Fiches d'espèces (diff côté-à-côté + approve/reject).
 - `media_moderation.curator_validated_at TIMESTAMPTZ` + `curator_validated_by INTEGER` — set par le futur curator studio quand le curator valide l'annotation finale fusionnée. Sert de signal pour la sous-section « Validé » de Mes médias et pour autoriser les contestations annotation.
 
 Ban d'un utilisateur :
@@ -128,6 +129,21 @@ Services frontend :
 - `CvatAuthService.login()` — appelle `/users/self` + `/app-api/users/me` pour stocker `appRole` localement
 - `Header.tsx` — lit `appRole` au mount, affiche selon hiérarchie des rôles
 - Gardes de route : `admin.tsx` (admin only), `media/annotate/upload.tsx` (pas guest)
+
+## Hub admin /admin/requests
+
+Page unique réunissant toutes les requêtes en attente de validation admin. Trois onglets :
+- **Contestations** (badge = `moderation_contestations` + `annotation_contestations` non résolues). Embarque `AdminContestationsListScreen` avec sa propre sous-toggle media/annotation.
+- **Fiches d'espèces** (badge = `species_edit_requests.status='pending'`). Diff côte-à-côte : champs textuels en surbrillance jaune/rouge/vert, tags add/removed avec puces colorées. Action approve = applique le payload sur `species` (transaction `SELECT FOR UPDATE` + UPDATE conditionnel). Action reject = motif obligatoire.
+- **Accès chercheurs** (placeholder, à connecter sur `chercheur_export_scopes` quand l'export Datumaro existera).
+
+Endpoint compteur : `GET /admin/requests/summary` (un appel, retourne les 3 totaux). Lu au mount du hub et après chaque résolution.
+
+L'ancienne route `/admin/contestations` redirige vers `/admin/requests` (Expo `<Redirect />`). Le détail contestation `/admin/contestations/[userId]` reste fonctionnel (atteint via la liste embarquée).
+
+**Workflow fiche d'espèce** :
+- Curator (rôle `chercheur|curator|moderator`) : bouton « Proposer modification » sur la fiche → formulaire 3 noms + description + tags add/remove → `POST /species/:id/edit-request` → toast « envoyée à l'admin ». Une seule demande pending par espèce ; ré-éditer remplace le payload, et `DELETE /species/:id/edit-request` retire la demande.
+- Admin : direct edit via `PATCH /species/:id` (inchangé, recordAction `species.edited`). Pour traiter les demandes en attente : onglet « Fiches d'espèces » → diff → approve/reject.
 
 ## Studio d'annotation custom (ADR-007)
 

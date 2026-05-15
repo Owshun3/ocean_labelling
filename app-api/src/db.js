@@ -202,6 +202,22 @@ async function _createSchema() {
     CREATE INDEX IF NOT EXISTS idx_app_sessions_user ON app_sessions (cvat_user_id);
     CREATE INDEX IF NOT EXISTS idx_app_sessions_exp  ON app_sessions (expires_at);
 
+    CREATE TABLE IF NOT EXISTS species_edit_requests (
+      id              SERIAL      PRIMARY KEY,
+      species_id      INTEGER     NOT NULL REFERENCES species(id) ON DELETE CASCADE,
+      proposed_by     INTEGER     NOT NULL,
+      proposed_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      proposed_payload JSONB      NOT NULL,
+      status          TEXT        NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+      reviewed_by     INTEGER,
+      reviewed_at     TIMESTAMPTZ,
+      review_comment  TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_species_edit_pending
+      ON species_edit_requests (species_id) WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_species_edit_status ON species_edit_requests (status);
+
     CREATE TABLE IF NOT EXISTS admin_actions (
       id           SERIAL      PRIMARY KEY,
       actor_id     INTEGER     NOT NULL,
