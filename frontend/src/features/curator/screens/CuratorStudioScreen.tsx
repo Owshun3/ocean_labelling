@@ -38,7 +38,6 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 	const [comment, setComment] = useState('');
 	const [submitting, setSubmitting] = useState(false);
 	const [selectedSpeciesKey, setSelectedSpeciesKey] = useState<string | null>(null);
-	const [speciesLocked, setSpeciesLocked] = useState(false);
 
 	useEffect(() => { saveCuratorAnnotatorColor(state.annotatorColor); }, [state.annotatorColor]);
 
@@ -68,8 +67,24 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 		setSelectedSpeciesKey(key);
 	}, [state.mode, state.selectedIds, proposals, selectedSpeciesKey]);
 
+	// Saisie autorisée uniquement quand on est en train de tracer (Nouvelle annotation)
+	// OU quand la proposition sélectionnée est non-validée (NV) — autrement dit, pas
+	// d'édition possible quand rien n'est sélectionné ou quand une espèce approuvée
+	// est sélectionnée (sa fiche fait foi).
+	const isApprovedSelected = selectedSpeciesOpt?.species?.status === 'approved';
+	const isPendingSelected  = selectedSpeciesOpt
+		&& (!selectedSpeciesOpt.species || selectedSpeciesOpt.species.status === 'pending');
+	const canTypeSpecies = state.mode === 'drawing' || !!isPendingSelected;
+
+	// Pilote le contenu des 3 champs en fonction de l'état :
+	//   - drawing / rien sélectionné : vide
+	//   - sélection approuvée : pré-rempli (non éditable, sert à montrer la fiche)
+	//   - sélection NV : pré-rempli (éditable, le curator peut ajuster)
 	useEffect(() => {
-		if (!selectedSpeciesOpt) return;
+		if (state.mode === 'drawing' || !selectedSpeciesOpt) {
+			setSpecies(EMPTY_SPECIES);
+			return;
+		}
 		const sp = selectedSpeciesOpt.species;
 		if (!sp) {
 			setSpecies({
@@ -77,33 +92,18 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				usage_name:      selectedSpeciesOpt.fallbackLabel ?? selectedSpeciesOpt.displayName,
 				polynesian_name: '',
 			});
-			setSpeciesLocked(false);
 			return;
 		}
-		const has3 = !!(sp.scientific_name && sp.usage_name && sp.polynesian_name);
-		if (has3 && sp.status === 'approved') {
-			setSpecies({
-				scientific_name: sp.scientific_name!,
-				usage_name:      sp.usage_name!,
-				polynesian_name: sp.polynesian_name!,
-			});
-			setSpeciesLocked(true);
-		} else {
-			setSpecies({
-				scientific_name: sp.scientific_name ?? '',
-				usage_name:      sp.usage_name ?? sp.name ?? '',
-				polynesian_name: sp.polynesian_name ?? '',
-			});
-			setSpeciesLocked(false);
-		}
-	}, [selectedSpeciesOpt]);
+		setSpecies({
+			scientific_name: sp.scientific_name ?? '',
+			usage_name:      sp.usage_name ?? sp.name ?? '',
+			polynesian_name: sp.polynesian_name ?? '',
+		});
+	}, [state.mode, selectedSpeciesOpt]);
 
+	// Re-clic sur l'option déjà sélectionnée → désélection.
 	const onPickSpecies = useCallback((opt: SpeciesOption) => {
-		setSelectedSpeciesKey(opt.key);
-	}, []);
-
-	const onUnlockSpecies = useCallback(() => {
-		setSpeciesLocked(false);
+		setSelectedSpeciesKey((prev) => (prev === opt.key ? null : opt.key));
 	}, []);
 
 	const onEnterDrawing = useCallback(() => {
@@ -111,14 +111,12 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 		setTool('rectangle');
 		setSpecies(EMPTY_SPECIES);
 		setSelectedSpeciesKey(null);
-		setSpeciesLocked(false);
 	}, [state]);
 
 	const onExitDrawing = useCallback(() => {
 		state.exitDrawing();
 		setSpecies(EMPTY_SPECIES);
 		setSelectedSpeciesKey(null);
-		setSpeciesLocked(false);
 	}, [state]);
 
 	const onSetCuratorBbox = useCallback((b: CuratorBbox | null) => {
@@ -275,14 +273,11 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				disabledHint={disabledHint}
 				metadata={data.metadata}
 				task={data.task}
-				speciesLocked={speciesLocked}
-				speciesLockedName={selectedSpeciesOpt?.displayName ?? null}
-				speciesLockedId={selectedSpeciesOpt?.species?.id ?? null}
-				onSpeciesChange={(v) => {
-					setSpecies(v);
-					if (speciesLocked) setSpeciesLocked(false);
-				}}
-				onUnlockSpecies={onUnlockSpecies}
+				canTypeSpecies={canTypeSpecies}
+				speciesApproved={!!isApprovedSelected}
+				speciesApprovedName={selectedSpeciesOpt?.displayName ?? null}
+				speciesApprovedId={selectedSpeciesOpt?.species?.id ?? null}
+				onSpeciesChange={setSpecies}
 				onCommentChange={setComment}
 				onCertify={onCertify}
 			/>

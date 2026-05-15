@@ -56,8 +56,8 @@ export const SpeciesProposalList: React.FC<Props> = ({ options, selectedKey, onS
 						onPress={() => onSelect(opt)}
 						style={[styles.row, active && styles.rowActive]}
 					>
-						<View style={[styles.check, active && styles.checkActive]}>
-							{active ? <Text style={styles.checkMark}>✓</Text> : null}
+						<View style={[styles.radio, active && styles.radioActive]}>
+							{active ? <View style={styles.radioDot} /> : null}
 						</View>
 						<View style={styles.info}>
 							<Text style={styles.name} numberOfLines={1}>{opt.displayName}</Text>
@@ -86,13 +86,14 @@ const styles = StyleSheet.create({
 		backgroundColor: COLORS.background.main,
 	},
 	rowActive: { borderColor: COLORS.primary, backgroundColor: COLORS.background.card },
-	check: {
-		width: 16, height: 16, borderRadius: 4,
+	radio: {
+		width: 16, height: 16, borderRadius: 8,
 		borderWidth: 1.5, borderColor: COLORS.border,
 		alignItems: 'center', justifyContent: 'center',
+		backgroundColor: COLORS.background.main,
 	},
-	checkActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary },
-	checkMark: { color: COLORS.text.inverse, fontSize: 10, fontWeight: '700' },
+	radioActive: { borderColor: COLORS.primary },
+	radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
 	info: { flex: 1, gap: 1 },
 	name: { fontSize: 13, color: COLORS.text.primary, fontWeight: '500' },
 	sub: { fontSize: 11, color: COLORS.text.secondary, fontStyle: 'italic' },

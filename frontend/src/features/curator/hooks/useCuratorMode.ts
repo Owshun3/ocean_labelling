@@ -28,8 +28,8 @@ export interface CuratorModeState {
 
 const OPACITY_VALUES: Record<CuratorOpacity, number> = {
 	hidden: 0,
-	dim:    0.5,
-	normal: 1.0,
+	dim:    0.25,
+	normal: 0.7,
 };
 
 export function opacityToFloat(o: CuratorOpacity): number {

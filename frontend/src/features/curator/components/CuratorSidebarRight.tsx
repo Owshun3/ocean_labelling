@@ -16,19 +16,19 @@ interface Props {
 	disabledHint: string | null;
 	metadata: ProposalsPayload['metadata'];
 	task:     ProposalsPayload['task'];
-	speciesLocked: boolean;
-	speciesLockedName: string | null;
-	speciesLockedId?: number | null;
+	canTypeSpecies: boolean;
+	speciesApproved: boolean;
+	speciesApprovedName: string | null;
+	speciesApprovedId?: number | null;
 	onSpeciesChange: (v: SpeciesTriValue) => void;
-	onUnlockSpecies: () => void;
 	onCommentChange: (s: string) => void;
 	onCertify:       () => void;
 }
 
 export const CuratorSidebarRight: React.FC<Props> = ({
 	speciesValue, comment, canCertify, submitting, disabledHint,
-	metadata, task, speciesLocked, speciesLockedName, speciesLockedId,
-	onSpeciesChange, onUnlockSpecies, onCommentChange, onCertify,
+	metadata, task, canTypeSpecies, speciesApproved, speciesApprovedName, speciesApprovedId,
+	onSpeciesChange, onCommentChange, onCertify,
 }) => {
 	const router = useRouter();
 	return (
@@ -36,25 +36,22 @@ export const CuratorSidebarRight: React.FC<Props> = ({
 		<View style={[styles.block, styles.speciesBlock]}>
 			<View style={styles.headingRow}>
 				<Text style={styles.heading}>Espèce</Text>
-				{speciesLockedId ? (
-					<Pressable onPress={() => router.push(`/(main)/species/${speciesLockedId}` as Href)}>
+				{speciesApprovedId ? (
+					<Pressable onPress={() => router.push(`/(main)/species/${speciesApprovedId}` as Href)}>
 						<Text style={styles.fichLink}>Voir la fiche ↗</Text>
 					</Pressable>
 				) : null}
 			</View>
-			{speciesLocked ? (
+			{speciesApproved ? (
 				<View style={styles.lockBanner}>
 					<Text style={styles.lockBannerText}>
-						« {speciesLockedName ?? 'espèce'} » est déjà validée. Les noms sont verrouillés.
+						« {speciesApprovedName ?? 'espèce'} » est déjà validée — les noms ci-dessous ne sont pas modifiables.
 					</Text>
-					<Pressable onPress={onUnlockSpecies}>
-						<Text style={styles.lockBannerAction}>Modifier (mettra à jour la base)</Text>
-					</Pressable>
 				</View>
 			) : null}
 			<SpeciesTriFieldForm
 				value={speciesValue}
-				disabled={submitting || speciesLocked}
+				disabled={submitting || !canTypeSpecies}
 				onChange={onSpeciesChange}
 			/>
 		</View>
@@ -127,7 +124,6 @@ const styles = StyleSheet.create({
 		marginBottom: SPACING.xs,
 	},
 	lockBannerText:   { fontSize: 11, color: COLORS.text.primary },
-	lockBannerAction: { fontSize: 11, color: COLORS.primary, fontWeight: '700', textDecorationLine: 'underline' },
 
 	certifyWrap: { marginTop: 'auto', gap: SPACING.xs },
 	certifyBtn: {
