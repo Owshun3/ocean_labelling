@@ -612,16 +612,22 @@ async function upsertSpeciesFull(client, { scientific_name, usage_name, polynesi
     }
   }
 
+  // Dernière garde case-insensitive sur le legacy `name`
+  const dup = await client.query(`SELECT * FROM species WHERE LOWER(name) = LOWER($1) LIMIT 1`, [sName]);
+  if (dup.rows.length > 0) {
+    const upd = await client.query(
+      `UPDATE species
+       SET scientific_name=$1, usage_name=$2, polynesian_name=$3, tags=$4,
+           status='approved', approved_by=COALESCE(approved_by, $5)
+       WHERE id=$6 RETURNING *`,
+      [sName, uName, pName, tagArr, proposed_by, dup.rows[0].id],
+    );
+    return upd.rows[0];
+  }
+
   const ins = await client.query(
     `INSERT INTO species (name, scientific_name, usage_name, polynesian_name, tags, status, proposed_by, approved_by)
      VALUES ($1, $2, $3, $4, $5, 'approved', $6, $6)
-     ON CONFLICT (name) DO UPDATE SET
-       scientific_name = EXCLUDED.scientific_name,
-       usage_name      = EXCLUDED.usage_name,
-       polynesian_name = EXCLUDED.polynesian_name,
-       tags            = EXCLUDED.tags,
-       status          = 'approved',
-       approved_by     = COALESCE(species.approved_by, EXCLUDED.approved_by)
      RETURNING *`,
     [sName, sName, uName, pName, tagArr, proposed_by],
   );

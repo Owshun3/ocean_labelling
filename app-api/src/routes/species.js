@@ -132,16 +132,22 @@ router.post('/full', requireCuratorOrAbove, async (req, res) => {
       }
     }
 
+    // Dernière garde case-insensitive sur le legacy `name` avant insertion
+    const dup = await pool.query(`SELECT * FROM species WHERE LOWER(name) = LOWER($1) LIMIT 1`, [sName]);
+    if (dup.rows.length > 0) {
+      const upd = await pool.query(
+        `UPDATE species
+         SET scientific_name=$1, usage_name=$2, polynesian_name=$3, tags=$4,
+             status='approved', approved_by=COALESCE(approved_by, $5)
+         WHERE id=$6 RETURNING *`,
+        [sName, uName, pName, tags, req.cvatUser.id, dup.rows[0].id],
+      );
+      return res.json(upd.rows[0]);
+    }
+
     const ins = await pool.query(
       `INSERT INTO species (name, scientific_name, usage_name, polynesian_name, tags, status, proposed_by, approved_by)
        VALUES ($1, $2, $3, $4, $5, 'approved', $6, $6)
-       ON CONFLICT (name) DO UPDATE SET
-         scientific_name = EXCLUDED.scientific_name,
-         usage_name      = EXCLUDED.usage_name,
-         polynesian_name = EXCLUDED.polynesian_name,
-         tags            = EXCLUDED.tags,
-         status          = 'approved',
-         approved_by     = COALESCE(species.approved_by, EXCLUDED.approved_by)
        RETURNING *`,
       [sName, sName, uName, pName, tags, req.cvatUser.id],
     );
@@ -156,6 +162,17 @@ router.post('/', requireAuth, async (req, res) => {
   if (!name) return res.status(400).json({ error: 'name required (1-120 chars)' });
 
   try {
+    // Pré-flight case-insensitive : si "Vini" existe et qu'on propose "vini", on réutilise
+    // l'existant (préserve la casse du premier proposant, évite les doublons).
+    const existing = await pool.query(
+      `SELECT id, name, scientific_name, polynesian_name, category, description, description_source, status, usage_count
+       FROM species WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+      [name],
+    );
+    if (existing.rows.length > 0) {
+      return res.status(200).json(existing.rows[0]);
+    }
+
     const { rows } = await pool.query(`
       INSERT INTO species (name, status, proposed_by)
       VALUES ($1, 'pending', $2)
