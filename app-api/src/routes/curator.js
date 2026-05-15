@@ -84,9 +84,30 @@ async function cvatPut(path, body, token) {
  */
 router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
   try {
+    const { rows: eligibleRows } = await pool.query(`
+      SELECT cvat_task_id
+      FROM media_moderation
+      WHERE status = 'validated'
+        AND curator_validated_at IS NULL
+        AND binaries_deleted_at IS NULL
+      ORDER BY reviewed_at ASC
+      LIMIT 200
+    `);
+    if (eligibleRows.length === 0) return res.json({ results: [], count: 0 });
+    const eligibleIds = eligibleRows.map((r) => r.cvat_task_id);
+
     const token = await getAdminToken();
-    const tasksResp = await cvatGet('/tasks?page_size=50', token);
-    const tasks = tasksResp.data.results;
+    const tasks = [];
+    await Promise.all(eligibleIds.map(async (id) => {
+      try {
+        const r = await cvatGet(`/tasks/${id}`, token);
+        tasks.push(r.data);
+      } catch (err) {
+        if (err.response?.status !== 404) {
+          console.warn(`[curator] failed to fetch task ${id}:`, err.message);
+        }
+      }
+    }));
 
     const withJobs = await Promise.all(tasks.map(async (task) => {
       try {
