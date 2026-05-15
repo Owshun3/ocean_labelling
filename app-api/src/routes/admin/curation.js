@@ -144,6 +144,149 @@ router.post('/refresh-counts', async (_req, res) => {
   }
 });
 
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Distribution équilibrée du pool non-attribué entre curators non-admin.
+// Division euclidienne + shuffle (pool et curators) + round-robin.
+// `dry_run=true` retourne le plan sans persister, pour prévisualisation.
+router.post('/auto-assign', async (req, res) => {
+  const dryRun = req.body?.dry_run === true;
+  const adminId = req.cvatUser.id;
+  try {
+    const threshold = await getConsensusThreshold();
+
+    const { rows: poolRows } = await pool.query(`
+      SELECT m.cvat_task_id, m.uploader_id
+      FROM media_moderation m
+      WHERE m.status = 'validated'
+        AND m.curator_validated_at IS NULL
+        AND m.binaries_deleted_at IS NULL
+        AND m.assigned_curator_id IS NULL
+        AND m.annotated_jobs_count >= $1
+      ORDER BY m.reviewed_at ASC
+      LIMIT 500
+    `, [threshold]);
+
+    if (poolRows.length === 0) {
+      return res.status(400).json({ error: 'Aucun média en attente d\'attribution.' });
+    }
+
+    // Curators non-admin uniquement
+    const eligibleRoles = ['moderator', 'curator', 'chercheur'];
+    const { rows: roleRows } = await pool.query(
+      `SELECT cvat_user_id, role FROM user_roles WHERE role = ANY($1)`,
+      [eligibleRoles],
+    );
+
+    // Exclure les superusers CVAT (ils sont "admin implicite")
+    let superuserIds = new Set();
+    try {
+      const allResp = await cvatGet('/users?page_size=200');
+      superuserIds = new Set(
+        (allResp.data?.results ?? []).filter((u) => u.is_superuser).map((u) => u.id),
+      );
+    } catch (err) {
+      console.warn('[admin/curation/auto-assign] superuser list failed:', err.message);
+    }
+
+    const candidateIds = roleRows
+      .map((r) => r.cvat_user_id)
+      .filter((id) => !superuserIds.has(id));
+
+    if (candidateIds.length === 0) {
+      return res.status(400).json({ error: 'Aucun curator non-admin disponible.' });
+    }
+
+    // Fetch usernames pour le plan (et filtrer les comptes désactivés/inexistants)
+    const curators = [];
+    await Promise.all(candidateIds.map(async (id) => {
+      try {
+        const r = await cvatGet(`/users/${id}`);
+        if (r.data?.username && r.data.is_active !== false) {
+          curators.push({ id: r.data.id, username: r.data.username });
+        }
+      } catch { /* ignore */ }
+    }));
+
+    if (curators.length === 0) {
+      return res.status(400).json({ error: 'Aucun curator non-admin actif.' });
+    }
+
+    const shuffledPool = shuffle(poolRows);
+    // Si le pool est plus petit que le nombre de curators, on ne sert
+    // qu'un sous-ensemble tiré au hasard (un média par curator au max).
+    const effectiveCurators = shuffle(curators).slice(0, Math.min(curators.length, shuffledPool.length));
+
+    const plan = effectiveCurators.map((c) => ({
+      curator_id: c.id,
+      curator_username: c.username,
+      task_ids: [],
+    }));
+    shuffledPool.forEach((row, idx) => {
+      plan[idx % plan.length].task_ids.push(row.cvat_task_id);
+    });
+    plan.sort((a, b) => a.curator_username.localeCompare(b.curator_username, 'fr'));
+
+    if (dryRun) {
+      return res.json({
+        dry_run: true,
+        pool_size: poolRows.length,
+        curators_count: curators.length,
+        curators_used: plan.length,
+        plan: plan.map((p) => ({
+          curator_id: p.curator_id,
+          curator_username: p.curator_username,
+          count: p.task_ids.length,
+        })),
+      });
+    }
+
+    let totalAssigned = 0;
+    for (const slot of plan) {
+      if (slot.task_ids.length === 0) continue;
+      const { rowCount } = await pool.query(`
+        UPDATE media_moderation
+        SET assigned_curator_id = $1, assigned_at = NOW(), assigned_by = $2
+        WHERE cvat_task_id = ANY($3)
+          AND status = 'validated'
+          AND curator_validated_at IS NULL
+          AND binaries_deleted_at IS NULL
+          AND assigned_curator_id IS NULL
+      `, [slot.curator_id, adminId, slot.task_ids]);
+      totalAssigned += rowCount;
+      if (rowCount > 0) {
+        recordAction(adminId, 'curation.assigned', {
+          targetType: 'user',
+          targetId: slot.curator_id,
+          payload: { task_ids: slot.task_ids, assigned: rowCount, requested: slot.task_ids.length, auto: true },
+        });
+      }
+    }
+
+    res.json({
+      dry_run: false,
+      pool_size: poolRows.length,
+      curators_count: curators.length,
+      curators_used: plan.length,
+      assigned: totalAssigned,
+      plan: plan.map((p) => ({
+        curator_id: p.curator_id,
+        curator_username: p.curator_username,
+        count: p.task_ids.length,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/assign', async (req, res) => {
   const taskIds = Array.isArray(req.body?.task_ids)
     ? req.body.task_ids.filter((n) => Number.isInteger(n) && n > 0)

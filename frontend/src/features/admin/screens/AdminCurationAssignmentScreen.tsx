@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, TextInput } from 'react-native';
-import { AdminService, CurationPoolItem, CurationCandidate } from '@/services/api/AdminService';
+import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, TextInput, Modal } from 'react-native';
+import { AdminService, CurationPoolItem, CurationCandidate, AutoAssignResponse } from '@/services/api/AdminService';
 import { appApiClient } from '@/services/api/AppApiService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { RankBadge } from '@/shared/components/RankBadge';
@@ -25,6 +25,10 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 	const [query, setQuery]         = useState('');
 	const [pickedCurator, setPickedCurator] = useState<CurationCandidate | null>(null);
 	const [dropdownOpen, setDropdownOpen]   = useState(false);
+	const [autoPreview, setAutoPreview] = useState<AutoAssignResponse | null>(null);
+	const [autoLoading, setAutoLoading] = useState(false);
+	const [autoApplying, setAutoApplying] = useState(false);
+	const [refreshing, setRefreshing] = useState(false);
 	const inputRef = useRef<TextInput>(null);
 	const orderedIdsRef = useRef<number[]>([]);
 
@@ -95,6 +99,34 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 		setQuery('');
 	};
 
+	const openAutoPreview = async () => {
+		if (autoLoading || pool.length === 0) return;
+		setAutoLoading(true);
+		try {
+			const preview = await service.autoAssignCuration(true);
+			setAutoPreview(preview);
+		} catch (err: any) {
+			toast.error(err?.response?.data?.error ?? err?.message ?? 'Prévisualisation impossible.');
+		} finally {
+			setAutoLoading(false);
+		}
+	};
+
+	const applyAutoAssign = async () => {
+		if (autoApplying || !autoPreview) return;
+		setAutoApplying(true);
+		try {
+			const result = await service.autoAssignCuration(false);
+			toast.success(`${result.assigned ?? 0} média(s) répartis sur ${result.curators_used} curator(s).`);
+			setAutoPreview(null);
+			await load();
+		} catch (err: any) {
+			toast.error(err?.response?.data?.error ?? err?.message ?? 'Attribution impossible.');
+		} finally {
+			setAutoApplying(false);
+		}
+	};
+
 	const submit = async () => {
 		if (selected.size === 0 || !pickedCurator || submitting) return;
 		setSubmitting(true);
@@ -133,18 +165,30 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 					</Text>
 				</View>
 				<Pressable
+					onPress={openAutoPreview}
+					disabled={autoLoading || pool.length === 0}
+					style={[styles.autoBtn, (autoLoading || pool.length === 0) && styles.btnDisabled]}
+				>
+					<Text style={styles.autoBtnText}>{autoLoading ? 'Calcul…' : 'Attribuer automatiquement'}</Text>
+				</Pressable>
+				<Pressable
 					onPress={async () => {
+						if (refreshing) return;
+						setRefreshing(true);
 						try {
 							const r = await service.refreshCurationCounts();
 							toast.success(`Compteurs synchronisés (${r.refreshed} média(s) revérifiés).`);
 							await load();
 						} catch (err: any) {
 							toast.error(err?.response?.data?.error ?? err?.message ?? 'Refresh impossible.');
+						} finally {
+							setRefreshing(false);
 						}
 					}}
-					style={styles.refreshBtn}
+					disabled={refreshing}
+					style={[styles.refreshBtn, refreshing && styles.btnDisabled]}
 				>
-					<Text style={styles.refreshBtnText}>↻ Resynchroniser</Text>
+					<Text style={styles.refreshBtnText}>{refreshing ? '↻ Synchro…' : '↻ Resynchroniser'}</Text>
 				</Pressable>
 			</View>
 
@@ -269,6 +313,62 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 					</View>
 				</View>
 			</View>
+
+			<Modal
+				visible={autoPreview !== null}
+				transparent
+				animationType="fade"
+				onRequestClose={() => !autoApplying && setAutoPreview(null)}
+			>
+				<View style={styles.modalOverlay}>
+					<View style={styles.modalCard}>
+						<Text style={styles.modalTitle}>Prévisualisation de l'attribution</Text>
+						{autoPreview ? (
+							<>
+								<Text style={styles.modalSubtitle}>
+									{autoPreview.curators_used < autoPreview.curators_count
+										? `${autoPreview.pool_size} média(s) répartis sur ${autoPreview.curators_used} curator(s) tirés parmi ${autoPreview.curators_count} (admins exclus). Pool insuffisant pour servir tout le monde — un autre tirage en désignera d'autres.`
+										: `${autoPreview.pool_size} média(s) répartis sur ${autoPreview.curators_count} curator(s) (admins exclus).`}
+								</Text>
+								<ScrollView style={styles.planList} contentContainerStyle={{ paddingVertical: SPACING.sm }}>
+									{autoPreview.plan.map((slot) => (
+										<View key={slot.curator_id} style={styles.planRow}>
+											<Text style={styles.planName}>{slot.curator_username}</Text>
+											<Text style={styles.planCount}>{slot.count} média(s)</Text>
+										</View>
+									))}
+								</ScrollView>
+								<Text style={styles.modalHint}>
+									La distribution est aléatoire à chaque exécution. Lance à nouveau pour permuter les tirages.
+								</Text>
+								<View style={styles.modalActions}>
+									<Pressable
+										onPress={() => !autoApplying && setAutoPreview(null)}
+										disabled={autoApplying}
+										style={[styles.modalBtnSecondary, autoApplying && styles.btnDisabled]}
+									>
+										<Text style={styles.modalBtnSecondaryText}>Annuler</Text>
+									</Pressable>
+									<Pressable
+										onPress={openAutoPreview}
+										disabled={autoApplying || autoLoading}
+										style={[styles.modalBtnSecondary, (autoApplying || autoLoading) && styles.btnDisabled]}
+									>
+										<Text style={styles.modalBtnSecondaryText}>{autoLoading ? 'Calcul…' : 'Mélanger à nouveau'}</Text>
+									</Pressable>
+									<Pressable
+										onPress={applyAutoAssign}
+										disabled={autoApplying}
+										style={[styles.modalBtnPrimary, autoApplying && styles.btnDisabled]}
+									>
+										<Text style={styles.modalBtnPrimaryText}>{autoApplying ? 'Attribution…' : 'Confirmer'}</Text>
+									</Pressable>
+								</View>
+							</>
+						) : null}
+					</View>
+				</View>
+			</Modal>
 		</View>
 	);
 };
@@ -280,6 +380,24 @@ const styles = StyleSheet.create({
 	headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, marginBottom: SPACING.sm },
 	refreshBtn: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, backgroundColor: COLORS.background.card, borderWidth: 1, borderColor: COLORS.border },
 	refreshBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.text.primary },
+	autoBtn: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, backgroundColor: COLORS.primary },
+	autoBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.text.inverse },
+	btnDisabled: { opacity: 0.4 },
+
+	modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+	modalCard: { width: '100%', maxWidth: 520, backgroundColor: COLORS.background.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg, gap: SPACING.sm },
+	modalTitle: { ...TYPOGRAPHY.h2, color: COLORS.text.primary },
+	modalSubtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary },
+	planList: { maxHeight: 320, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: COLORS.background.main, marginTop: SPACING.sm },
+	planRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+	planName: { fontSize: 13, color: COLORS.text.primary, fontWeight: '600' },
+	planCount: { fontSize: 13, color: COLORS.primary, fontWeight: '700' },
+	modalHint: { fontSize: 11, color: COLORS.text.secondary, fontStyle: 'italic' },
+	modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: SPACING.sm, marginTop: SPACING.sm },
+	modalBtnSecondary: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background.main },
+	modalBtnSecondaryText: { fontSize: 13, fontWeight: '600', color: COLORS.text.primary },
+	modalBtnPrimary: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, backgroundColor: COLORS.primary },
+	modalBtnPrimaryText: { fontSize: 13, fontWeight: '700', color: COLORS.text.inverse },
 	title: { ...TYPOGRAPHY.h1 },
 	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary },
 

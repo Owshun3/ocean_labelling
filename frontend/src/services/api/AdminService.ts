@@ -116,6 +116,21 @@ export interface CurationPoolItem {
 	uploader: { id: number; username: string | null };
 }
 
+export interface AutoAssignSlot {
+	curator_id: number;
+	curator_username: string;
+	count: number;
+}
+
+export interface AutoAssignResponse {
+	dry_run: boolean;
+	pool_size: number;
+	curators_count: number;
+	curators_used: number;
+	assigned?: number;
+	plan: AutoAssignSlot[];
+}
+
 export interface CurationCandidate {
 	id: number;
 	username: string;
@@ -211,6 +226,14 @@ export class AdminService {
 		const resp = await adminClient.post<{ assigned: number; requested: number; curator_id: number }>(
 			'/curation/assign',
 			{ task_ids: taskIds, curator_id: curatorId },
+		);
+		return resp.data;
+	}
+
+	async autoAssignCuration(dryRun: boolean): Promise<AutoAssignResponse> {
+		const resp = await adminClient.post<AutoAssignResponse>(
+			'/curation/auto-assign',
+			{ dry_run: dryRun },
 		);
 		return resp.data;
 	}
