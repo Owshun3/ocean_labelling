@@ -76,9 +76,16 @@ export const StudioFeedTile: React.FC<Props> = ({ task, disabled, onOpen, onCont
 					<View style={styles.footerSeparator} />
 					<Pressable
 						onPress={() => onContest?.(task)}
-						style={({ hovered }: any) => [styles.footerBtn, hovered && styles.footerBtnHover]}
+						disabled={!!task.already_contested}
+						style={({ hovered }: any) => [
+							styles.footerBtn,
+							hovered && !task.already_contested && styles.footerBtnHover,
+							task.already_contested && styles.footerBtnDisabled,
+						]}
 					>
-						<Text style={[styles.footerBtnText, styles.footerBtnContest]}>Contester</Text>
+						<Text style={[styles.footerBtnText, styles.footerBtnContest, task.already_contested && styles.footerBtnTextDisabled]}>
+							{task.already_contested ? 'Contestée' : 'Contester'}
+						</Text>
 					</Pressable>
 				</View>
 			) : null}
@@ -121,6 +128,8 @@ const styles = StyleSheet.create({
 	},
 	footerBtn: { flex: 1, paddingVertical: SPACING.sm, alignItems: 'center' },
 	footerBtnHover: { backgroundColor: COLORS.background.main },
+	footerBtnDisabled: { opacity: 0.5 },
+	footerBtnTextDisabled: { color: COLORS.text.secondary, fontStyle: 'italic' },
 	footerBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.text.primary },
 	footerBtnContest: { color: COLORS.danger },
 	footerSeparator: { width: 1, backgroundColor: COLORS.border },

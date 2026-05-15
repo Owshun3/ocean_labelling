@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter, Href } from 'expo-router';
-import { AdminService, ContestationUploaderEntry } from '@/services/api/AdminService';
+import { AdminService, ContestationUploaderEntry, ContestationKind } from '@/services/api/AdminService';
 import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
 type SortKey = 'oldest' | 'newest' | 'count' | 'user';
+
+const KIND_TABS: { value: ContestationKind; label: string; hint: string }[] = [
+	{ value: 'media',      label: 'Rejets média',          hint: 'Uploadeurs contestant un rejet en modération' },
+	{ value: 'annotation', label: 'Annotations curator',   hint: 'Annotateurs contestant une annotation certifiée' },
+];
 
 const SORT_LABELS: Record<SortKey, string> = {
 	oldest: 'Plus ancienne',
@@ -33,14 +38,15 @@ export const AdminContestationsListScreen: React.FC = () => {
 	const [entries, setEntries] = useState<ContestationUploaderEntry[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [sort, setSort]       = useState<SortKey>('oldest');
+	const [kind, setKind]       = useState<ContestationKind>('media');
 
 	useEffect(() => {
 		setLoading(true);
-		service.listContestationUploaders()
+		service.listContestationUploaders(kind)
 			.then(setEntries)
 			.catch((err) => toast.error(err?.response?.data?.error ?? err?.message ?? 'Chargement impossible.'))
 			.finally(() => setLoading(false));
-	}, [service]);
+	}, [service, kind]);
 
 	const sorted = useMemo(() => {
 		const copy = [...entries];
@@ -59,14 +65,28 @@ export const AdminContestationsListScreen: React.FC = () => {
 		return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
 	}
 
+	const tabHint = KIND_TABS.find((t) => t.value === kind)?.hint ?? '';
+
 	return (
 		<View style={styles.container}>
 			<View style={styles.headerRow}>
-				<Text style={styles.title}>Contestations média</Text>
+				<Text style={styles.title}>Contestations</Text>
 				<Text style={styles.subtitle}>
 					{entries.length} utilisateur{entries.length > 1 ? 's' : ''} avec contestation(s) ouverte(s)
 				</Text>
 			</View>
+
+			<View style={styles.tabBar}>
+				{KIND_TABS.map((t) => {
+					const active = kind === t.value;
+					return (
+						<Pressable key={t.value} onPress={() => setKind(t.value)} style={[styles.tab, active && styles.tabActive]}>
+							<Text style={[styles.tabText, active && styles.tabTextActive]}>{t.label}</Text>
+						</Pressable>
+					);
+				})}
+			</View>
+			<Text style={styles.tabHint}>{tabHint}</Text>
 
 			<View style={styles.sortBar}>
 				<Text style={styles.sortLabel}>Trier :</Text>
@@ -96,7 +116,7 @@ export const AdminContestationsListScreen: React.FC = () => {
 					keyExtractor={(e) => String(e.uploader_id)}
 					renderItem={({ item }) => (
 						<Pressable
-							onPress={() => router.push(`/(main)/admin/contestations/${item.uploader_id}` as Href)}
+							onPress={() => router.push(`/(main)/admin/contestations/${item.uploader_id}?kind=${kind}` as Href)}
 							style={({ hovered }: any) => [styles.row, hovered && styles.rowHovered]}
 						>
 							<View style={styles.rowLeft}>
@@ -127,6 +147,12 @@ const styles = StyleSheet.create({
 	title: { ...TYPOGRAPHY.h1 },
 	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary },
 
+	tabBar: { flexDirection: 'row', gap: SPACING.xs, marginTop: SPACING.sm },
+	tab: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, backgroundColor: COLORS.background.card, borderWidth: 1, borderColor: COLORS.border },
+	tabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+	tabText: { fontSize: 13, fontWeight: '600', color: COLORS.text.secondary },
+	tabTextActive: { color: COLORS.text.inverse },
+	tabHint: { fontSize: 11, color: COLORS.text.placeholder, fontStyle: 'italic', marginBottom: SPACING.sm },
 	sortBar: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginBottom: SPACING.sm },
 	sortLabel: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontWeight: '700' },
 	sortPill: {

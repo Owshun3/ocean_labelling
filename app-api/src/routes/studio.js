@@ -184,6 +184,24 @@ router.get('/feed', requireAuth, async (req, res) => {
       myShapesCounts.set(row.cvat_task_id, await countShapesInJob(myJob.id, token));
     }));
 
+    // Mes contestations annotation déjà déposées pour la certification courante
+    const certifiedOwnIds = ownRows
+      .filter((r) => r.curator_validated_at)
+      .map((r) => r.cvat_task_id);
+    const alreadyContestedSet = new Set();
+    if (certifiedOwnIds.length > 0) {
+      const contQ = await pool.query(`
+        SELECT ac.cvat_task_id
+        FROM annotation_contestations ac
+        JOIN media_moderation mm ON mm.cvat_task_id = ac.cvat_task_id
+        WHERE ac.contester_id = $1
+          AND ac.cvat_task_id = ANY($2)
+          AND mm.curator_validated_at IS NOT NULL
+          AND ac.created_at >= mm.curator_validated_at
+      `, [me, certifiedOwnIds]);
+      contQ.rows.forEach((r) => alreadyContestedSet.add(r.cvat_task_id));
+    }
+
     const own = [];
     const community = [];
 
@@ -212,6 +230,7 @@ router.get('/feed', requireAuth, async (req, res) => {
         my_job_state: myAssigned?.state ?? null,
         free_job_count: freeJobs.length,
         annotation_state: annotationState,
+        already_contested: alreadyContestedSet.has(row.cvat_task_id),
       };
 
       if (row.uploader_id === me) {
@@ -306,6 +325,77 @@ router.put('/jobs/:jobId/annotations', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/tasks/:id/certified', requireAuth, async (req, res) => {
+  const taskId = Number(req.params.id);
+  if (!Number.isFinite(taskId)) return res.status(400).json({ error: 'invalid task id' });
+
+  try {
+    const certQ = await pool.query(`
+      SELECT mode, chosen_bbox_annotator_id, chosen_bbox_data,
+             species_id, curator_id, curator_comment, certified_at, cvat_job_id
+      FROM curator_certifications
+      WHERE cvat_task_id = $1
+      ORDER BY certified_at DESC
+      LIMIT 1
+    `, [taskId]);
+    if (certQ.rows.length === 0) {
+      return res.status(404).json({ error: 'aucune certification trouvée pour ce média' });
+    }
+    const cert = certQ.rows[0];
+
+    const moderationQ = await pool.query(
+      'SELECT curator_validated_at FROM media_moderation WHERE cvat_task_id = $1',
+      [taskId],
+    );
+    if (moderationQ.rows.length === 0 || !moderationQ.rows[0].curator_validated_at) {
+      return res.status(409).json({ error: 'la certification a été révoquée (contestation acceptée)' });
+    }
+
+    const speciesQ = cert.species_id ? await pool.query(`
+      SELECT id, name, scientific_name, usage_name, polynesian_name, tags,
+             description, description_source, reference_image_url, status
+      FROM species WHERE id = $1
+    `, [cert.species_id]) : null;
+
+    let curator = null;
+    if (cert.curator_id) {
+      try {
+        const r = await cvatGet(`/users/${cert.curator_id}`, await getAdminToken());
+        const role = (await pool.query('SELECT role FROM user_roles WHERE cvat_user_id = $1', [cert.curator_id])).rows[0]?.role ?? 'admin';
+        const totals = await require('../lib/userStats').fetchActionsTotals([cert.curator_id]);
+        curator = {
+          id: cert.curator_id,
+          username: r.data.username,
+          role,
+          actions_validated_total: totals[cert.curator_id] ?? 0,
+        };
+      } catch { /* ignore */ }
+    }
+
+    const token = await getAdminToken();
+    const taskResp = await cvatGet(`/tasks/${taskId}`, token);
+
+    res.json({
+      task: {
+        id: taskResp.data.id,
+        name: taskResp.data.name,
+        size: taskResp.data.size,
+      },
+      certification: {
+        mode: cert.mode,
+        bbox: cert.chosen_bbox_data,
+        curator_comment: cert.curator_comment,
+        certified_at: cert.certified_at,
+        curator,
+        cvat_job_id: cert.cvat_job_id,
+      },
+      species: speciesQ?.rows[0] ?? null,
+    });
+  } catch (err) {
+    res.status(err.response?.status ?? 502).json({ error: err.response?.data ?? err.message });
+  }
+});
+
 router.post('/contest-annotation', requireAuth, async (req, res) => {
   const taskId  = Number(req.body?.cvat_task_id);
   const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 2000) : '';
@@ -319,6 +409,19 @@ router.post('/contest-annotation', requireAuth, async (req, res) => {
     );
     if (rows.length === 0)            return res.status(404).json({ error: 'media inconnu' });
     if (!rows[0].curator_validated_at) return res.status(400).json({ error: 'l\'annotation finale n\'est pas encore validée par le curator' });
+
+    // Une seule contestation par utilisateur par certification.
+    // On compare contre la date de certification courante : si un overturn admin
+    // a rouvert la curation et qu'une nouvelle certification a eu lieu, l'utilisateur
+    // pourra contester à nouveau (sa contestation précédente est "antérieure").
+    const dup = await pool.query(`
+      SELECT 1 FROM annotation_contestations
+      WHERE cvat_task_id = $1 AND contester_id = $2 AND created_at >= $3
+      LIMIT 1
+    `, [taskId, req.cvatUser.id, rows[0].curator_validated_at]);
+    if (dup.rows.length > 0) {
+      return res.status(409).json({ error: 'Tu as déjà contesté cette certification.' });
+    }
 
     const inserted = await pool.query(`
       INSERT INTO annotation_contestations (cvat_task_id, contester_id, message)

@@ -8,6 +8,15 @@ const { fetchActionsTotals } = require('../../lib/userStats');
 
 const router = express.Router();
 
+const VALID_KINDS = new Set(['media', 'annotation']);
+function resolveKind(req) {
+  const raw = String(req.query.kind ?? req.body?.kind ?? 'media').toLowerCase();
+  return VALID_KINDS.has(raw) ? raw : 'media';
+}
+function tableForKind(kind) {
+  return kind === 'annotation' ? 'annotation_contestations' : 'moderation_contestations';
+}
+
 async function fetchUsersByIds(userIds) {
   const byId = {};
   await Promise.all(userIds.map(async (id) => {
@@ -35,7 +44,9 @@ async function fetchAppRoles(userIds) {
   return map;
 }
 
-router.get('/uploaders', async (_req, res) => {
+router.get('/uploaders', async (req, res) => {
+  const kind = resolveKind(req);
+  const table = tableForKind(kind);
   try {
     const { rows } = await pool.query(`
       SELECT
@@ -43,62 +54,96 @@ router.get('/uploaders', async (_req, res) => {
         COUNT(*)                   AS contestation_count,
         MIN(c.created_at)          AS oldest_contestation,
         MAX(c.created_at)          AS newest_contestation
-      FROM moderation_contestations c
-      JOIN media_moderation         mm ON mm.cvat_task_id = c.cvat_task_id
+      FROM ${table} c
+      JOIN media_moderation mm ON mm.cvat_task_id = c.cvat_task_id
       WHERE c.resolved_at IS NULL
       GROUP BY mm.uploader_id
       ORDER BY oldest_contestation ASC
     `);
 
-    if (rows.length === 0) return res.json({ results: [] });
+    if (rows.length === 0) return res.json({ results: [], kind });
 
     const userIds  = rows.map((r) => r.uploader_id);
     const usersById = await fetchUsersByIds(userIds);
     const rolesById = await fetchAppRoles(userIds);
+    const actionsTotals = await fetchActionsTotals(userIds);
 
     const results = rows.map((r) => ({
       uploader_id:          r.uploader_id,
       username:             usersById[r.uploader_id]?.username || null,
       role:                 rolesById[r.uploader_id] || 'annotator',
+      actions_validated_total: actionsTotals[r.uploader_id] ?? 0,
       contestation_count:   Number(r.contestation_count),
       oldest_contestation:  r.oldest_contestation,
       newest_contestation:  r.newest_contestation,
     }));
 
-    res.json({ results });
+    res.json({ results, kind });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 router.get('/uploaders/:id', async (req, res) => {
+  const kind = resolveKind(req);
   const userId = Number(req.params.id);
   if (!Number.isFinite(userId)) return res.status(400).json({ error: 'invalid user id' });
 
   try {
-    const { rows } = await pool.query(`
+    // Pour les contestations d'annotation, on joint aussi curator_certifications
+    // pour identifier qui a certifié et quand.
+    const query = kind === 'annotation' ? `
+      SELECT
+        c.id              AS contestation_id,
+        c.cvat_task_id,
+        c.message,
+        c.created_at,
+        c.contester_id,
+        mm.uploader_id,
+        mm.curator_validated_by AS reviewer_id,
+        mm.curator_validated_at AS reviewed_at,
+        cc.species_id,
+        cc.mode             AS certification_mode,
+        cc.curator_comment  AS certification_comment
+      FROM annotation_contestations c
+      JOIN media_moderation         mm ON mm.cvat_task_id = c.cvat_task_id
+      LEFT JOIN LATERAL (
+        SELECT species_id, mode, curator_comment
+        FROM curator_certifications
+        WHERE cvat_task_id = c.cvat_task_id
+        ORDER BY certified_at DESC
+        LIMIT 1
+      ) cc ON TRUE
+      WHERE c.resolved_at IS NULL
+        AND mm.uploader_id = $1
+      ORDER BY c.created_at ASC
+    ` : `
       SELECT
         c.id            AS contestation_id,
         c.cvat_task_id,
         c.message,
         c.created_at,
         c.contester_id,
-        mm.reviewed_by  AS moderator_id,
-        mm.reviewed_at  AS rejected_at,
+        mm.uploader_id,
+        mm.reviewed_by  AS reviewer_id,
+        mm.reviewed_at  AS reviewed_at,
         mm.review_comment AS rejection_reason
       FROM moderation_contestations c
       JOIN media_moderation         mm ON mm.cvat_task_id = c.cvat_task_id
       WHERE c.resolved_at IS NULL
         AND mm.uploader_id = $1
       ORDER BY c.created_at ASC
-    `, [userId]);
+    `;
+    const { rows } = await pool.query(query, [userId]);
 
     const userIdsToFetch = new Set([userId]);
     rows.forEach((r) => {
-      if (r.moderator_id) userIdsToFetch.add(r.moderator_id);
+      if (r.reviewer_id)  userIdsToFetch.add(r.reviewer_id);
+      if (r.contester_id) userIdsToFetch.add(r.contester_id);
     });
     const usersById = await fetchUsersByIds([...userIdsToFetch]);
     const rolesById = await fetchAppRoles([...userIdsToFetch]);
+    const actionsTotals = await fetchActionsTotals([...userIdsToFetch]);
 
     const taskIds = rows.map((r) => r.cvat_task_id);
     const tasksById = {};
@@ -112,8 +157,6 @@ router.get('/uploaders/:id', async (req, res) => {
         }
       }
     }));
-
-    const actionsTotals = await fetchActionsTotals([...userIdsToFetch]);
 
     const uploader = usersById[userId] ? {
       ...usersById[userId],
@@ -136,34 +179,52 @@ router.get('/uploaders/:id', async (req, res) => {
       if (r.created_at < lot.first_contested_at) lot.first_contested_at = r.created_at;
       if (r.created_at > lot.last_contested_at)  lot.last_contested_at  = r.created_at;
 
-      const moderator = r.moderator_id ? usersById[r.moderator_id] : null;
+      const reviewer = r.reviewer_id ? usersById[r.reviewer_id] : null;
+      const contester = r.contester_id ? usersById[r.contester_id] : null;
       const task = tasksById[r.cvat_task_id] || null;
-      lot.items.push({
-        contestation_id:   r.contestation_id,
-        cvat_task_id:      r.cvat_task_id,
-        contested_at:      r.created_at,
-        rejected_at:       r.rejected_at,
-        rejection_reason:  r.rejection_reason,
+
+      const baseItem = {
+        contestation_id: r.contestation_id,
+        cvat_task_id:    r.cvat_task_id,
+        contested_at:    r.created_at,
+        reviewed_at:     r.reviewed_at,
         task,
-        moderator: moderator ? {
-          id: moderator.id,
-          username: moderator.username,
-          role: rolesById[moderator.id] || 'annotator',
-          actions_validated_total: actionsTotals[moderator.id] ?? 0,
+        reviewer: reviewer ? {
+          id: reviewer.id,
+          username: reviewer.username,
+          role: rolesById[reviewer.id] || 'annotator',
+          actions_validated_total: actionsTotals[reviewer.id] ?? 0,
         } : null,
-      });
+        contester: contester ? {
+          id: contester.id,
+          username: contester.username,
+          role: rolesById[contester.id] || 'annotator',
+          actions_validated_total: actionsTotals[contester.id] ?? 0,
+        } : null,
+      };
+
+      if (kind === 'annotation') {
+        baseItem.species_id           = r.species_id;
+        baseItem.certification_mode   = r.certification_mode;
+        baseItem.certification_comment = r.certification_comment;
+      } else {
+        baseItem.rejection_reason = r.rejection_reason;
+      }
+      lot.items.push(baseItem);
     });
 
     const lots = Array.from(lotsByMessage.values())
       .sort((a, b) => new Date(a.first_contested_at) - new Date(b.first_contested_at));
 
-    res.json({ uploader, lots });
+    res.json({ uploader, lots, kind });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 router.post('/resolve', async (req, res) => {
+  const kind = resolveKind(req);
+  const table = tableForKind(kind);
   const ids = Array.isArray(req.body?.contestation_ids)
     ? req.body.contestation_ids.filter((n) => Number.isInteger(n) && n > 0)
     : [];
@@ -182,7 +243,7 @@ router.post('/resolve', async (req, res) => {
 
     const { rows } = await client.query(`
       SELECT id, cvat_task_id
-      FROM moderation_contestations
+      FROM ${table}
       WHERE id = ANY($1) AND resolved_at IS NULL
       FOR UPDATE
     `, [ids]);
@@ -196,19 +257,32 @@ router.post('/resolve', async (req, res) => {
     const taskIds     = rows.map((r) => r.cvat_task_id);
 
     await client.query(`
-      UPDATE moderation_contestations
+      UPDATE ${table}
       SET resolution = $1, resolved_at = NOW(), resolved_by = $2
       WHERE id = ANY($3)
     `, [action, adminId, resolvedIds]);
 
-    if (action === 'overturned') {
-      await client.query(`
-        UPDATE media_moderation
-        SET status = 'validated', reviewed_by = $1, reviewed_at = NOW()
-        WHERE cvat_task_id = ANY($2)
-      `, [adminId, taskIds]);
-    } else {
-      tasksToDeleteOnCvat = taskIds;
+    if (kind === 'media') {
+      if (action === 'overturned') {
+        // requalifie en validated, ne supprime pas les binaires
+        await client.query(`
+          UPDATE media_moderation
+          SET status = 'validated', reviewed_by = $1, reviewed_at = NOW()
+          WHERE cvat_task_id = ANY($2)
+        `, [adminId, taskIds]);
+      } else {
+        tasksToDeleteOnCvat = taskIds;
+      }
+    } else if (kind === 'annotation') {
+      if (action === 'overturned') {
+        // rouvre la curation : le média redevient curateable, l'audit reste
+        await client.query(`
+          UPDATE media_moderation
+          SET curator_validated_at = NULL, curator_validated_by = NULL
+          WHERE cvat_task_id = ANY($1)
+        `, [taskIds]);
+      }
+      // upheld → rien à faire côté média, juste résolution
     }
 
     await client.query('COMMIT');
@@ -245,11 +319,12 @@ router.post('/resolve', async (req, res) => {
   }
 
   recordAction(adminId, 'contestation.resolved', {
-    payload: { action, contestation_ids: ids, cvat_delete_errors: deleteErrors.length },
+    payload: { kind, action, contestation_ids: ids, cvat_delete_errors: deleteErrors.length },
   });
 
   res.json({
     resolved:       ids.length,
+    kind,
     action,
     cvat_delete_errors: deleteErrors.length > 0 ? deleteErrors : undefined,
   });

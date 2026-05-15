@@ -36,7 +36,7 @@ export const StudioSelectScreen: React.FC = () => {
 	const openTask = async (task: FeedTask) => {
 		if (claiming) return;
 		if (task.annotation_state === 'curator_validated') {
-			toast.info('Vue annotation finale disponible quand le studio curator sera construit.');
+			router.push(`/(main)/studio/view/${task.cvat_task_id}` as Href);
 			return;
 		}
 		setClaiming(true);
@@ -181,6 +181,7 @@ export const StudioSelectScreen: React.FC = () => {
 				visible={!!contestTarget}
 				count={contestTarget ? 1 : 0}
 				submitting={contestSubmitting}
+				kind="curator_annotation"
 				onCancel={() => setContestTarget(null)}
 				onConfirm={handleContestConfirm}
 			/>

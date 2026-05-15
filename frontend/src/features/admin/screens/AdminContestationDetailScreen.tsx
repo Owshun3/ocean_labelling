@@ -6,6 +6,7 @@ import {
 	ContestationUploaderDetail,
 	ContestationLot,
 	ContestationAction,
+	ContestationKind,
 } from '@/services/api/AdminService';
 import { appApiClient } from '@/services/api/AppApiService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
@@ -17,6 +18,7 @@ import { TYPOGRAPHY } from '@/shared/theme/typography';
 
 interface Props {
 	userId: number;
+	kind?: ContestationKind;
 }
 
 function fmtDate(iso: string | null): string {
@@ -26,7 +28,7 @@ function fmtDate(iso: string | null): string {
 	} catch { return iso; }
 }
 
-export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
+export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 'media' }) => {
 	const router = useRouter();
 	const service = useMemo(() => new AdminService(), []);
 	const [detail, setDetail] = useState<ContestationUploaderDetail | null>(null);
@@ -39,7 +41,7 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 	const load = useCallback(async () => {
 		setLoading(true);
 		try {
-			const data = await service.getContestationsForUploader(userId);
+			const data = await service.getContestationsForUploader(userId, kind);
 			setDetail(data);
 			setSelected(new Set());
 			setLastClicked(null);
@@ -48,7 +50,7 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 		} finally {
 			setLoading(false);
 		}
-	}, [service, userId]);
+	}, [service, userId, kind]);
 
 	useEffect(() => { load(); }, [load]);
 
@@ -103,7 +105,7 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 		const ids = Array.from(selected);
 		setSubmitting(true);
 		try {
-			const result = await service.resolveContestations(ids, action);
+			const result = await service.resolveContestations(ids, action, kind);
 			const label = action === 'overturned' ? 'contestation(s) acceptée(s)' : 'rejet(s) maintenu(s)';
 			toast.success(`${result.resolved} ${label}.`);
 			if (result.cvat_delete_errors && result.cvat_delete_errors.length > 0) {
@@ -126,14 +128,15 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 
 	const { uploader, lots } = detail;
 	const totalItems = lots.reduce((s, l) => s + l.items.length, 0);
-	const moderatorMap = new Map<string, { username: string; actions: number }>();
+	const reviewerMap = new Map<string, { username: string; actions: number }>();
 	lots.forEach((l) => l.items.forEach((i) => {
-		const m = i.moderator;
+		const m = i.reviewer;
 		if (!m?.username) return;
-		const existing = moderatorMap.get(m.username);
-		if (!existing) moderatorMap.set(m.username, { username: m.username, actions: m.actions_validated_total ?? 0 });
+		const existing = reviewerMap.get(m.username);
+		if (!existing) reviewerMap.set(m.username, { username: m.username, actions: m.actions_validated_total ?? 0 });
 	}));
-	const moderators = Array.from(moderatorMap.values());
+	const reviewers = Array.from(reviewerMap.values());
+	const reviewerLabel = kind === 'annotation' ? 'Curator(s) certifiant(s)' : 'Modérateur(s) impliqué(s)';
 
 	return (
 		<View style={styles.container}>
@@ -164,10 +167,10 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 					</View>
 
 					<View style={styles.card}>
-						<Text style={styles.cardTitle}>Modérateur(s) impliqué(s)</Text>
-						{moderators.length === 0 ? (
+						<Text style={styles.cardTitle}>{reviewerLabel}</Text>
+						{reviewers.length === 0 ? (
 							<Text style={styles.subdued}>Inconnu</Text>
-						) : moderators.map((m) => (
+						) : reviewers.map((m) => (
 							<View key={m.username} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
 								<Text style={styles.modName}>{m.username}</Text>
 								<RankBadge actions={m.actions} size="sm" />
@@ -234,11 +237,18 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 													<Text style={styles.tileName} numberOfLines={1}>
 														{item.task?.name ?? `#${item.cvat_task_id}`}
 													</Text>
-													<Text style={styles.tileReason} numberOfLines={2}>
-														Rejet : {item.rejection_reason || '—'}
-													</Text>
+													{kind === 'media' ? (
+														<Text style={styles.tileReason} numberOfLines={2}>
+															Rejet : {item.rejection_reason || '—'}
+														</Text>
+													) : (
+														<Text style={styles.tileReason} numberOfLines={2}>
+															Mode : {item.certification_mode === 'create' ? 'bbox curator' : 'bbox annotateur retenue'}
+															{item.certification_comment ? ` · « ${item.certification_comment} »` : ''}
+														</Text>
+													)}
 													<Text style={styles.tileMod}>
-														par {item.moderator?.username ?? '?'} · {fmtDate(item.rejected_at)}
+														par {item.reviewer?.username ?? '?'} · {fmtDate(item.reviewed_at)}
 													</Text>
 												</View>
 											</Pressable>
@@ -254,7 +264,9 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId }) => {
 					<View style={styles.card}>
 						<Text style={styles.cardTitle}>Verdict</Text>
 						<Text style={styles.fieldHint}>
-							Accepter rétablit le média en « validé ». Refuser maintient le rejet et supprime la tâche CVAT (données binaires).
+							{kind === 'media'
+								? 'Accepter rétablit le média en « validé ». Refuser maintient le rejet et supprime la tâche CVAT (données binaires).'
+								: 'Accepter rouvre la curation : le média redevient curateable, l\'audit reste. Refuser maintient l\'annotation telle quelle.'}
 						</Text>
 						<Pressable
 							onPress={() => resolveSelected('overturned')}

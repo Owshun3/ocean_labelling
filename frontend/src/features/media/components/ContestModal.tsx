@@ -4,16 +4,33 @@ import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 
+type ContestKind = 'media_rejection' | 'curator_annotation';
+
 interface Props {
 	visible: boolean;
 	count: number;
 	submitting: boolean;
+	kind?: ContestKind;
 	onCancel: () => void;
 	onConfirm: (message: string) => void;
 }
 
-export const ContestModal: React.FC<Props> = ({ visible, count, submitting, onCancel, onConfirm }) => {
+const COPY: Record<ContestKind, { title: string; subtitle: (n: number) => string; placeholder: string }> = {
+	media_rejection: {
+		title:       'Contester le rejet',
+		subtitle:    (n) => `${n} média${n > 1 ? 's' : ''} rejeté${n > 1 ? 's' : ''} concerné${n > 1 ? 's' : ''}`,
+		placeholder: 'Explique pourquoi tu estimes que ce rejet est incorrect…',
+	},
+	curator_annotation: {
+		title:       'Contester l\'annotation finale',
+		subtitle:    () => 'Cette annotation a été certifiée par un curator. Une contestation rouvrira la curation pour réexamen.',
+		placeholder: 'Explique pourquoi l\'annotation certifiée te paraît incorrecte (mauvaise espèce, bbox imprécise, etc.)…',
+	},
+};
+
+export const ContestModal: React.FC<Props> = ({ visible, count, submitting, kind = 'media_rejection', onCancel, onConfirm }) => {
 	const [message, setMessage] = useState('');
+	const copy = COPY[kind];
 
 	useEffect(() => { if (visible) setMessage(''); }, [visible]);
 
@@ -24,16 +41,14 @@ export const ContestModal: React.FC<Props> = ({ visible, count, submitting, onCa
 		<Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
 			<View style={styles.backdrop}>
 				<View style={styles.card}>
-					<Text style={styles.title}>Contester le rejet</Text>
-					<Text style={styles.subtitle}>
-						{count} média{count > 1 ? 's' : ''} rejeté{count > 1 ? 's' : ''} concerné{count > 1 ? 's' : ''}
-					</Text>
+					<Text style={styles.title}>{copy.title}</Text>
+					<Text style={styles.subtitle}>{copy.subtitle(count)}</Text>
 
 					<Text style={styles.fieldLabel}>Message (obligatoire)</Text>
 					<TextInput
 						value={message}
 						onChangeText={setMessage}
-						placeholder="Explique pourquoi tu estimes que ce rejet est incorrect…"
+						placeholder={copy.placeholder}
 						placeholderTextColor={COLORS.text.placeholder}
 						multiline
 						style={styles.textArea}

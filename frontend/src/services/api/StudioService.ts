@@ -7,6 +7,19 @@ const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:88
 
 export const studioClient = axios.create({ baseURL: `${APP_API_BASE}/studio`, withCredentials: true });
 
+export interface CertifiedView {
+	task: { id: number; name: string; size: number };
+	certification: {
+		mode: 'review' | 'create';
+		bbox: { points: number[] } | null;
+		curator_comment: string | null;
+		certified_at: string;
+		curator: { id: number; username: string | null; role: string; actions_validated_total: number } | null;
+		cvat_job_id: number;
+	};
+	species: any | null;
+}
+
 attachBanInterceptor(studioClient);
 
 interface CvatShape {
@@ -55,6 +68,7 @@ export interface FeedTask {
 	my_job_state:      string | null;
 	free_job_count:    number;
 	annotation_state:  AnnotationState;
+	already_contested?: boolean;
 }
 
 export interface StudioFeed {
@@ -186,5 +200,10 @@ export class StudioService {
 			speciesId: speciesByLocalId[s.id] ?? s.speciesId,
 			cvatClientId: cvatIdByLocalId.get(s.id) ?? s.cvatClientId,
 		}));
+	}
+
+	async getCertified(taskId: number): Promise<CertifiedView> {
+		const resp = await studioClient.get<CertifiedView>(`/tasks/${taskId}/certified`);
+		return resp.data;
 	}
 }

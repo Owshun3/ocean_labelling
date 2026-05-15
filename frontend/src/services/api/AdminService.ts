@@ -34,10 +34,16 @@ export interface ContestationItem {
 	contestation_id: number;
 	cvat_task_id: number;
 	contested_at: string;
-	rejected_at: string | null;
-	rejection_reason: string | null;
+	reviewed_at: string | null;
 	task: any | null;
-	moderator: ContestationModerator | null;
+	reviewer: ContestationModerator | null;
+	contester?: ContestationModerator | null;
+	// Media-rejection only
+	rejection_reason?: string | null;
+	// Annotation only
+	species_id?: number | null;
+	certification_mode?: 'review' | 'create' | null;
+	certification_comment?: string | null;
 }
 
 export interface ContestationLot {
@@ -60,6 +66,7 @@ export interface ContestationUploaderDetail {
 }
 
 export type ContestationAction = 'overturned' | 'upheld';
+export type ContestationKind = 'media' | 'annotation';
 
 export type SettingType = 'string' | 'int' | 'bool';
 
@@ -141,20 +148,20 @@ export class AdminService {
 		return resp.data;
 	}
 
-	async listContestationUploaders(): Promise<ContestationUploaderEntry[]> {
-		const resp = await adminClient.get<{ results: ContestationUploaderEntry[] }>('/contestations/uploaders');
+	async listContestationUploaders(kind: ContestationKind = 'media'): Promise<ContestationUploaderEntry[]> {
+		const resp = await adminClient.get<{ results: ContestationUploaderEntry[] }>('/contestations/uploaders', { params: { kind } });
 		return resp.data.results;
 	}
 
-	async getContestationsForUploader(userId: number): Promise<ContestationUploaderDetail> {
-		const resp = await adminClient.get<ContestationUploaderDetail>(`/contestations/uploaders/${userId}`);
+	async getContestationsForUploader(userId: number, kind: ContestationKind = 'media'): Promise<ContestationUploaderDetail> {
+		const resp = await adminClient.get<ContestationUploaderDetail>(`/contestations/uploaders/${userId}`, { params: { kind } });
 		return resp.data;
 	}
 
-	async resolveContestations(ids: number[], action: ContestationAction): Promise<{ resolved: number; cvat_delete_errors?: any[] }> {
+	async resolveContestations(ids: number[], action: ContestationAction, kind: ContestationKind = 'media'): Promise<{ resolved: number; cvat_delete_errors?: any[] }> {
 		const resp = await adminClient.post<{ resolved: number; cvat_delete_errors?: any[] }>(
 			'/contestations/resolve',
-			{ contestation_ids: ids, action },
+			{ contestation_ids: ids, action, kind },
 		);
 		return resp.data;
 	}
