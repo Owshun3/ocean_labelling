@@ -27,6 +27,14 @@ export interface CuratorTask {
   completed_count: number;
   annotations_count?: number;
   annotated_jobs_count?: number;
+  assigned_to?: { id: number; username: string | null } | null;
+  is_assigned_to_me?: boolean;
+}
+
+export interface CuratorTasksResponse {
+  results: CuratorTask[];
+  count: number;
+  admin_view: boolean;
 }
 
 export interface QualityConflict {
@@ -128,9 +136,9 @@ export interface CertifyResult {
 }
 
 export class CuratorService {
-  async getTasks(): Promise<CuratorTask[]> {
-    const resp = await curatorClient.get<{ results: CuratorTask[] }>('/tasks');
-    return resp.data.results;
+  async getTasks(): Promise<CuratorTasksResponse> {
+    const resp = await curatorClient.get<CuratorTasksResponse>('/tasks');
+    return resp.data;
   }
 
   async getTaskJobs(taskId: number): Promise<CuratorJob[]> {

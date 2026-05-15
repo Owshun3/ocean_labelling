@@ -106,7 +106,23 @@ export type AuditAction =
 	| 'setting.changed'
 	| 'media.validated'
 	| 'media.rejected'
-	| 'media.auto_deleted';
+	| 'media.auto_deleted'
+	| 'curation.assigned';
+
+export interface CurationPoolItem {
+	cvat_task_id: number;
+	task_name: string;
+	reviewed_at: string;
+	uploader: { id: number; username: string | null };
+}
+
+export interface CurationCandidate {
+	id: number;
+	username: string;
+	role: string;
+	actions_validated_total: number;
+	pending_assignments: number;
+}
 
 export interface AuditEntry {
 	id: number;
@@ -173,6 +189,24 @@ export class AdminService {
 
 	async getHealth(): Promise<HealthReport> {
 		const resp = await adminClient.get<HealthReport>('/health');
+		return resp.data;
+	}
+
+	async listCurationPool(): Promise<CurationPoolItem[]> {
+		const resp = await adminClient.get<{ results: CurationPoolItem[] }>('/curation/pool');
+		return resp.data.results;
+	}
+
+	async listCurators(): Promise<CurationCandidate[]> {
+		const resp = await adminClient.get<{ results: CurationCandidate[] }>('/curation/curators');
+		return resp.data.results;
+	}
+
+	async assignCuration(taskIds: number[], curatorId: number): Promise<{ assigned: number; requested: number; curator_id: number }> {
+		const resp = await adminClient.post<{ assigned: number; requested: number; curator_id: number }>(
+			'/curation/assign',
+			{ task_ids: taskIds, curator_id: curatorId },
+		);
 		return resp.data;
 	}
 

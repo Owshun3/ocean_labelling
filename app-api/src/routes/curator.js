@@ -84,17 +84,44 @@ async function cvatPut(path, body, token) {
  */
 router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
   try {
+    const me = req.cvatUser;
+    const isAdmin = me.is_superuser || me.is_staff;
+    let appRole = null;
+    if (!isAdmin) {
+      const { rows: roleRows } = await pool.query('SELECT role FROM user_roles WHERE cvat_user_id = $1', [me.id]);
+      appRole = roleRows[0]?.role ?? 'annotator';
+    }
+    const treatAsAdmin = isAdmin || appRole === 'admin';
+
+    const assignmentFilter = treatAsAdmin ? '' : 'AND assigned_curator_id = $1';
+    const params = treatAsAdmin ? [] : [me.id];
+
     const { rows: eligibleRows } = await pool.query(`
-      SELECT cvat_task_id
+      SELECT cvat_task_id, assigned_curator_id
       FROM media_moderation
       WHERE status = 'validated'
         AND curator_validated_at IS NULL
         AND binaries_deleted_at IS NULL
+        ${assignmentFilter}
       ORDER BY reviewed_at ASC
       LIMIT 200
-    `);
-    if (eligibleRows.length === 0) return res.json({ results: [], count: 0 });
+    `, params);
+    if (eligibleRows.length === 0) return res.json({ results: [], count: 0, admin_view: treatAsAdmin });
     const eligibleIds = eligibleRows.map((r) => r.cvat_task_id);
+    const assignedByTask = new Map();
+    eligibleRows.forEach((r) => assignedByTask.set(r.cvat_task_id, r.assigned_curator_id));
+
+    // Résoudre les usernames des curators assignés (pour affichage admin)
+    const assignedCuratorIds = [...new Set(eligibleRows.map((r) => r.assigned_curator_id).filter(Boolean))];
+    const curatorUsernames = {};
+    if (treatAsAdmin && assignedCuratorIds.length > 0) {
+      await Promise.all(assignedCuratorIds.map(async (id) => {
+        try {
+          const r = await cvatGet(`/users/${id}`, await getAdminToken());
+          curatorUsernames[id] = r.data.username;
+        } catch { /* ignore */ }
+      }));
+    }
 
     const token = await getAdminToken();
     const tasks = [];
@@ -127,6 +154,7 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
         }));
         const annotationsCount = shapeCounts.reduce((a, b) => a + b, 0);
         const annotatedJobsCount = shapeCounts.filter((n) => n > 0).length;
+        const assignedId = assignedByTask.get(task.id) ?? null;
         return {
           id: task.id,
           name: task.name,
@@ -138,13 +166,21 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
           completed_count: jobs.filter(j => j.state === 'completed').length,
           annotations_count:      annotationsCount,
           annotated_jobs_count:   annotatedJobsCount,
+          assigned_to: assignedId ? { id: assignedId, username: curatorUsernames[assignedId] ?? null } : null,
+          is_assigned_to_me: assignedId === me.id,
         };
       } catch {
-        return { id: task.id, name: task.name, status: task.status, jobs: [], jobs_count: 0, completed_count: 0, annotations_count: 0, annotated_jobs_count: 0 };
+        const assignedId = assignedByTask.get(task.id) ?? null;
+        return {
+          id: task.id, name: task.name, status: task.status,
+          jobs: [], jobs_count: 0, completed_count: 0, annotations_count: 0, annotated_jobs_count: 0,
+          assigned_to: assignedId ? { id: assignedId, username: curatorUsernames[assignedId] ?? null } : null,
+          is_assigned_to_me: assignedId === me.id,
+        };
       }
     }));
 
-    res.json({ results: withJobs, count: withJobs.length });
+    res.json({ results: withJobs, count: withJobs.length, admin_view: treatAsAdmin });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
@@ -405,6 +441,30 @@ router.post('/tasks/:taskId/certify', requireCuratorOrAbove, async (req, res) =>
   try {
     await client.query('BEGIN');
 
+    // Garde de concurrence : verrouille la ligne et vérifie qu'elle n'est pas déjà certifiée.
+    // Deux requêtes simultanées seront sérialisées par le FOR UPDATE.
+    const lockResult = await client.query(
+      `SELECT curator_validated_at, curator_validated_by
+       FROM media_moderation
+       WHERE cvat_task_id = $1
+       FOR UPDATE`,
+      [taskId],
+    );
+    if (lockResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: 'Média introuvable en modération.' });
+    }
+    if (lockResult.rows[0].curator_validated_at) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(409).json({
+        error: 'Ce média vient d\'être certifié par un autre curator. Recharge la page.',
+        already_certified_by: lockResult.rows[0].curator_validated_by,
+        already_certified_at: lockResult.rows[0].curator_validated_at,
+      });
+    }
+
     const speciesRow = await upsertSpeciesFull(client, {
       scientific_name: sp.scientific_name,
       usage_name:      sp.usage_name,
@@ -450,12 +510,18 @@ router.post('/tasks/:taskId/certify', requireCuratorOrAbove, async (req, res) =>
     const putResp = await cvatPut(`/jobs/${jobId}/annotations`, fullState, token);
     const writtenShape = (putResp.data?.shapes ?? [])[0];
 
-    await client.query(
+    const upd = await client.query(
       `UPDATE media_moderation
        SET curator_validated_at = NOW(), curator_validated_by = $1
-       WHERE cvat_task_id = $2`,
+       WHERE cvat_task_id = $2 AND curator_validated_at IS NULL`,
       [req.cvatUser.id, taskId],
     );
+    if (upd.rowCount === 0) {
+      // Devrait être impossible grâce au FOR UPDATE plus haut, mais on garde le filet.
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(409).json({ error: 'Ce média a été certifié entre-temps.' });
+    }
 
     const certInsert = await client.query(
       `INSERT INTO curator_certifications

@@ -275,10 +275,13 @@ router.post('/resolve', async (req, res) => {
       }
     } else if (kind === 'annotation') {
       if (action === 'overturned') {
-        // rouvre la curation : le média redevient curateable, l'audit reste
+        // rouvre la curation : le média redevient curateable, l'audit reste,
+        // et l'attribution est remise à zéro pour que l'admin réattribue
+        // (potentiellement à un autre curator pour un avis frais).
         await client.query(`
           UPDATE media_moderation
-          SET curator_validated_at = NULL, curator_validated_by = NULL
+          SET curator_validated_at = NULL, curator_validated_by = NULL,
+              assigned_curator_id = NULL, assigned_at = NULL, assigned_by = NULL
           WHERE cvat_task_id = ANY($1)
         `, [taskIds]);
       }

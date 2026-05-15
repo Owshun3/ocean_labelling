@@ -19,6 +19,7 @@ export function openCurationStudio(task: CuratorTask): void {
 
 export const CuratorHubScreen: React.FC = () => {
 	const [tasks, setTasks] = useState<CuratorTask[]>([]);
+	const [adminView, setAdminView] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const service = useMemo(() => new CuratorService(), []);
@@ -27,7 +28,7 @@ export const CuratorHubScreen: React.FC = () => {
 		setLoading(true);
 		setError(null);
 		service.getTasks()
-			.then(setTasks)
+			.then((resp) => { setTasks(resp.results); setAdminView(resp.admin_view); })
 			.catch((err) => setError(err?.response?.data?.error ?? err.message))
 			.finally(() => setLoading(false));
 	}, [service]);
@@ -55,6 +56,14 @@ export const CuratorHubScreen: React.FC = () => {
 				<Text style={styles.subtitle}>{tasks.length} média{tasks.length !== 1 ? 's' : ''} à curer</Text>
 			</View>
 
+			{adminView ? (
+				<View style={styles.adminBanner}>
+					<Text style={styles.adminBannerText}>
+						<Text style={{ fontWeight: '700' }}>Vue administrateur</Text> · tu vois <Text style={{ fontWeight: '700' }}>tous</Text> les médias en attente de curation (attribués ou pas). Les curators ne voient que leurs attributions. Les badges sur les tuiles indiquent à qui chaque média est attribué.
+					</Text>
+				</View>
+			) : null}
+
 			<View style={styles.filterBar}>
 				<Text style={styles.filterPlaceholderLabel}>Filtres :</Text>
 				<View style={styles.filterPill}><Text style={styles.filterPillText}>tous</Text></View>
@@ -79,6 +88,17 @@ export const CuratorHubScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+	adminBanner: {
+		backgroundColor: `${COLORS.warning}11`,
+		borderLeftWidth: 3,
+		borderLeftColor: COLORS.warning,
+		paddingVertical: SPACING.sm,
+		paddingHorizontal: SPACING.md,
+		borderRadius: 6,
+		marginBottom: SPACING.sm,
+	},
+	adminBannerText: { fontSize: 12, color: COLORS.text.primary, lineHeight: 17 },
+
 	container: { flex: 1, padding: SPACING.lg },
 	center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACING.md },
 	headerRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm, marginBottom: SPACING.md },

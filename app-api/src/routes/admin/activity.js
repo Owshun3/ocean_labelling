@@ -15,6 +15,7 @@ const KNOWN_ACTIONS = [
   'media.validated',
   'media.rejected',
   'media.auto_deleted',
+  'curation.assigned',
 ];
 
 const SYSTEM_ACTOR_ID = 0;
