@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, StyleSheet, Switch, Modal } from 'react-native';
 import { AdminService, SettingItem } from '@/services/api/AdminService';
 import { refreshPublicSettings } from '@/services/api/publicSettings';
+import { getRanks } from '@/shared/ranks';
 import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
@@ -139,6 +140,7 @@ export const AdminSettingsScreen: React.FC = () => {
 				{grouped.map(([groupKey, { label, items: groupItems }]) => (
 					<View key={groupKey} style={styles.group}>
 						<Text style={styles.groupLabel}>{label}</Text>
+						{groupKey === 'ranks' ? <RankPreview drafts={drafts} /> : null}
 						<View style={styles.groupCard}>
 							{groupItems.map((it, idx) => (
 								<View key={it.key} style={[styles.row, idx > 0 && styles.rowBordered]}>
@@ -219,6 +221,43 @@ export const AdminSettingsScreen: React.FC = () => {
 		</>
 	);
 };
+
+const RANK_IDS = ['debutant', 'bronze', 'argent', 'or', 'platine'] as const;
+
+const RankPreview: React.FC<{ drafts: Record<string, any> }> = ({ drafts }) => {
+	const baseline = getRanks();
+	const previews = RANK_IDS.map((id, i) => ({
+		id,
+		label: typeof drafts[`rank.${id}.label`] === 'string' && drafts[`rank.${id}.label`].length > 0
+			? (drafts[`rank.${id}.label`] as string)
+			: baseline[i].label,
+		color: typeof drafts[`rank.${id}.color`] === 'string' && /^#[0-9a-fA-F]{6}$/.test(drafts[`rank.${id}.color`] as string)
+			? (drafts[`rank.${id}.color`] as string)
+			: baseline[i].color,
+	}));
+	return (
+		<View style={previewStyles.wrap}>
+			<Text style={previewStyles.label}>Aperçu</Text>
+			<View style={previewStyles.row}>
+				{previews.map((r) => (
+					<View key={r.id} style={previewStyles.chip}>
+						<View style={[previewStyles.dot, { backgroundColor: r.color }]} />
+						<Text style={[previewStyles.text, { color: r.color }]}>{r.label}</Text>
+					</View>
+				))}
+			</View>
+		</View>
+	);
+};
+
+const previewStyles = StyleSheet.create({
+	wrap: { padding: SPACING.sm, gap: 6, marginBottom: SPACING.xs },
+	label: { fontSize: 11, color: COLORS.text.secondary, fontWeight: '700', textTransform: 'uppercase' },
+	row:  { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+	chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 99, backgroundColor: COLORS.background.card, borderWidth: 1, borderColor: COLORS.border },
+	dot:  { width: 12, height: 12, borderRadius: 6 },
+	text: { fontSize: 13, fontWeight: '700' },
+});
 
 const styles = StyleSheet.create({
 	container: { flex: 1 },

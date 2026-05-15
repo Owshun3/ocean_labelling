@@ -1,17 +1,42 @@
+import { getPublicSettings, RankId } from '@/services/api/publicSettings';
+
 export interface Rank {
-	id: 'debutant' | 'bronze' | 'argent' | 'or' | 'platine';
+	id: RankId;
 	label: string;
 	threshold: number;
 	color: string;
 }
 
-export const RANKS: Rank[] = [
-	{ id: 'debutant', label: 'Débutant', threshold: 0,    color: '#9ca3af' },
-	{ id: 'bronze',   label: 'Bronze',   threshold: 50,   color: '#cd7f32' },
-	{ id: 'argent',   label: 'Argent',   threshold: 200,  color: '#c0c0c0' },
-	{ id: 'or',       label: 'Or',       threshold: 500,  color: '#f59e0b' },
-	{ id: 'platine',  label: 'Platine',  threshold: 3000, color: '#06b6d4' },
-];
+// Les seuils sont figés (les modifier rétroactivement fausserait les rangs déjà affichés).
+// Le libellé et la couleur viennent des paramètres système (overridable par l'admin).
+const THRESHOLDS: Record<RankId, number> = {
+	debutant: 0,
+	bronze:   50,
+	argent:   200,
+	or:       500,
+	platine:  3000,
+};
+
+const ORDER: RankId[] = ['debutant', 'bronze', 'argent', 'or', 'platine'];
+
+function buildRanks(): Rank[] {
+	const s = getPublicSettings();
+	return ORDER.map((id) => ({
+		id,
+		label:     s[`rank.${id}.label` as const] ?? id,
+		color:     s[`rank.${id}.color` as const] ?? '#9ca3af',
+		threshold: THRESHOLDS[id],
+	}));
+}
+
+export function getRanks(): Rank[] { return buildRanks(); }
+// Conserve l'export `RANKS` en compat — recalcule à chaque accès via getter.
+export const RANKS = new Proxy([] as Rank[], {
+	get(_t, prop) { return Reflect.get(buildRanks(), prop); },
+	has(_t, prop) { return Reflect.has(buildRanks(), prop); },
+	ownKeys()     { return Reflect.ownKeys(buildRanks()); },
+	getOwnPropertyDescriptor(_t, prop) { return Object.getOwnPropertyDescriptor(buildRanks(), prop); },
+});
 
 export interface RankProgress {
 	current: Rank;
@@ -22,13 +47,14 @@ export interface RankProgress {
 }
 
 export function computeRank(actions: number): RankProgress {
+	const ranks = buildRanks();
 	const safe = Math.max(0, actions | 0);
-	let current = RANKS[0];
-	let next: Rank | null = RANKS[1] ?? null;
-	for (let i = RANKS.length - 1; i >= 0; i--) {
-		if (safe >= RANKS[i].threshold) {
-			current = RANKS[i];
-			next = RANKS[i + 1] ?? null;
+	let current = ranks[0];
+	let next: Rank | null = ranks[1] ?? null;
+	for (let i = ranks.length - 1; i >= 0; i--) {
+		if (safe >= ranks[i].threshold) {
+			current = ranks[i];
+			next = ranks[i + 1] ?? null;
 			break;
 		}
 	}

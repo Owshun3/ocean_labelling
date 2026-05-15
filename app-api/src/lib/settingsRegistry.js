@@ -76,7 +76,39 @@ const REGISTRY = [
     group_name: 'policies', label: 'Délai avant suppression des médias rejetés non contestés (jours)',
     description: 'Réglage du futur job de nettoyage automatique des médias rejetés sans contestation.',
   },
+
+  // Apparence des rangs (médailles affichées un peu partout — fiche profil,
+  // listes d'utilisateurs, propositions d'annotations…). Les seuils restent
+  // figés dans `frontend/src/shared/ranks.ts` ; seuls le libellé et la couleur
+  // sont ajustables sans redéploiement.
+  ...rankAppearanceEntries(),
 ];
+
+function rankAppearanceEntries() {
+  const COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+  const DEFAULTS = [
+    { id: 'debutant', label: 'Débutant', color: '#9ca3af' },
+    { id: 'bronze',   label: 'Bronze',   color: '#cd7f32' },
+    { id: 'argent',   label: 'Argent',   color: '#c0c0c0' },
+    { id: 'or',       label: 'Or',       color: '#f59e0b' },
+    { id: 'platine',  label: 'Platine',  color: '#06b6d4' },
+  ];
+  const out = [];
+  for (const r of DEFAULTS) {
+    out.push({
+      key: `rank.${r.id}.label`, type: 'string', default: r.label, is_public: true,
+      group_name: 'ranks', label: `Rang ${r.label} — libellé`,
+      description: 'Texte affiché sur la médaille.',
+    });
+    out.push({
+      key: `rank.${r.id}.color`, type: 'string', default: r.color, is_public: true,
+      group_name: 'ranks', label: `Rang ${r.label} — couleur`,
+      description: 'Code hexadécimal #RRGGBB (ex : #f59e0b).',
+      pattern: COLOR_PATTERN, pattern_error: 'attendu : #RRGGBB',
+    });
+  }
+  return out;
+}
 
 const REGISTRY_BY_KEY = Object.fromEntries(REGISTRY.map((r) => [r.key, r]));
 
@@ -87,6 +119,7 @@ const GROUP_LABELS = {
   access:      'Accès',
   upload:      'Téléversement',
   policies:    'Politiques',
+  ranks:       'Apparence des rangs',
 };
 
 function coerceFromString(type, str) {
@@ -123,6 +156,9 @@ function validateForType(type, raw, meta) {
     throw new Error('valeur booléenne attendue');
   }
   if (typeof raw !== 'string') throw new Error('valeur texte attendue');
+  if (meta && meta.pattern instanceof RegExp && !meta.pattern.test(raw)) {
+    throw new Error(meta.pattern_error || 'format invalide');
+  }
   return raw;
 }
 

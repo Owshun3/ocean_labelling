@@ -158,6 +158,10 @@ Routes Expo :
 
 Le studio injecté NGINX (`ocean-studio.{js,css}`, route `/tasks/{id}/jobs/{j}`) reste en place comme **fallback admin** pendant la transition. Voir ADR-006 vs ADR-007.
 
+## Rangs (médailles) — paramétrables
+
+Les seuils restent figés dans [frontend/src/shared/ranks.ts](frontend/src/shared/ranks.ts) (modifier rétroactivement fausserait l'historique). Le **libellé** et la **couleur** de chaque rang (`debutant|bronze|argent|or|platine`) sont des `app_settings` publics dans le groupe `ranks`, modifiables depuis Paramètres système (preview live dans la page admin). `computeRank` lit les valeurs courantes via `getPublicSettings()` au moment de l'appel ; le cache est rafraîchi à chaque save admin via `refreshPublicSettings()`. Validation serveur : `pattern: /^#[0-9a-fA-F]{6}$/` sur les couleurs (settingsRegistry).
+
 **Stack rendu** : `react-konva@19.0.10` + `konva` (web only — `Platform.OS !== 'web'` affiche un fallback). Stage Konva avec image fit-to-canvas, Group scaled pour les coordonnées image, Transformer pour drag/resize, ghost rect dashed pendant le tracé.
 
 **Outils + viewport** : 3 outils — Rect (drag-and-drop pour tracer), Select (Transformer 8 poignées), Déplacer (pan stage). Raccourcis : R / V / P. Zoom : boutons +/− et « Ajuster » dans la colonne outils, raccourcis +/-/0, molette souris centrée sur le curseur. Borne zoom 0.2x à 8x. Le Stage Konva applique le zoom (`scaleX/scaleY`) + position pan ; le Group interne reste en image-fit pour que les coordonnées des shapes restent en pixels image, invariantes au zoom. Tracé d'un rect = mousedown + drag + mouseup (≥ 4px image-coords sinon ignoré).

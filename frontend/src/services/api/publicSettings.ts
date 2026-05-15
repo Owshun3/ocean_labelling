@@ -2,6 +2,8 @@ import axios from 'axios';
 
 const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
 
+export type RankId = 'debutant' | 'bronze' | 'argent' | 'or' | 'platine';
+
 export interface PublicSettings {
 	'platform.name': string;
 	'platform.welcome_message': string;
@@ -12,6 +14,11 @@ export interface PublicSettings {
 	'platform.maintenance_mode': boolean;
 	'platform.maintenance_message': string;
 	'platform.public_registration': boolean;
+	'rank.debutant.label': string; 'rank.debutant.color': string;
+	'rank.bronze.label':   string; 'rank.bronze.color':   string;
+	'rank.argent.label':   string; 'rank.argent.color':   string;
+	'rank.or.label':       string; 'rank.or.color':       string;
+	'rank.platine.label':  string; 'rank.platine.color':  string;
 }
 
 const DEFAULTS: PublicSettings = {
@@ -24,6 +31,11 @@ const DEFAULTS: PublicSettings = {
 	'platform.maintenance_mode':        false,
 	'platform.maintenance_message':     'Maintenance en cours, merci de revenir plus tard.',
 	'platform.public_registration':     true,
+	'rank.debutant.label': 'Débutant', 'rank.debutant.color': '#9ca3af',
+	'rank.bronze.label':   'Bronze',   'rank.bronze.color':   '#cd7f32',
+	'rank.argent.label':   'Argent',   'rank.argent.color':   '#c0c0c0',
+	'rank.or.label':       'Or',       'rank.or.color':       '#f59e0b',
+	'rank.platine.label':  'Platine',  'rank.platine.color':  '#06b6d4',
 };
 
 let cache: PublicSettings = { ...DEFAULTS };
