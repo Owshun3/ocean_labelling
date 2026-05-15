@@ -33,7 +33,7 @@ export const CuratorSidebarRight: React.FC<Props> = ({
 	const router = useRouter();
 	return (
 	<View style={styles.col}>
-		<View style={styles.block}>
+		<View style={[styles.block, styles.speciesBlock]}>
 			<View style={styles.headingRow}>
 				<Text style={styles.heading}>Espèce</Text>
 				{speciesLockedId ? (
@@ -106,6 +106,7 @@ const styles = StyleSheet.create({
 		gap: SPACING.md,
 	},
 	block: { gap: SPACING.xs },
+	speciesBlock: { position: 'relative', zIndex: 100 },
 	headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 	heading: { fontSize: 11, color: COLORS.text.secondary, fontWeight: '700', textTransform: 'uppercase' },
 	fichLink: { fontSize: 11, color: COLORS.primary, fontWeight: '700', textDecorationLine: 'underline' },

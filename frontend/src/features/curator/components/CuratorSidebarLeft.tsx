@@ -71,7 +71,6 @@ export const CuratorSidebarLeft: React.FC<Props> = ({
 				<BboxProposalList
 					proposals={proposals}
 					selectedIds={selectedIds}
-					annotatorColor={annotatorColor}
 					onToggle={onToggleSelect}
 				/>
 			</View>

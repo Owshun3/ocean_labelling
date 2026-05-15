@@ -8,7 +8,6 @@ import { SPACING } from '@/shared/theme/spacing';
 interface Props {
 	proposals: Proposal[];
 	selectedIds: Set<number>;
-	annotatorColor: string;
 	onToggle: (shapeId: number, kind: 'single' | 'toggle' | 'range', ordered: number[]) => void;
 }
 
@@ -20,7 +19,7 @@ const SORT_LABELS: Record<SortKey, string> = {
 	rank_asc:  'Rang ↑',
 };
 
-export const BboxProposalList: React.FC<Props> = ({ proposals, selectedIds, annotatorColor, onToggle }) => {
+export const BboxProposalList: React.FC<Props> = ({ proposals, selectedIds, onToggle }) => {
 	const [sort, setSort] = useState<SortKey>('order');
 
 	const sortedProposals = useMemo(() => {
@@ -79,13 +78,12 @@ export const BboxProposalList: React.FC<Props> = ({ proposals, selectedIds, anno
 							<View style={[styles.check, isSelected && styles.checkActive]}>
 								{isSelected ? <Text style={styles.checkMark}>✓</Text> : null}
 							</View>
-							<View style={[styles.dot, { backgroundColor: annotatorColor }]} />
 							<View style={styles.info}>
 								<View style={styles.titleRow}>
 									<Text style={styles.species} numberOfLines={1}>{speciesLabel}</Text>
 									{isPending ? <Text style={styles.pendingTag}>NV</Text> : null}
 								</View>
-								<AnnotatorBadge username={p.annotator_username} color={annotatorColor} actionsTotal={p.annotator_actions_total} />
+								<AnnotatorBadge username={p.annotator_username} actionsTotal={p.annotator_actions_total} />
 							</View>
 						</Pressable>
 					);
@@ -121,7 +119,6 @@ const styles = StyleSheet.create({
 	},
 	checkActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary },
 	checkMark: { color: COLORS.text.inverse, fontSize: 10, fontWeight: '700' },
-	dot: { width: 10, height: 10, borderRadius: 5 },
 	info: { flex: 1, gap: 2 },
 	titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 	species: { fontSize: 13, color: COLORS.text.primary, fontWeight: '600', flex: 1 },

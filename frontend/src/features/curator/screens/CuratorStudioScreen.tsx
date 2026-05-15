@@ -263,7 +263,6 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 						proposal={hovered.proposal}
 						x={hovered.x}
 						y={hovered.y}
-						annotatorColor={state.annotatorColor}
 					/>
 				) : null}
 			</View>

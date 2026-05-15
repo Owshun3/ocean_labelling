@@ -33,13 +33,13 @@ const DEBOUNCE_MS = 300;
 export const SpeciesTriFieldForm: React.FC<Props> = ({ value, disabled, onChange }) => {
 	return (
 		<View style={styles.wrap}>
-			<FieldRow field="scientific" value={value.scientific_name}
+			<FieldRow rowIndex={0} field="scientific" value={value.scientific_name}
 			          disabled={disabled} onPick={(s) => onChange(speciesToValue(s, value))}
 			          onChangeText={(t) => onChange({ ...value, scientific_name: t })} />
-			<FieldRow field="usage" value={value.usage_name}
+			<FieldRow rowIndex={1} field="usage" value={value.usage_name}
 			          disabled={disabled} onPick={(s) => onChange(speciesToValue(s, value))}
 			          onChangeText={(t) => onChange({ ...value, usage_name: t })} />
-			<FieldRow field="polynesian" value={value.polynesian_name}
+			<FieldRow rowIndex={2} field="polynesian" value={value.polynesian_name}
 			          disabled={disabled} onPick={(s) => onChange(speciesToValue(s, value))}
 			          onChangeText={(t) => onChange({ ...value, polynesian_name: t })} />
 		</View>
@@ -55,6 +55,7 @@ function speciesToValue(s: Species, fallback: SpeciesTriValue): SpeciesTriValue 
 }
 
 interface FieldProps {
+	rowIndex: number;
 	field: SpeciesSearchField;
 	value: string;
 	disabled?: boolean;
@@ -62,7 +63,7 @@ interface FieldProps {
 	onPick: (s: Species) => void;
 }
 
-const FieldRow: React.FC<FieldProps> = ({ field, value, disabled, onChangeText, onPick }) => {
+const FieldRow: React.FC<FieldProps> = ({ rowIndex, field, value, disabled, onChangeText, onPick }) => {
 	const service = useMemo(() => new SpeciesService(), []);
 	const [results, setResults] = useState<Species[]>([]);
 	const [open, setOpen] = useState(false);
@@ -79,8 +80,11 @@ const FieldRow: React.FC<FieldProps> = ({ field, value, disabled, onChangeText, 
 		return () => { if (debRef.current) clearTimeout(debRef.current); };
 	}, [value, open, field, service]);
 
+	// zIndex décroissant par ligne (top = au-dessus). Boost massif quand le
+	// dropdown est ouvert pour passer au-dessus des frères et conteneurs.
+	const rowZ = (open ? 1000 : 10) - rowIndex;
 	return (
-		<View style={styles.field}>
+		<View style={[styles.field, { zIndex: rowZ }]}>
 			<Text style={styles.label}>{FIELD_LABELS[field]}</Text>
 			<View style={styles.inputWrap}>
 				<TextInput
@@ -116,8 +120,8 @@ const FieldRow: React.FC<FieldProps> = ({ field, value, disabled, onChangeText, 
 };
 
 const styles = StyleSheet.create({
-	wrap:  { gap: SPACING.sm },
-	field: { position: 'relative', zIndex: 10 },
+	wrap:  { gap: SPACING.sm, position: 'relative' },
+	field: { position: 'relative' },
 	label: { fontSize: 11, color: COLORS.text.secondary, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
 	inputWrap: { position: 'relative', zIndex: 10 },
 	input: {

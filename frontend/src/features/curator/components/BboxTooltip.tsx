@@ -9,10 +9,9 @@ interface Props {
 	proposal: Proposal;
 	x: number;
 	y: number;
-	annotatorColor: string;
 }
 
-export const BboxTooltip: React.FC<Props> = ({ proposal, x, y, annotatorColor }) => {
+export const BboxTooltip: React.FC<Props> = ({ proposal, x, y }) => {
 	const label =
 		proposal.species?.usage_name
 		?? proposal.species?.scientific_name
@@ -32,7 +31,7 @@ export const BboxTooltip: React.FC<Props> = ({ proposal, x, y, annotatorColor })
 			) : null}
 			{isPending ? <Text style={styles.pending}>en attente de validation</Text> : null}
 			<View style={styles.spacer} />
-			<AnnotatorBadge username={proposal.annotator_username} color={annotatorColor} actionsTotal={proposal.annotator_actions_total} />
+			<AnnotatorBadge username={proposal.annotator_username} actionsTotal={proposal.annotator_actions_total} />
 		</View>
 	);
 };
