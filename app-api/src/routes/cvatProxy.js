@@ -20,13 +20,23 @@ function filterHeaders(src) {
   return out;
 }
 
+// Endpoints CVAT atteignables sans session (inscription, mot de passe oublié).
+const PUBLIC_PATHS = [
+  /^\/auth\/register\/?($|\?)/,
+  /^\/auth\/password\/reset\/?($|\?)/,
+];
+
+function isPublicCvatPath(cvatPath) {
+  return PUBLIC_PATHS.some((re) => re.test(cvatPath));
+}
+
 async function proxyHandler(req, res) {
-  const cvatPath = req.originalUrl.replace(/^\/cvat/, '');
+  const cvatPath = req.originalUrl.replace(/^\/app-api/, '').replace(/^\/cvat/, '');
   const url = `${CVAT_API}${cvatPath}`;
   const token = req.cvatToken;
 
   const upstreamHeaders = filterHeaders(req.headers);
-  upstreamHeaders['Authorization'] = `Token ${token}`;
+  if (token) upstreamHeaders['Authorization'] = `Token ${token}`;
   upstreamHeaders['Host'] = 'localhost';
 
   try {
@@ -55,6 +65,12 @@ async function proxyHandler(req, res) {
   }
 }
 
-router.use(requireAuth, proxyHandler);
+// Auth conditionnelle : si la route fait partie de l'allowlist publique (register,
+// reset password), on saute `requireAuth`. Sinon, comportement standard.
+router.use((req, res, next) => {
+  const cvatPath = req.originalUrl.replace(/^\/app-api/, '').replace(/^\/cvat/, '');
+  if (isPublicCvatPath(cvatPath)) return proxyHandler(req, res);
+  return requireAuth(req, res, () => proxyHandler(req, res));
+});
 
 module.exports = router;

@@ -176,10 +176,10 @@ router.get('/me/profile', requireAuth, async (req, res) => {
   }
 });
 
-async function cvatPatchSelf(authHeader, body) {
+async function cvatPatchSelf(cvatToken, body) {
   return axios.patch(`${CVAT_API}/users/${body.__id}`, body.payload, {
     headers: {
-      Authorization: authHeader,
+      Authorization: `Token ${cvatToken}`,
       Accept: 'application/vnd.cvat+json',
       'Content-Type': 'application/json',
       Host: 'localhost',
@@ -191,7 +191,6 @@ async function cvatPatchSelf(authHeader, body) {
 router.patch('/me', requireAuth, async (req, res) => {
   const me = req.cvatUser;
   const body = req.body || {};
-  const auth = req.headers['authorization'];
 
   const wantsUsernameChange = typeof body.username === 'string'
     && body.username.trim() !== ''
@@ -228,7 +227,7 @@ router.patch('/me', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'aucun champ modifié' });
     }
 
-    const cvatResp = await cvatPatchSelf(auth, { __id: me.id, payload });
+    const cvatResp = await cvatPatchSelf(req.cvatToken, { __id: me.id, payload });
 
     if (newUsername) {
       await pool.query(`
@@ -264,7 +263,6 @@ router.post('/me/password', requireAuth, async (req, res) => {
   if (newPassword !== confirm) return res.status(400).json({ error: 'les deux nouveaux mots de passe ne correspondent pas' });
   if (newPassword.length < 8)  return res.status(400).json({ error: 'mot de passe trop court (minimum 8 caractères)' });
 
-  const auth = req.headers['authorization'];
   try {
     await axios.post(`${CVAT_API}/auth/password/change`, {
       old_password: oldPassword,
@@ -272,7 +270,7 @@ router.post('/me/password', requireAuth, async (req, res) => {
       new_password2: confirm,
     }, {
       headers: {
-        Authorization: auth,
+        Authorization: `Token ${req.cvatToken}`,
         Accept: 'application/vnd.cvat+json',
         'Content-Type': 'application/json',
         Host: 'localhost',
