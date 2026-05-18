@@ -7,11 +7,15 @@ const moderationClient = axios.create({ baseURL: `${APP_API_BASE}/moderation`, w
 
 attachBanInterceptor(moderationClient);
 
+export type MediaKind = 'image' | 'video';
+
 export interface ModerationQueueEntry {
   uploader_id: number;
   username: string | null;
   role: string;
   pending_count: number;
+  image_count?: number;
+  video_count?: number;
   oldest: string;
 }
 
@@ -35,11 +39,21 @@ export interface CvatTaskSummary {
   [k: string]: any;
 }
 
-export interface ModerationMediaEntry {
-  cvat_task_id: number;
-  submitted_at: string;
-  task: CvatTaskSummary;
+export interface ModerationVideoSummary {
+  id: number;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  duration_seconds: number | null;
+  width: number | null;
+  height: number | null;
+  has_poster: boolean;
+  uploaded_at: string;
 }
+
+export type ModerationMediaEntry =
+  | { kind: 'image'; cvat_task_id: number; submitted_at: string; task: CvatTaskSummary }
+  | { kind: 'video'; video_id: number; submitted_at: string; video: ModerationVideoSummary };
 
 export interface ModerationMediaDetail {
   moderation: {
@@ -54,6 +68,22 @@ export interface ModerationMediaDetail {
   task: CvatTaskSummary;
   uploader: ModerationUploader;
 }
+
+export interface ModerationVideoDetail {
+  moderation: {
+    video_id: number;
+    uploader_id: number;
+    status: 'pending' | 'validated' | 'rejected';
+    reviewed_by: number | null;
+    review_comment: string | null;
+    created_at: string;
+    reviewed_at: string | null;
+  };
+  video: ModerationVideoSummary;
+  uploader: ModerationUploader;
+}
+
+export interface ModerationItem { kind: MediaKind; id: number; }
 
 export interface BanPayload {
   duration_days?: number | null;
@@ -84,13 +114,18 @@ export class ModerationService {
     return resp.data;
   }
 
-  async validateMedia(ids: number[]): Promise<{ updated: number }> {
-    const resp = await moderationClient.post<{ updated: number }>('/media/validate', { ids });
+  async getVideoDetail(videoId: number): Promise<ModerationVideoDetail> {
+    const resp = await moderationClient.get<ModerationVideoDetail>(`/video/${videoId}`);
     return resp.data;
   }
 
-  async rejectMedia(ids: number[], comment?: string): Promise<{ updated: number }> {
-    const body: { ids: number[]; comment?: string } = { ids };
+  async validateMedia(items: ModerationItem[]): Promise<{ updated: number }> {
+    const resp = await moderationClient.post<{ updated: number }>('/media/validate', { items });
+    return resp.data;
+  }
+
+  async rejectMedia(items: ModerationItem[], comment?: string): Promise<{ updated: number }> {
+    const body: { items: ModerationItem[]; comment?: string } = { items };
     if (comment) body.comment = comment;
     const resp = await moderationClient.post<{ updated: number }>('/media/reject', body);
     return resp.data;

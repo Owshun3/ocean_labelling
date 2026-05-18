@@ -9,6 +9,7 @@ import {
 	ContestationKind,
 } from '@/services/api/AdminService';
 import { appApiClient } from '@/services/api/AppApiService';
+import { videoApiBase } from '@/services/api/VideoService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { toast } from '@/shared/toast/Toast';
 import { RankBadge } from '@/shared/components/RankBadge';
@@ -224,8 +225,12 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 
 											>
 												{orphan ? (
 													<View style={[styles.tileImage, styles.tileImageMissing]}>
-														<Text style={styles.tileMissingText}>Tâche supprimée</Text>
+														<Text style={styles.tileMissingText}>Média supprimé</Text>
 													</View>
+												) : item.media_kind === 'video' ? (
+													item.video?.has_poster
+														? <AuthenticatedImage url={`${videoApiBase}/${item.video.id}/poster`} style={styles.tileImage} />
+														: <View style={[styles.tileImage, styles.tileImageMissing]}><Text style={styles.tileMissingText}>🎬 Vidéo</Text></View>
 												) : (
 													<AuthenticatedImage
 														url={`/moderation/media/${item.cvat_task_id}/preview`}
@@ -235,7 +240,9 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 
 												)}
 												<View style={styles.tileFooter}>
 													<Text style={styles.tileName} numberOfLines={1}>
-														{item.task?.name ?? `#${item.cvat_task_id}`}
+														{item.media_kind === 'video'
+															? (item.video?.filename ?? `Vidéo #${item.video_id}`)
+															: (item.task?.name ?? `#${item.cvat_task_id}`)}
 													</Text>
 													{kind === 'media' ? (
 														<Text style={styles.tileReason} numberOfLines={2}>

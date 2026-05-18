@@ -11,12 +11,18 @@ export type AppRole = 'admin' | 'moderator' | 'curator' | 'chercheur' | 'annotat
 export type AccountState = 'active' | 'disabled' | 'banned';
 export type ModerationStatus = 'pending' | 'validated' | 'rejected';
 
+export type MediaKind = 'image' | 'video';
+
 export interface ModerationStatusEntry {
-	cvat_task_id: number;
+	media_kind: MediaKind;
+	cvat_task_id: number | null;
+	video_id: number | null;
 	status: ModerationStatus;
 	review_comment: string | null;
 	reviewed_at: string | null;
 }
+
+export interface ContestItem { kind: MediaKind; id: number; }
 
 export interface UserProfileStats {
 	annotations_validated: number;
@@ -115,10 +121,10 @@ export class AppApiService {
 		return resp.data;
 	}
 
-	async contestRejection(ids: number[], message: string): Promise<{ created: number; ignored: number; already_contested?: number }> {
-		const resp = await appApiClient.post<{ created: number; ignored: number; already_contested?: number }>(
+	async contestRejection(items: ContestItem[], message: string): Promise<{ created: number; already_contested?: number }> {
+		const resp = await appApiClient.post<{ created: number; already_contested?: number }>(
 			'/moderation/contest',
-			{ ids, message },
+			{ items, message },
 		);
 		return resp.data;
 	}

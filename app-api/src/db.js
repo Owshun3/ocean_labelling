@@ -52,6 +52,22 @@ async function _createSchema() {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS user_videos (
+      id              SERIAL      PRIMARY KEY,
+      uploader_id     INTEGER     NOT NULL,
+      filename        TEXT        NOT NULL,
+      content_type    TEXT        NOT NULL,
+      size_bytes      BIGINT      NOT NULL DEFAULT 0,
+      duration_seconds DOUBLE PRECISION,
+      width           INTEGER,
+      height          INTEGER,
+      has_poster      BOOLEAN     NOT NULL DEFAULT FALSE,
+      uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      deleted_at      TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_videos_uploader_live
+      ON user_videos(uploader_id) WHERE deleted_at IS NULL;
+
     CREATE TABLE IF NOT EXISTS media_moderation (
       cvat_task_id    INTEGER     PRIMARY KEY,
       uploader_id     INTEGER     NOT NULL,
@@ -73,6 +89,36 @@ async function _createSchema() {
     ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS annotated_jobs_count INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS annotated_jobs_synced_at TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS idx_mm_assigned_curator ON media_moderation (assigned_curator_id) WHERE assigned_curator_id IS NOT NULL;
+
+    -- Polymorphic refactor: media_moderation can describe an image task or a video
+    ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS media_kind TEXT NOT NULL DEFAULT 'image';
+    ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS video_id INTEGER;
+    DO $mm$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE table_name='media_moderation' AND constraint_name='media_moderation_pkey'
+      ) THEN
+        BEGIN
+          ALTER TABLE media_moderation ADD COLUMN id SERIAL;
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END;
+        ALTER TABLE media_moderation DROP CONSTRAINT media_moderation_pkey;
+        ALTER TABLE media_moderation ALTER COLUMN cvat_task_id DROP NOT NULL;
+        ALTER TABLE media_moderation ADD PRIMARY KEY (id);
+      END IF;
+    END $mm$;
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_mm_task  ON media_moderation(cvat_task_id) WHERE cvat_task_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_mm_video ON media_moderation(video_id)     WHERE video_id IS NOT NULL;
+    DO $mmx$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_mm_kind') THEN
+        ALTER TABLE media_moderation ADD CONSTRAINT chk_mm_kind
+          CHECK (media_kind IN ('image', 'video'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_mm_xor') THEN
+        ALTER TABLE media_moderation ADD CONSTRAINT chk_mm_xor
+          CHECK ((cvat_task_id IS NULL) <> (video_id IS NULL));
+      END IF;
+    END $mmx$;
 
     CREATE TABLE IF NOT EXISTS user_bans (
       id            SERIAL      PRIMARY KEY,
@@ -158,6 +204,22 @@ async function _createSchema() {
     CREATE INDEX IF NOT EXISTS idx_contestations_contester
       ON moderation_contestations(contester_id);
 
+    ALTER TABLE moderation_contestations ADD COLUMN IF NOT EXISTS media_kind TEXT NOT NULL DEFAULT 'image';
+    ALTER TABLE moderation_contestations ADD COLUMN IF NOT EXISTS video_id   INTEGER;
+    ALTER TABLE moderation_contestations ALTER COLUMN cvat_task_id DROP NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_contestations_video
+      ON moderation_contestations(video_id) WHERE video_id IS NOT NULL;
+    DO $mcx$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_mc_kind') THEN
+        ALTER TABLE moderation_contestations ADD CONSTRAINT chk_mc_kind
+          CHECK (media_kind IN ('image', 'video'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_mc_xor') THEN
+        ALTER TABLE moderation_contestations ADD CONSTRAINT chk_mc_xor
+          CHECK ((cvat_task_id IS NULL) <> (video_id IS NULL));
+      END IF;
+    END $mcx$;
+
     CREATE TABLE IF NOT EXISTS media_metadata (
       cvat_task_id  INTEGER     PRIMARY KEY,
       gps_latitude  DOUBLE PRECISION,
@@ -170,6 +232,10 @@ async function _createSchema() {
       raw_exif      JSONB,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE media_metadata ADD COLUMN IF NOT EXISTS source_video_id      INTEGER REFERENCES user_videos(id) ON DELETE SET NULL;
+    ALTER TABLE media_metadata ADD COLUMN IF NOT EXISTS source_frame_time_ms INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_media_metadata_source_video
+      ON media_metadata(source_video_id) WHERE source_video_id IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS curator_certifications (
       id                       SERIAL      PRIMARY KEY,

@@ -148,13 +148,16 @@ async function countShapesInJob(jobId, token) {
 router.get('/feed', requireAuth, async (req, res) => {
   const me = req.cvatUser.id;
   try {
-    // Pour le studio annotateur : seuls les médias passés en modération sont annotables.
-    // Mes pending/rejected n'apparaissent pas dans "Mes médias" du studio (ils sont visibles
-    // dans /media qui est la vraie page de suivi modération).
+    // Pour le studio annotateur :
+    // - mes médias en attente OU validés peuvent être annotés (mes frames extraites
+    //   apparaissent dès l'upload, avant validation modérateur)
+    // - le mur communautaire ne montre que les médias validés (filtré plus bas)
+    // - les rejetés ne sont jamais annotables (ils n'apparaissent pas)
     const { rows } = await pool.query(`
       SELECT cvat_task_id, uploader_id, status, created_at, curator_validated_at
       FROM media_moderation
-      WHERE status = 'validated'
+      WHERE media_kind = 'image'
+        AND status IN ('pending', 'validated')
     `, []);
     if (rows.length === 0) return res.json({ own: [], community: [] });
 

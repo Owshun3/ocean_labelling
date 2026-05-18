@@ -27,7 +27,9 @@ const styles = StyleSheet.create({
 	},
 	content: {
 		flex: 1,
-		overflow: 'hidden',
+		// 'auto' n'est pas supporté côté RN natif mais RN-Web le passe en CSS overflow:auto
+		// → scrollbar quand le contenu dépasse, sinon comportement normal.
+		overflow: 'auto' as any,
 		paddingHorizontal: SPACING.lg,
 	}
 });

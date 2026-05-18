@@ -46,7 +46,7 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 		if (submitting) return;
 		setSubmitting(true);
 		try {
-			await service.validateMedia([taskId]);
+			await service.validateMedia([{ kind: 'image', id: taskId }]);
 			toast.success('Média validé.');
 			goBackToUser();
 		} catch (err: any) {
@@ -68,7 +68,7 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 		}
 		setSubmitting(true);
 		try {
-			await service.rejectMedia([taskId], rejectComment.trim());
+			await service.rejectMedia([{ kind: 'image', id: taskId }], rejectComment.trim());
 			toast.success('Média rejeté.');
 			if (proposeBanAfterReject()) {
 				setSubmitting(false);

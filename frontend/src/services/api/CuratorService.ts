@@ -106,6 +106,10 @@ export interface ProposalsPayload {
     camera_model: string | null;
     image_width: number | null;
     image_height: number | null;
+    source_video_id: number | null;
+    source_frame_time_ms: number | null;
+    source_video_filename: string | null;
+    source_video_deleted: boolean | null;
   } | null;
   jobs: Array<{ id: number; state: string; stage: string; assignee: { id: number; username: string } }>;
   proposals: Proposal[];

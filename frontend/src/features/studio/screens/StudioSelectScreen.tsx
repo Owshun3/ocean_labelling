@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter, Href } from 'expo-router';
 import { AnnotationState, FeedTask, StudioFeed, StudioService } from '@/services/api/StudioService';
 import { StudioFeedTile } from '../components/StudioFeedTile';
 import { ContestModal } from '@/features/media/components/ContestModal';
+import { MyVideosSection } from '@/features/media/components/MyVideosSection';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -113,6 +114,7 @@ export const StudioSelectScreen: React.FC = () => {
 			</View>
 
 			<View style={styles.columns}>
+				<MyVideosSection mode="studio" />
 				<View style={styles.ownCol}>
 					<View style={styles.colHeader}>
 						<View style={[styles.colDot, { backgroundColor: COLORS.primary }]} />

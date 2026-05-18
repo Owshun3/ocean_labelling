@@ -400,6 +400,7 @@ location = /app-api/auth/login {
 
 **h. Sauvegardes**
 - Cron quotidien `pg_dump` sur le volume `pg_data`, rotation 30 jours, stockage hors VM.
+- Cron quotidien sur le volume `ocean_videos` (vidéos brutes uploadées) : `docker run --rm -v cvat_ocean_videos:/data -v /backup:/backup alpine tar czf /backup/videos-$(date +%F).tar.gz -C /data .`. Pousser hors VM. Volume créé au boot par docker-compose.
 
 **i. Tests à effectuer avant ouverture publique**
 
@@ -410,6 +411,10 @@ Liste minimale à valider en pré-prod :
 - [ ] Welcome screen (vérifier `hasSeenWelcome` persisté en BD)
 - [ ] Upload de média (test critique — le secure context doit autoriser `expo-image-picker`)
 - [ ] Studio annotation : claim job, tracer une bbox, espèce, valider
+- [ ] Upload vidéo (MP4 < `upload_max_bytes`) + poster auto-extrait + apparaît dans Mes vidéos
+- [ ] Modération vidéo : moderator joue la vidéo dans le détail (lecteur HTML5 + Range), valide ou rejette
+- [ ] Extraction de frames : ouvrir une vidéo validée → mettre en pause → bouton « Extraire » → multi-sélection → « Sauvegarder » → frames apparaissent dans Mes photos avec `source_video_id` rempli
+- [ ] EXIF strip : uploader une photo avec GPS embarqué → vérifier que le fichier servi par `/api/tasks/X/data?type=frame` ne contient plus aucun EXIF (`exiftool` sur le download)
 - [ ] Modération : valider, rejeter avec motif, bannir un compte
 - [ ] Contestation : depuis un compte non-admin, contester un rejet, puis depuis admin résoudre overturn + uphold
 - [ ] Mode maintenance : activer depuis admin → vérifier que `/auth/login` reste joignable depuis un autre navigateur (sinon site verrouillé)
@@ -504,6 +509,7 @@ curl -I http://<IP>:8888/api/server/about
 
 - [ ] Configurer les sauvegardes automatiques PostgreSQL (cron `pg_dump` quotidien + rotation)
 - [ ] Vérifier que le volume `pg_data` est sur un disque persistant (pas un tmpfs)
+- [ ] Vérifier que le volume `ocean_videos` (vidéos brutes uploadées par les annotateurs) est sur un disque persistant ; prévoir l'espace = `upload_max_bytes × (estimation nombre vidéos actives)`
 - [ ] Passer `restart: unless-stopped` → `restart: always` sur tous les services
 - [ ] Vérifier que Docker et Docker Compose sont installés sur la VM Apache
 

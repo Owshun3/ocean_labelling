@@ -4,10 +4,11 @@ import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { CvatMediaService } from '@/services/api/CvatMediaService';
-import { AppApiService, ModerationStatus, ModerationStatusEntry } from '@/services/api/AppApiService';
+import { AppApiService, ContestItem, ModerationStatus, ModerationStatusEntry } from '@/services/api/AppApiService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { ImageLightbox } from '@/shared/components/images/ImageLightbox';
 import { ContestModal } from '../components/ContestModal';
+import { MyVideosSection } from '../components/MyVideosSection';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -55,7 +56,9 @@ export const MediaListScreen: React.FC = () => {
 			appService.getMyModerationStatuses().catch(() => [] as ModerationStatusEntry[]),
 		]);
 		const statusByTask = new Map<number, ModerationStatusEntry>();
-		moderationEntries.forEach((e) => statusByTask.set(e.cvat_task_id, e));
+		moderationEntries.forEach((e) => {
+			if (e.media_kind === 'image' && e.cvat_task_id != null) statusByTask.set(e.cvat_task_id, e);
+		});
 
 		const merged: TaskWithStatus[] = cvatTasks.map((t: any) => {
 			const entry = statusByTask.get(t.id);
@@ -164,7 +167,8 @@ export const MediaListScreen: React.FC = () => {
 		setSubmitting(true);
 		const count = selected.size;
 		try {
-			const result = await appService.contestRejection(Array.from(selected), message);
+			const items: ContestItem[] = Array.from(selected).map((id) => ({ kind: 'image', id }));
+			const result = await appService.contestRejection(items, message);
 			const alreadyContested = result.already_contested ?? 0;
 			if (result.created === 0 && alreadyContested > 0) {
 				toast.error(alreadyContested === 1
@@ -225,7 +229,7 @@ export const MediaListScreen: React.FC = () => {
 
 			<View style={styles.toolbar}>
 				<Text style={styles.toolbarText}>
-					{tasks.length} média{tasks.length > 1 ? 's' : ''} · {selectionCount} sélectionné{selectionCount > 1 ? 's' : ''}
+					Photos : {tasks.length} · {selectionCount} sélectionnée{selectionCount > 1 ? 's' : ''}
 				</Text>
 				<View style={styles.toolbarActions}>
 					<Pressable
@@ -255,37 +259,43 @@ export const MediaListScreen: React.FC = () => {
 				<Text style={styles.legendItem}>Double-clic → aperçu</Text>
 			</View>
 
-			{tasks.length === 0 ? (
-				<View style={styles.emptyState}>
-					<Text style={styles.emptyText}>Aucun média trouvé.</Text>
-				</View>
-			) : (
-				<View style={styles.columns}>
-					{SECTION_ORDER.map((status, idx) => {
-						const list = grouped[status];
-						return (
-							<React.Fragment key={status}>
-								<View style={styles.column}>
-									<View style={styles.columnHeader}>
-										<View style={[styles.columnDot, { backgroundColor: SECTION_COLORS[status] }]} />
-										<Text style={styles.columnTitle}>{SECTION_LABELS[status]}</Text>
-										<View style={styles.columnCountWrap}>
-											<Text style={styles.columnCount}>{list.length}</Text>
+			<View style={styles.mainRow}>
+				<MyVideosSection mode="media" />
+				<View style={styles.dividerWide} />
+				<View style={styles.photosWrap}>
+					{tasks.length === 0 ? (
+						<View style={styles.emptyState}>
+							<Text style={styles.emptyText}>Aucune photo téléversée pour l'instant.</Text>
+						</View>
+					) : (
+						<View style={styles.columns}>
+							{SECTION_ORDER.map((status, idx) => {
+								const list = grouped[status];
+								return (
+									<React.Fragment key={status}>
+										<View style={styles.column}>
+											<View style={styles.columnHeader}>
+												<View style={[styles.columnDot, { backgroundColor: SECTION_COLORS[status] }]} />
+												<Text style={styles.columnTitle}>{SECTION_LABELS[status]}</Text>
+												<View style={styles.columnCountWrap}>
+													<Text style={styles.columnCount}>{list.length}</Text>
+												</View>
+											</View>
+											<View style={[styles.columnAccent, { backgroundColor: SECTION_COLORS[status] }]} />
+											<ScrollView contentContainerStyle={styles.tileGrid}>
+												{list.length === 0 ? (
+													<Text style={styles.columnEmpty}>Aucun média.</Text>
+												) : list.map(renderTile)}
+											</ScrollView>
 										</View>
-									</View>
-									<View style={[styles.columnAccent, { backgroundColor: SECTION_COLORS[status] }]} />
-									<ScrollView contentContainerStyle={styles.tileGrid}>
-										{list.length === 0 ? (
-											<Text style={styles.columnEmpty}>Aucun média.</Text>
-										) : list.map(renderTile)}
-									</ScrollView>
-								</View>
-								{idx < SECTION_ORDER.length - 1 ? <View style={styles.divider} /> : null}
-							</React.Fragment>
-						);
-					})}
+										{idx < SECTION_ORDER.length - 1 ? <View style={styles.divider} /> : null}
+									</React.Fragment>
+								);
+							})}
+						</View>
+					)}
 				</View>
-			)}
+			</View>
 
 			<ContestModal
 				visible={contestOpen}
@@ -330,6 +340,10 @@ const styles = StyleSheet.create({
 	legendRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: SPACING.xs, marginBottom: SPACING.md },
 	legendItem: { fontSize: 12, color: COLORS.text.secondary },
 	legendDot: { fontSize: 12, color: COLORS.text.placeholder },
+
+	mainRow: { flex: 1, flexDirection: 'row', alignItems: 'stretch' },
+	dividerWide: { width: SPACING.lg },
+	photosWrap: { flex: 1 },
 
 	emptyState: { padding: SPACING.xl, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed', borderRadius: 8 },
 	emptyText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },

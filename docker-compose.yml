@@ -39,6 +39,9 @@ services:
       - DATABASE_URL=postgres://ocean:${POSTGRES_PASSWORD}@postgres:5432/ocean_labelling
       - CVAT_ADMIN_USER=${CVAT_ADMIN_USER:-admin}
       - CVAT_ADMIN_PASS=${CVAT_ADMIN_PASS:?Créer un fichier .env avec CVAT_ADMIN_PASS (voir .env.example)}
+      - VIDEO_STORAGE_ROOT=/data/videos
+    volumes:
+      - ocean_videos:/data/videos
     networks:
       - default
       - cvat
@@ -65,3 +68,4 @@ services:
 
 volumes:
   pg_data:
+  ocean_videos:

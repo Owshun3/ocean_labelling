@@ -68,7 +68,7 @@ export const ModerationQueueScreen: React.FC = () => {
 									{item.username ? `${item.username}#${item.uploader_id}` : `#${item.uploader_id}`}
 								</Text>
 								<Text style={styles.meta}>
-									{item.pending_count} média(s) · plus ancien {formatRelativeDate(item.oldest)}
+									{item.pending_count} média(s) ({(item.image_count ?? 0)} 🖼 · {(item.video_count ?? 0)} 🎥) · plus ancien {formatRelativeDate(item.oldest)}
 								</Text>
 							</View>
 							<Pressable

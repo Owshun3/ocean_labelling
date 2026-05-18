@@ -23,6 +23,7 @@ app.use('/species', require('./routes/species'));
 app.use('/studio', require('./routes/studio'));
 app.use('/settings', require('./routes/settings'));
 app.use('/media', require('./routes/media-metadata'));
+app.use('/videos', require('./routes/videos'));
 
 app.use((_err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });

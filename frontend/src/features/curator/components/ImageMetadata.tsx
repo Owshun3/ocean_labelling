@@ -20,6 +20,26 @@ function fmtGps(lat: number | null | undefined, lng: number | null | undefined):
 	return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
 
+function fmtFrameTime(ms: number | null | undefined): string {
+	if (ms == null || ms < 0) return 'Non disponible';
+	const m = Math.floor(ms / 60000);
+	const s = Math.floor((ms % 60000) / 1000);
+	const cs = Math.floor((ms % 1000) / 10);
+	return `${m}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+}
+
+function fmtSourceVideo(meta: ProposalsPayload['metadata']): string {
+	if (!meta || meta.source_video_id == null) return 'Non disponible';
+	if (meta.source_video_deleted) return 'Supprimée';
+	return meta.source_video_filename || `Vidéo #${meta.source_video_id}`;
+}
+
+function fmtSourceFrame(meta: ProposalsPayload['metadata']): string {
+	if (!meta || meta.source_video_id == null) return 'Non disponible';
+	if (meta.source_video_deleted) return 'Supprimée';
+	return fmtFrameTime(meta.source_frame_time_ms);
+}
+
 export const ImageMetadata: React.FC<Props> = ({ metadata, task }) => (
 	<View style={styles.wrap}>
 		<Text style={styles.heading}>Métadonnées image</Text>
@@ -31,6 +51,8 @@ export const ImageMetadata: React.FC<Props> = ({ metadata, task }) => (
 		     value={metadata?.image_width && metadata?.image_height ? `${metadata.image_width} × ${metadata.image_height} px` : 'Non disponible'} />
 		<Row label="Appareil"
 		     value={[metadata?.camera_make, metadata?.camera_model].filter(Boolean).join(' ') || 'Non disponible'} />
+		<Row label="Vidéo d'origine" value={fmtSourceVideo(metadata)} />
+		<Row label="Frame"           value={fmtSourceFrame(metadata)} />
 	</View>
 );
 

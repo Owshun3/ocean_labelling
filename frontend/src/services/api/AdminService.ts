@@ -32,10 +32,20 @@ export interface ContestationModerator {
 
 export interface ContestationItem {
 	contestation_id: number;
-	cvat_task_id: number;
+	media_kind?: 'image' | 'video';
+	cvat_task_id: number | null;
+	video_id?: number | null;
 	contested_at: string;
 	reviewed_at: string | null;
 	task: any | null;
+	video?: {
+		id: number;
+		filename: string;
+		duration_seconds: number | null;
+		has_poster: boolean;
+		width: number | null;
+		height: number | null;
+	} | null;
 	reviewer: ContestationModerator | null;
 	contester?: ContestationModerator | null;
 	// Media-rejection only

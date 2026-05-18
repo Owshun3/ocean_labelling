@@ -33,6 +33,38 @@ async function extractExif(asset: any): Promise<{
 	}
 }
 
+// EXIF strip: re-encode via canvas. Removes ALL metadata (GPS, camera, etc.).
+// Only runs on web with a File asset. Returns the original asset unchanged on failure.
+async function stripExifFromAsset(asset: any): Promise<any> {
+	if (Platform.OS !== 'web') return asset;
+	const file: File | null = asset?.file instanceof File ? asset.file : null;
+	if (!file || !/^image\//.test(file.type)) return asset;
+
+	try {
+		const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+			const url = URL.createObjectURL(file);
+			const im = new Image();
+			im.onload  = () => { URL.revokeObjectURL(url); resolve(im); };
+			im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+			im.src = url;
+		});
+		const c = document.createElement('canvas');
+		c.width  = img.naturalWidth;
+		c.height = img.naturalHeight;
+		const ctx = c.getContext('2d');
+		if (!ctx) return asset;
+		ctx.drawImage(img, 0, 0);
+		const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.92));
+		if (!blob) return asset;
+		const newName = (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg';
+		const stripped = new File([blob], newName, { type: 'image/jpeg' });
+		return { ...asset, file: stripped, fileSize: stripped.size, mimeType: 'image/jpeg' };
+	} catch (err) {
+		console.warn('[upload] EXIF strip failed, sending original', err);
+		return asset;
+	}
+}
+
 export interface UploadProgress {
 	current: number;
 	total: number;
@@ -59,10 +91,13 @@ export const useMediaUpload = () => {
 			const metaService = new MediaMetadataService();
 
 			for (let i = 0; i < files.length; i++) {
-				const exifPromise = extractExif(files[i]);
+				const original = files[i];
+				const exifPromise = extractExif(original);
+				const strippedAsset = await stripExifFromAsset(original);
+
 				const uploadNum = await cvat.getNextUploadNumber();
 				const baseName = `${self.username}_${date}_${String(uploadNum).padStart(4, '0')}`;
-				const taskId = await cvat.uploadMedia(baseName, [files[i]]);
+				const taskId = await cvat.uploadMedia(baseName, [strippedAsset]);
 				await cvat.waitForTaskData(taskId);
 				try {
 					await app.recordUpload(taskId, baseName, 1);

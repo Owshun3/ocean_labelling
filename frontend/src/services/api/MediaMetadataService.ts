@@ -16,6 +16,10 @@ export interface MediaMetadata {
 	camera_model:  string | null;
 	image_width:   number | null;
 	image_height:  number | null;
+	source_video_id:       number | null;
+	source_frame_time_ms:  number | null;
+	source_video_filename: string | null;
+	source_video_deleted:  boolean | null;
 	created_at?:   string;
 }
 
@@ -28,6 +32,8 @@ export interface MetadataInput {
 	image_width?:   number | null;
 	image_height?:  number | null;
 	raw_exif?:      Record<string, unknown> | null;
+	source_video_id?:      number | null;
+	source_frame_time_ms?: number | null;
 }
 
 export class MediaMetadataService {

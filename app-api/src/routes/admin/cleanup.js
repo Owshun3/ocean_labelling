@@ -24,7 +24,8 @@ router.get('/status', async (_req, res) => {
         AND mm.binaries_deleted_at IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM moderation_contestations c
-          WHERE c.cvat_task_id = mm.cvat_task_id
+          WHERE c.media_kind = mm.media_kind
+            AND COALESCE(c.cvat_task_id, c.video_id) = COALESCE(mm.cvat_task_id, mm.video_id)
             AND c.resolved_at IS NULL
         )
     `);

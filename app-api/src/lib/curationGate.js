@@ -72,7 +72,8 @@ async function recomputeFromJob(jobId) {
 async function refreshAllPending() {
   const { rows } = await pool.query(`
     SELECT cvat_task_id FROM media_moderation
-    WHERE status = 'validated'
+    WHERE media_kind = 'image'
+      AND status = 'validated'
       AND curator_validated_at IS NULL
       AND binaries_deleted_at IS NULL
   `);

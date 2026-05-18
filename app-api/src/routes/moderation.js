@@ -66,6 +66,21 @@ async function fetchAppRoles(userIds) {
   return map;
 }
 
+function normalizeItems(body) {
+  const out = { image: [], video: [] };
+  const items = Array.isArray(body?.items) ? body.items : null;
+  if (items) {
+    for (const it of items) {
+      if (!it || !Number.isInteger(it.id) || it.id <= 0) continue;
+      if (it.kind === 'image' || it.kind === 'video') out[it.kind].push(it.id);
+    }
+    return out;
+  }
+  const legacy = Array.isArray(body?.ids) ? body.ids : null;
+  if (legacy) out.image = legacy.filter((n) => Number.isInteger(n) && n > 0);
+  return out;
+}
+
 router.get('/bans/check', async (req, res) => {
   const username = String(req.query.username || '').trim();
   if (!username) return res.status(400).json({ error: 'username required' });
@@ -114,52 +129,78 @@ router.get('/bans/check', async (req, res) => {
 });
 
 router.post('/contest', requireAuth, async (req, res) => {
-  const ids = Array.isArray(req.body?.ids)
-    ? req.body.ids.filter((n) => Number.isInteger(n) && n > 0)
-    : [];
+  const { image: imageIds, video: videoIds } = normalizeItems(req.body);
   const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 2000) : '';
-  if (ids.length === 0) return res.status(400).json({ error: 'ids required (non-empty integer array)' });
-  if (!message)         return res.status(400).json({ error: 'message required' });
+  if (imageIds.length + videoIds.length === 0) return res.status(400).json({ error: 'items required' });
+  if (!message) return res.status(400).json({ error: 'message required' });
 
   try {
-    const { rows: eligible } = await pool.query(`
-      SELECT cvat_task_id FROM media_moderation
-      WHERE cvat_task_id = ANY($1)
-        AND uploader_id = $2
-        AND status = 'rejected'
-    `, [ids, req.cvatUser.id]);
+    const eligible = { image: [], video: [] };
 
-    if (eligible.length === 0) {
+    if (imageIds.length) {
+      const { rows } = await pool.query(`
+        SELECT cvat_task_id FROM media_moderation
+        WHERE cvat_task_id = ANY($1) AND media_kind = 'image'
+          AND uploader_id = $2 AND status = 'rejected'
+      `, [imageIds, req.cvatUser.id]);
+      eligible.image = rows.map((r) => r.cvat_task_id);
+    }
+    if (videoIds.length) {
+      const { rows } = await pool.query(`
+        SELECT video_id FROM media_moderation
+        WHERE video_id = ANY($1) AND media_kind = 'video'
+          AND uploader_id = $2 AND status = 'rejected'
+      `, [videoIds, req.cvatUser.id]);
+      eligible.video = rows.map((r) => r.video_id);
+    }
+
+    if (eligible.image.length + eligible.video.length === 0) {
       return res.status(403).json({ error: 'Aucun média éligible à la contestation (tu dois être uploadeur et le média doit être rejeté).' });
     }
 
-    const eligibleIds = eligible.map((r) => r.cvat_task_id);
-
-    const { rows: already } = await pool.query(`
-      SELECT DISTINCT cvat_task_id FROM moderation_contestations
-      WHERE cvat_task_id = ANY($1)
-    `, [eligibleIds]);
-    const alreadyContestedIds = new Set(already.map((r) => r.cvat_task_id));
-    const toCreate = eligibleIds.filter((id) => !alreadyContestedIds.has(id));
-
-    if (toCreate.length === 0) {
-      return res.status(409).json({
-        error: 'Tous les médias sélectionnés ont déjà été contestés.',
-        already_contested: eligibleIds.length,
-      });
+    const already = { image: new Set(), video: new Set() };
+    if (eligible.image.length) {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT cvat_task_id FROM moderation_contestations
+         WHERE media_kind = 'image' AND cvat_task_id = ANY($1)`,
+        [eligible.image],
+      );
+      rows.forEach((r) => already.image.add(r.cvat_task_id));
+    }
+    if (eligible.video.length) {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT video_id FROM moderation_contestations
+         WHERE media_kind = 'video' AND video_id = ANY($1)`,
+        [eligible.video],
+      );
+      rows.forEach((r) => already.video.add(r.video_id));
     }
 
-    await Promise.all(toCreate.map((id) =>
-      pool.query(`
-        INSERT INTO moderation_contestations (cvat_task_id, contester_id, message)
-        VALUES ($1, $2, $3)
-      `, [id, req.cvatUser.id, message])
-    ));
+    const toCreate = {
+      image: eligible.image.filter((id) => !already.image.has(id)),
+      video: eligible.video.filter((id) => !already.video.has(id)),
+    };
+    const totalCreate = toCreate.image.length + toCreate.video.length;
+    if (totalCreate === 0) {
+      return res.status(409).json({ error: 'Tous les médias sélectionnés ont déjà été contestés.' });
+    }
+
+    await Promise.all([
+      ...toCreate.image.map((id) => pool.query(
+        `INSERT INTO moderation_contestations (media_kind, cvat_task_id, contester_id, message)
+         VALUES ('image', $1, $2, $3)`,
+        [id, req.cvatUser.id, message],
+      )),
+      ...toCreate.video.map((id) => pool.query(
+        `INSERT INTO moderation_contestations (media_kind, video_id, contester_id, message)
+         VALUES ('video', $1, $2, $3)`,
+        [id, req.cvatUser.id, message],
+      )),
+    ]);
 
     res.json({
-      created:           toCreate.length,
-      already_contested: alreadyContestedIds.size,
-      ignored:           ids.length - eligibleIds.length,
+      created: totalCreate,
+      already_contested: already.image.size + already.video.size,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -169,7 +210,7 @@ router.post('/contest', requireAuth, async (req, res) => {
 router.get('/my-statuses', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT cvat_task_id, status, review_comment, reviewed_at
+      SELECT media_kind, cvat_task_id, video_id, status, review_comment, reviewed_at
       FROM media_moderation
       WHERE uploader_id = $1
     `, [req.cvatUser.id]);
@@ -182,7 +223,7 @@ router.get('/my-statuses', requireAuth, async (req, res) => {
 router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
   try {
     const { rows: entries } = await pool.query(`
-      SELECT mm.cvat_task_id, mm.uploader_id, mm.created_at
+      SELECT mm.media_kind, mm.cvat_task_id, mm.video_id, mm.uploader_id, mm.created_at
       FROM media_moderation mm
       WHERE mm.status = 'pending'
         AND NOT EXISTS (
@@ -194,29 +235,30 @@ router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
         )
       ORDER BY mm.created_at ASC
     `);
-
     if (entries.length === 0) return res.json({ results: [] });
 
     const token = await getAdminToken();
-    const allTaskIds = entries.map((e) => e.cvat_task_id);
+    const imageTaskIds = entries.filter((e) => e.media_kind === 'image').map((e) => e.cvat_task_id);
+    const videoIds     = entries.filter((e) => e.media_kind === 'video').map((e) => e.video_id);
+
     const validTaskIds = new Set();
-    await Promise.all(allTaskIds.map(async (id) => {
-      try {
-        await cvatGet(`/tasks/${id}`, token);
-        validTaskIds.add(id);
-      } catch (err) {
-        if (err.response?.status !== 404) {
-          console.warn(`[moderation] queue: failed to fetch task ${id}:`, err.message);
-        }
-      }
+    await Promise.all(imageTaskIds.map(async (id) => {
+      try { await cvatGet(`/tasks/${id}`, token); validTaskIds.add(id); }
+      catch (err) { if (err.response?.status !== 404) console.warn(`[moderation] queue task ${id}:`, err.message); }
     }));
 
-    const orphans = allTaskIds.filter((id) => !validTaskIds.has(id));
-    if (orphans.length > 0) {
-      console.warn(`[moderation] queue: ${orphans.length} pending row(s) without matching CVAT task:`, orphans);
+    const validVideoIds = new Set();
+    if (videoIds.length) {
+      const { rows } = await pool.query(
+        'SELECT id FROM user_videos WHERE id = ANY($1) AND deleted_at IS NULL',
+        [videoIds],
+      );
+      rows.forEach((r) => validVideoIds.add(r.id));
     }
 
-    const validEntries = entries.filter((e) => validTaskIds.has(e.cvat_task_id));
+    const validEntries = entries.filter((e) =>
+      e.media_kind === 'image' ? validTaskIds.has(e.cvat_task_id) : validVideoIds.has(e.video_id)
+    );
     if (validEntries.length === 0) return res.json({ results: [] });
 
     const grouped = new Map();
@@ -224,9 +266,16 @@ router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
       const g = grouped.get(e.uploader_id);
       if (g) {
         g.pending_count += 1;
+        if (e.media_kind === 'video') g.video_count += 1; else g.image_count += 1;
         if (e.created_at < g.oldest) g.oldest = e.created_at;
       } else {
-        grouped.set(e.uploader_id, { uploader_id: e.uploader_id, pending_count: 1, oldest: e.created_at });
+        grouped.set(e.uploader_id, {
+          uploader_id: e.uploader_id,
+          pending_count: 1,
+          image_count: e.media_kind === 'image' ? 1 : 0,
+          video_count: e.media_kind === 'video' ? 1 : 0,
+          oldest: e.created_at,
+        });
       }
     }
     const grouping = Array.from(grouped.values()).sort((a, b) => new Date(a.oldest) - new Date(b.oldest));
@@ -234,12 +283,9 @@ router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
 
     const usersById = {};
     await Promise.all(userIds.map(async (id) => {
-      try {
-        const resp = await cvatGet(`/users/${id}`, token);
-        usersById[id] = resp.data;
-      } catch (_) {}
+      try { const resp = await cvatGet(`/users/${id}`, token); usersById[id] = resp.data; }
+      catch (_) {}
     }));
-
     const rolesById = await fetchAppRoles(userIds);
 
     const results = grouping.map((g) => ({
@@ -247,6 +293,8 @@ router.get('/queue', requireModeratorOrAbove, async (_req, res) => {
       username: usersById[g.uploader_id]?.username || null,
       role: rolesById[g.uploader_id] || 'annotator',
       pending_count: g.pending_count,
+      image_count: g.image_count,
+      video_count: g.video_count,
       oldest: g.oldest,
     }));
 
@@ -297,7 +345,7 @@ router.get('/users/:id/media', requireModeratorOrAbove, async (req, res) => {
 
   try {
     const { rows } = await pool.query(`
-      SELECT cvat_task_id, created_at
+      SELECT media_kind, cvat_task_id, video_id, created_at
       FROM media_moderation
       WHERE uploader_id = $1 AND status = 'pending'
       ORDER BY created_at ASC
@@ -306,7 +354,6 @@ router.get('/users/:id/media', requireModeratorOrAbove, async (req, res) => {
     const token = await getAdminToken();
     const userResp = await cvatGet(`/users/${userId}`, token);
     const rolesById = await fetchAppRoles([userId]);
-
     const actionsTotals = await fetchActionsTotals([userId]);
     const userPayload = {
       id: userResp.data.id,
@@ -320,31 +367,40 @@ router.get('/users/:id/media', requireModeratorOrAbove, async (req, res) => {
 
     if (rows.length === 0) return res.json({ user: userPayload, results: [] });
 
-    const ids = rows.map((r) => r.cvat_task_id);
+    const imageIds = rows.filter((r) => r.media_kind === 'image').map((r) => r.cvat_task_id);
+    const videoIds = rows.filter((r) => r.media_kind === 'video').map((r) => r.video_id);
+
     const tasksById = {};
-    await Promise.all(ids.map(async (id) => {
-      try {
-        const r = await cvatGet(`/tasks/${id}`, token);
-        tasksById[id] = r.data;
-      } catch (err) {
-        if (err.response?.status !== 404) {
-          console.warn(`[moderation] failed to fetch task ${id}:`, err.message);
-        }
-      }
+    await Promise.all(imageIds.map(async (id) => {
+      try { const r = await cvatGet(`/tasks/${id}`, token); tasksById[id] = r.data; }
+      catch (err) { if (err.response?.status !== 404) console.warn(`[moderation] task ${id}:`, err.message); }
     }));
 
-    const orphans = ids.filter((id) => !tasksById[id]);
-    if (orphans.length > 0) {
-      console.warn(`[moderation] ${orphans.length} pending media row(s) without matching CVAT task for user ${userId}:`, orphans);
+    let videosById = {};
+    if (videoIds.length) {
+      const { rows: vs } = await pool.query(
+        `SELECT id, filename, content_type, size_bytes, duration_seconds, width, height, has_poster, uploaded_at
+         FROM user_videos WHERE id = ANY($1) AND deleted_at IS NULL`,
+        [videoIds],
+      );
+      videosById = Object.fromEntries(vs.map((v) => [v.id, v]));
     }
 
     const results = rows
-      .map((r) => ({
-        cvat_task_id: r.cvat_task_id,
-        submitted_at: r.created_at,
-        task: tasksById[r.cvat_task_id] || null,
-      }))
-      .filter((r) => r.task);
+      .map((r) => r.media_kind === 'image'
+        ? {
+            kind: 'image',
+            cvat_task_id: r.cvat_task_id,
+            submitted_at: r.created_at,
+            task: tasksById[r.cvat_task_id] || null,
+          }
+        : {
+            kind: 'video',
+            video_id: r.video_id,
+            submitted_at: r.created_at,
+            video: videosById[r.video_id] || null,
+          })
+      .filter((r) => (r.kind === 'image' ? r.task : r.video));
 
     res.json({ user: userPayload, results });
   } catch (err) {
@@ -358,7 +414,7 @@ router.get('/media/:taskId', requireModeratorOrAbove, async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM media_moderation WHERE cvat_task_id = $1',
+      "SELECT * FROM media_moderation WHERE media_kind='image' AND cvat_task_id = $1",
       [taskId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'media not found' });
@@ -387,45 +443,122 @@ router.get('/media/:taskId', requireModeratorOrAbove, async (req, res) => {
   }
 });
 
-router.post('/media/validate', requireModeratorOrAbove, async (req, res) => {
-  const ids = Array.isArray(req.body?.ids)
-    ? req.body.ids.filter((n) => Number.isInteger(n) && n > 0)
-    : [];
-  if (ids.length === 0) return res.status(400).json({ error: 'ids required (non-empty integer array)' });
+router.get('/video/:videoId', requireModeratorOrAbove, async (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!Number.isFinite(videoId)) return res.status(400).json({ error: 'invalid video id' });
 
   try {
-    const { rowCount } = await pool.query(`
-      UPDATE media_moderation
-      SET status = 'validated', reviewed_by = $1, reviewed_at = NOW(), review_comment = NULL
-      WHERE cvat_task_id = ANY($2) AND status = 'pending'
-    `, [req.cvatUser.id, ids]);
-    if (rowCount > 0) recordAction(req.cvatUser.id, 'media.validated', { payload: { task_ids: ids, count: rowCount } });
-    res.json({ updated: rowCount });
+    const { rows: mmRows } = await pool.query(
+      "SELECT * FROM media_moderation WHERE media_kind='video' AND video_id = $1",
+      [videoId],
+    );
+    if (mmRows.length === 0) return res.status(404).json({ error: 'media not found' });
+    const moderation = mmRows[0];
+
+    const { rows: videoRows } = await pool.query(
+      'SELECT * FROM user_videos WHERE id = $1 AND deleted_at IS NULL',
+      [videoId],
+    );
+    if (videoRows.length === 0) return res.status(404).json({ error: 'video not found' });
+
+    const token = await getAdminToken();
+    const userResp = await cvatGet(`/users/${moderation.uploader_id}`, token);
+    const rolesById = await fetchAppRoles([moderation.uploader_id]);
+
+    res.json({
+      moderation,
+      video: videoRows[0],
+      uploader: {
+        id: userResp.data.id,
+        username: userResp.data.username,
+        email: userResp.data.email,
+        role: rolesById[moderation.uploader_id] || 'annotator',
+        is_active: userResp.data.is_active,
+        date_joined: userResp.data.date_joined,
+      },
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.response?.status ?? 502).json({ error: err.response?.data ?? err.message });
   }
 });
 
+router.post('/media/validate', requireModeratorOrAbove, async (req, res) => {
+  const { image: imageIds, video: videoIds } = normalizeItems(req.body);
+  if (imageIds.length + videoIds.length === 0) return res.status(400).json({ error: 'items required' });
+
+  const client = await pool.connect();
+  let updated = 0;
+  try {
+    await client.query('BEGIN');
+    if (imageIds.length) {
+      const r = await client.query(`
+        UPDATE media_moderation
+        SET status='validated', reviewed_by=$1, reviewed_at=NOW(), review_comment=NULL
+        WHERE media_kind='image' AND cvat_task_id = ANY($2) AND status='pending'
+      `, [req.cvatUser.id, imageIds]);
+      updated += r.rowCount;
+    }
+    if (videoIds.length) {
+      const r = await client.query(`
+        UPDATE media_moderation
+        SET status='validated', reviewed_by=$1, reviewed_at=NOW(), review_comment=NULL
+        WHERE media_kind='video' AND video_id = ANY($2) AND status='pending'
+      `, [req.cvatUser.id, videoIds]);
+      updated += r.rowCount;
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    client.release();
+    return res.status(500).json({ error: err.message });
+  }
+  client.release();
+
+  if (updated > 0) recordAction(req.cvatUser.id, 'media.validated', {
+    payload: { image_ids: imageIds, video_ids: videoIds, count: updated },
+  });
+  res.json({ updated });
+});
+
 router.post('/media/reject', requireModeratorOrAbove, async (req, res) => {
-  const ids = Array.isArray(req.body?.ids)
-    ? req.body.ids.filter((n) => Number.isInteger(n) && n > 0)
-    : [];
+  const { image: imageIds, video: videoIds } = normalizeItems(req.body);
   const rawComment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
-  if (ids.length === 0) return res.status(400).json({ error: 'ids required (non-empty integer array)' });
+  if (imageIds.length + videoIds.length === 0) return res.status(400).json({ error: 'items required' });
   if (!rawComment) return res.status(400).json({ error: 'Un motif de rejet est obligatoire.' });
   const comment = rawComment.slice(0, 1000);
 
+  const client = await pool.connect();
+  let updated = 0;
   try {
-    const { rowCount } = await pool.query(`
-      UPDATE media_moderation
-      SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_comment = $2
-      WHERE cvat_task_id = ANY($3) AND status = 'pending'
-    `, [req.cvatUser.id, comment, ids]);
-    if (rowCount > 0) recordAction(req.cvatUser.id, 'media.rejected', { payload: { task_ids: ids, count: rowCount, reason: comment } });
-    res.json({ updated: rowCount });
+    await client.query('BEGIN');
+    if (imageIds.length) {
+      const r = await client.query(`
+        UPDATE media_moderation
+        SET status='rejected', reviewed_by=$1, reviewed_at=NOW(), review_comment=$2
+        WHERE media_kind='image' AND cvat_task_id = ANY($3) AND status='pending'
+      `, [req.cvatUser.id, comment, imageIds]);
+      updated += r.rowCount;
+    }
+    if (videoIds.length) {
+      const r = await client.query(`
+        UPDATE media_moderation
+        SET status='rejected', reviewed_by=$1, reviewed_at=NOW(), review_comment=$2
+        WHERE media_kind='video' AND video_id = ANY($3) AND status='pending'
+      `, [req.cvatUser.id, comment, videoIds]);
+      updated += r.rowCount;
+    }
+    await client.query('COMMIT');
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await client.query('ROLLBACK');
+    client.release();
+    return res.status(500).json({ error: err.message });
   }
+  client.release();
+
+  if (updated > 0) recordAction(req.cvatUser.id, 'media.rejected', {
+    payload: { image_ids: imageIds, video_ids: videoIds, count: updated, reason: comment },
+  });
+  res.json({ updated });
 });
 
 router.post('/users/:id/ban', requireModeratorOrAbove, async (req, res) => {

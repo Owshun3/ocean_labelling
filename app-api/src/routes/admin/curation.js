@@ -19,7 +19,8 @@ router.get('/pool', async (_req, res) => {
     const { rows } = await pool.query(`
       SELECT cvat_task_id, uploader_id, reviewed_at, annotated_jobs_count
       FROM media_moderation
-      WHERE status = 'validated'
+      WHERE media_kind = 'image'
+        AND status = 'validated'
         AND curator_validated_at IS NULL
         AND binaries_deleted_at IS NULL
         AND assigned_curator_id IS NULL
@@ -104,7 +105,8 @@ router.get('/curators', async (_req, res) => {
     const workloadQ = await pool.query(`
       SELECT assigned_curator_id AS id, COUNT(*)::int AS n
       FROM media_moderation
-      WHERE assigned_curator_id = ANY($1)
+      WHERE media_kind = 'image'
+        AND assigned_curator_id = ANY($1)
         AND curator_validated_at IS NULL
         AND binaries_deleted_at IS NULL
       GROUP BY assigned_curator_id
@@ -165,7 +167,8 @@ router.post('/auto-assign', async (req, res) => {
     const { rows: poolRows } = await pool.query(`
       SELECT m.cvat_task_id, m.uploader_id
       FROM media_moderation m
-      WHERE m.status = 'validated'
+      WHERE m.media_kind = 'image'
+        AND m.status = 'validated'
         AND m.curator_validated_at IS NULL
         AND m.binaries_deleted_at IS NULL
         AND m.assigned_curator_id IS NULL

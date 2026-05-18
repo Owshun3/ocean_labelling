@@ -145,6 +145,59 @@ L'ancienne route `/admin/contestations` redirige vers `/admin/requests` (Expo `<
 - Curator (rôle `chercheur|curator|moderator`) : bouton « Proposer modification » sur la fiche → formulaire 3 noms + description + tags add/remove → `POST /species/:id/edit-request` → toast « envoyée à l'admin ». Une seule demande pending par espèce ; ré-éditer remplace le payload, et `DELETE /species/:id/edit-request` retire la demande.
 - Admin : direct edit via `PATCH /species/:id` (inchangé, recordAction `species.edited`). Pour traiter les demandes en attente : onglet « Fiches d'espèces » → diff → approve/reject.
 
+## Upload et annotation vidéos (ADR-013)
+
+**Décision** : les vidéos sont stockées dans app-api (volume Docker `ocean_videos` → `/data/videos/<id>/source.<ext>` + `poster.jpg`), **jamais dans CVAT**. Raison : CVAT auto-extrairait les frames côté serveur (lent, lourd) et créerait des tasks parasites visibles dans les workflows curator/modération. Le périmètre annotable reste les images extraites, qui passent par le flux task CVAT existant.
+
+**Table `user_videos`** : `id, uploader_id, filename, content_type, size_bytes, duration_seconds, width, height, has_poster, uploaded_at, deleted_at`. Soft-delete via `deleted_at`. Poster = première frame extraite côté client à l'upload (canvas JPEG q=0.85), persistée à côté de la vidéo.
+
+**Endpoints app-api vidéo** :
+| Méthode | Route | But |
+|---|---|---|
+| POST   | `/app-api/videos`              | multipart : `video` (mp4/webm/mov) + `poster` (jpeg) + `metadata` (JSON) ; insère `media_moderation` `pending` |
+| GET    | `/app-api/videos`              | mes vidéos avec statut modération + flag `contestation_pending` |
+| GET    | `/app-api/videos/:id`          | détail (uploader ou moderator+) |
+| GET    | `/app-api/videos/:id/stream`   | streaming avec **Range** (206 Partial Content) pour lecture progressive |
+| GET    | `/app-api/videos/:id/poster`   | poster JPEG (cookies `crossOrigin="use-credentials"` côté `<video>`/`<img>`) |
+| DELETE | `/app-api/videos/:id`          | soft-delete + suppression filesystem |
+
+Formats acceptés : `video/mp4`, `video/webm`, `video/quicktime`. Limite globale = `upload_max_bytes` (commun image + vidéo). NGINX `/app-api/` : `client_max_body_size 1G` + `proxy_request_buffering off` pour les vidéos volumineuses.
+
+**Schéma polymorphe modération** : `media_moderation` et `moderation_contestations` portent maintenant un discriminateur `media_kind 'image'|'video'` + `cvat_task_id` (NULL pour vidéos) + `video_id` (NULL pour images) avec `CHECK ((cvat_task_id IS NULL) <> (video_id IS NULL))`. PK migré de `cvat_task_id` vers `id SERIAL`. Index uniques partiels sur chaque FK. `annotation_contestations` reste image-only (vidéos jamais annotées directement, pas de `curator_validated_at` non plus).
+
+**JOIN canonique polymorphe** :
+```sql
+JOIN media_moderation mm
+  ON mm.media_kind = c.media_kind
+ AND COALESCE(mm.cvat_task_id, mm.video_id) = COALESCE(c.cvat_task_id, c.video_id)
+```
+
+**API modération polymorphe** : les mutations `POST /moderation/media/validate` et `/reject` acceptent `items: [{kind, id}]` (fallback `ids: number[]` = image only). `GET /queue` renvoie `image_count` + `video_count` par uploader. `GET /users/:id/media` renvoie des items discriminés `{kind:'image'|'video', ...}`. Nouvelle route `GET /moderation/video/:videoId` pour détail vidéo. La cascade de ban rejette désormais image ET vidéos pending.
+
+**Cleanup automatique** étendu : `selectEligible` ramène les deux kinds, `runCleanup` route les images vers `cvatDelete /tasks/X` et les vidéos vers `deleteVideoFiles(id)` + `user_videos.deleted_at`.
+
+**EXIF strip universel à l'upload image** (`useMediaUpload.ts → stripExifFromAsset`) : avant push vers CVAT, l'image est re-encodée en JPEG q=0.92 via canvas — les segments EXIF disparaissent en passant. Les métadonnées sont lues par `exifr` AVANT le strip et persistées séparément dans `media_metadata`.
+**Why** : espèces protégées + GPS embarqué = lieu de braconnage potentiel. Un `clic droit/enregistrer sous` côté annotateur ne révèle plus la position. Coût : ~200 ms / image.
+
+**Nouvelles colonnes `media_metadata`** : `source_video_id` (FK `user_videos`, ON DELETE SET NULL) + `source_frame_time_ms`. Remplies uniquement pour les frames issues d'extraction. UI fiche média : « Vidéo d'origine » et « Frame » affichent « — » sinon.
+
+**UI annotateur** :
+- `UploadScreen` : toggle « Photos | Vidéos » en haut. Le picker vidéo utilise un `<input type="file" accept="video/mp4,video/webm,video/quicktime" multiple>` natif (pas d'expo-document-picker — non installé). Poster + dimensions + durée extraites côté client via offscreen `<video>` + canvas avant POST.
+- `MediaListScreen` (Mes médias) : panneau **« Mes vidéos »** (300px) à gauche, suivi du layout 3 colonnes images existant (Validé/En attente/Rejeté). Le panneau vidéos a sa propre sélection multi (shift/ctrl-clic), boutons Supprimer / Contester. **Pas de bouton « Extraire »** ici — l'extraction se fait uniquement depuis l'écran Annotation. Double-clic = lecteur modal (`<video controls crossOrigin="use-credentials" controlsList="nodownload">` avec `oncontextmenu` bloqué).
+- `StudioSelectScreen` (Annoter) : même panneau « Mes vidéos » à gauche en mode `studio`. Bouton « Extraire des frames » sur **toute vidéo non rejetée** (pending OU validated) — l'extraction est autorisée avant modération, et les frames extraites suivent leur propre cycle de validation indépendant.
+- **Écran extracteur** `/studio/video/[videoId]` (`VideoExtractorScreen`) : player central + barre de marqueurs (frame ticks rouges, bookmark ticks jaunes, click-to-seek) + strip vertical de miniatures à droite. Outils : bouton « 📸 Extraire » (actif en pause), « ← frame » / « frame → » (step 1/30 s — force la pause), « ★ Marquer ». Sauvegarde = chaque frame est uploadée comme image classique via `CvatMediaService.uploadMedia` (JPEG q=0.92), puis `recordUpload` + `media_metadata.set` avec `source_video_id` + `source_frame_time_ms`. Les frames sauvegardées disparaissent du strip et entrent en pipeline modération comme une image normale, peuvent finir sur le mur communautaire si validées.
+
+**Raccourcis VideoExtractorScreen** : `←`/`→` step frame (force la pause), `B` ajoute un bookmark (lecture ou pause), `E` extrait la frame courante (uniquement en pause). Les bookmarks sont une queue de timestamps : bouton « Extraire les N marqueurs » fait un seek+capture séquentiel sur chacun (utile pour repérer les moments d'intérêt en visionnage continu, puis tout exporter d'un coup).
+
+**Vidéo d'origine supprimée** : quand une vidéo est rejetée par modération OU soft-deletée par son uploader, les frames extraites depuis cette vidéo continuent d'exister (elles suivent leur propre cycle modération). Sur leur fiche, les champs « Vidéo d'origine » et « Frame » affichent **« Supprimée »** au lieu du nom de fichier et du timestamp. **Implémentation read-time** (pas de mutation cascade) : la route `GET /media/:taskId/metadata` (et `GET /curator/tasks/:id/proposals`) JOIN `user_videos` + `media_moderation` et expose le flag dérivé `source_video_deleted = (uv.deleted_at IS NOT NULL OR vmm.status = 'rejected')`. Le frontend (`ImageMetadata.tsx`) rend « Supprimée » quand ce flag est `true`. Aucune migration de données nécessaire — pas de colonne ajoutée, pas de trigger cascade à maintenir.
+
+**UI modérateur** :
+- `ModerationQueueScreen` : `pending_count` ventilé en `🖼 image_count · 🎥 video_count` par uploader.
+- `ModerationUserScreen` : la grille mélange tuiles image et tuiles vidéo. Une tuile vidéo affiche le poster (ou un fallback 🎬), un badge « VIDÉO » et la durée. Double-clic image → page détail. Double-clic vidéo → **modal lecteur** (`<video>` avec stream Range + bloque `oncontextmenu`). Sélection multi clavier multi-kind (clés `image:123` / `video:5`). Validate/Reject envoient le bon shape `items` au backend.
+- `AdminContestationDetailScreen` : tuile vidéo (poster + filename + bouton sélectif) à côté des tuiles image. Action `resolve` (upheld pour une vidéo) → `user_videos.deleted_at = NOW()` + `deleteVideoFiles` + `media_moderation.binaries_deleted_at`.
+
+**Vocabulaire** : pour l'instant **les vidéos n'apparaissent PAS sur le mur communautaire d'annotation**. Seules les frames extraites validées y arrivent (via le flux image normal).
+
 ## Studio d'annotation custom (ADR-007)
 
 **Décision architecturale** : les studios annotateur et curator sont des **pages Expo natives** indépendantes de cvat-ui. Aucun `sub_filter`, aucun scraping de classes CSS CVAT, aucune dépendance au DOM CVAT. Les deux studios consomment les endpoints REST publics CVAT (lecture frame, écriture annotations) via un proxy app-api.

@@ -21,9 +21,9 @@ router.post('/', requireAuth, async (req, res) => {
     `, [req.cvatUser.id, cvat_task_id, batch_name, file_count || 0]);
 
     await client.query(`
-      INSERT INTO media_moderation (cvat_task_id, uploader_id, status)
-      VALUES ($1, $2, 'pending')
-      ON CONFLICT (cvat_task_id) DO NOTHING
+      INSERT INTO media_moderation (media_kind, cvat_task_id, uploader_id, status)
+      VALUES ('image', $1, $2, 'pending')
+      ON CONFLICT (cvat_task_id) WHERE cvat_task_id IS NOT NULL DO NOTHING
     `, [cvat_task_id, req.cvatUser.id]);
 
     await client.query('COMMIT');

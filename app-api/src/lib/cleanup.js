@@ -3,6 +3,7 @@
 const { pool } = require('../db');
 const { cvatDelete } = require('./cvatAdmin');
 const { recordAction } = require('./auditLog');
+const { deleteVideoFiles } = require('./videoStorage');
 
 const SYSTEM_ACTOR_ID = 0;
 const BATCH_LIMIT = 200;
@@ -23,14 +24,15 @@ async function getRetentionDays() {
 async function selectEligible(days) {
   if (days === 0) return [];
   const { rows } = await pool.query(`
-    SELECT mm.cvat_task_id, mm.uploader_id
+    SELECT mm.media_kind, mm.cvat_task_id, mm.video_id, mm.uploader_id
     FROM media_moderation mm
     WHERE mm.status = 'rejected'
       AND mm.binaries_deleted_at IS NULL
       AND mm.reviewed_at < NOW() - ($1 || ' days')::interval
       AND NOT EXISTS (
         SELECT 1 FROM moderation_contestations c
-        WHERE c.cvat_task_id = mm.cvat_task_id
+        WHERE c.media_kind = mm.media_kind
+          AND COALESCE(c.cvat_task_id, c.video_id) = COALESCE(mm.cvat_task_id, mm.video_id)
           AND c.resolved_at IS NULL
       )
     ORDER BY mm.reviewed_at ASC
@@ -39,11 +41,23 @@ async function selectEligible(days) {
   return rows;
 }
 
-async function markCleaned(taskIds) {
+async function markCleanedImage(taskIds) {
   if (taskIds.length === 0) return;
   await pool.query(
-    'UPDATE media_moderation SET binaries_deleted_at = NOW() WHERE cvat_task_id = ANY($1)',
+    "UPDATE media_moderation SET binaries_deleted_at = NOW() WHERE media_kind='image' AND cvat_task_id = ANY($1)",
     [taskIds],
+  );
+}
+
+async function markCleanedVideo(videoIds) {
+  if (videoIds.length === 0) return;
+  await pool.query(
+    "UPDATE media_moderation SET binaries_deleted_at = NOW() WHERE media_kind='video' AND video_id = ANY($1)",
+    [videoIds],
+  );
+  await pool.query(
+    'UPDATE user_videos SET deleted_at = NOW() WHERE id = ANY($1) AND deleted_at IS NULL',
+    [videoIds],
   );
 }
 
@@ -54,29 +68,42 @@ async function runCleanup() {
     return { ran_at: new Date().toISOString(), retention_days: days, deleted: 0, errors: 0 };
   }
 
-  const cleaned = [];
+  const imageRows = eligible.filter((r) => r.media_kind === 'image');
+  const videoRows = eligible.filter((r) => r.media_kind === 'video');
+
+  const cleanedTasks = [];
   const errors = [];
-  for (const row of eligible) {
+  for (const row of imageRows) {
     try {
       await cvatDelete(`/tasks/${row.cvat_task_id}`);
-      cleaned.push(row.cvat_task_id);
+      cleanedTasks.push(row.cvat_task_id);
     } catch (err) {
       const status = err.response?.status;
-      if (status === 404) {
-        cleaned.push(row.cvat_task_id);
-      } else {
-        errors.push({ task_id: row.cvat_task_id, status, message: err.message });
-      }
+      if (status === 404) cleanedTasks.push(row.cvat_task_id);
+      else errors.push({ task_id: row.cvat_task_id, status, message: err.message });
     }
   }
-  await markCleaned(cleaned);
+  await markCleanedImage(cleanedTasks);
 
-  if (cleaned.length > 0) {
+  const cleanedVideos = [];
+  for (const row of videoRows) {
+    try {
+      await deleteVideoFiles(row.video_id);
+      cleanedVideos.push(row.video_id);
+    } catch (err) {
+      errors.push({ video_id: row.video_id, message: err.message });
+    }
+  }
+  await markCleanedVideo(cleanedVideos);
+
+  const totalCleaned = cleanedTasks.length + cleanedVideos.length;
+  if (totalCleaned > 0) {
     recordAction(SYSTEM_ACTOR_ID, 'media.auto_deleted', {
       payload: {
         retention_days: days,
-        deleted_count: cleaned.length,
-        task_ids: cleaned,
+        deleted_count: totalCleaned,
+        task_ids: cleanedTasks,
+        video_ids: cleanedVideos,
         errors: errors.length,
       },
     });
@@ -85,7 +112,7 @@ async function runCleanup() {
   return {
     ran_at: new Date().toISOString(),
     retention_days: days,
-    deleted: cleaned.length,
+    deleted: totalCleaned,
     errors: errors.length,
   };
 }

@@ -102,7 +102,8 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
     const { rows: eligibleRows } = await pool.query(`
       SELECT cvat_task_id, assigned_curator_id, annotated_jobs_count
       FROM media_moderation
-      WHERE status = 'validated'
+      WHERE media_kind = 'image'
+        AND status = 'validated'
         AND curator_validated_at IS NULL
         AND binaries_deleted_at IS NULL
         AND annotated_jobs_count >= $${thresholdIdx}
@@ -382,9 +383,15 @@ router.get('/tasks/:taskId/proposals', requireCuratorOrAbove, async (req, res) =
     let metadata = null;
     try {
       const metaQ = await pool.query(
-        `SELECT cvat_task_id, gps_latitude, gps_longitude, taken_at, camera_make,
-                camera_model, image_width, image_height
-         FROM media_metadata WHERE cvat_task_id = $1`,
+        `SELECT mm.cvat_task_id, mm.gps_latitude, mm.gps_longitude, mm.taken_at,
+                mm.camera_make, mm.camera_model, mm.image_width, mm.image_height,
+                mm.source_video_id, mm.source_frame_time_ms,
+                uv.filename AS source_video_filename,
+                (uv.deleted_at IS NOT NULL OR vmm.status = 'rejected') AS source_video_deleted
+         FROM media_metadata mm
+         LEFT JOIN user_videos uv       ON uv.id = mm.source_video_id
+         LEFT JOIN media_moderation vmm ON vmm.media_kind = 'video' AND vmm.video_id = mm.source_video_id
+         WHERE mm.cvat_task_id = $1`,
         [taskId],
       );
       metadata = metaQ.rows[0] ?? null;

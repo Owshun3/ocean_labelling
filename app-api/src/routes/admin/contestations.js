@@ -1,10 +1,12 @@
 'use strict';
 
 const express = require('express');
+const fs = require('fs');
 const { pool } = require('../../db');
 const { cvatGet, cvatDelete } = require('../../lib/cvatAdmin');
 const { recordAction } = require('../../lib/auditLog');
 const { fetchActionsTotals } = require('../../lib/userStats');
+const { deleteVideoFiles } = require('../../lib/videoStorage');
 
 const router = express.Router();
 
@@ -44,6 +46,16 @@ async function fetchAppRoles(userIds) {
   return map;
 }
 
+// Polymorphic JOIN: moderation_contestations ↔ media_moderation matches on (media_kind, cvat_task_id|video_id).
+// For annotation_contestations (currently image-only) the JOIN is the legacy cvat_task_id match.
+function buildModerationJoin(kind) {
+  return kind === 'annotation'
+    ? 'JOIN media_moderation mm ON mm.media_kind = \'image\' AND mm.cvat_task_id = c.cvat_task_id'
+    : `JOIN media_moderation mm
+         ON mm.media_kind = c.media_kind
+        AND COALESCE(mm.cvat_task_id, mm.video_id) = COALESCE(c.cvat_task_id, c.video_id)`;
+}
+
 router.get('/uploaders', async (req, res) => {
   const kind = resolveKind(req);
   const table = tableForKind(kind);
@@ -55,7 +67,7 @@ router.get('/uploaders', async (req, res) => {
         MIN(c.created_at)          AS oldest_contestation,
         MAX(c.created_at)          AS newest_contestation
       FROM ${table} c
-      JOIN media_moderation mm ON mm.cvat_task_id = c.cvat_task_id
+      ${buildModerationJoin(kind)}
       WHERE c.resolved_at IS NULL
       GROUP BY mm.uploader_id
       ORDER BY oldest_contestation ASC
@@ -90,12 +102,12 @@ router.get('/uploaders/:id', async (req, res) => {
   if (!Number.isFinite(userId)) return res.status(400).json({ error: 'invalid user id' });
 
   try {
-    // Pour les contestations d'annotation, on joint aussi curator_certifications
-    // pour identifier qui a certifié et quand.
     const query = kind === 'annotation' ? `
       SELECT
         c.id              AS contestation_id,
+        'image'::text     AS media_kind,
         c.cvat_task_id,
+        NULL::int         AS video_id,
         c.message,
         c.created_at,
         c.contester_id,
@@ -106,7 +118,7 @@ router.get('/uploaders/:id', async (req, res) => {
         cc.mode             AS certification_mode,
         cc.curator_comment  AS certification_comment
       FROM annotation_contestations c
-      JOIN media_moderation         mm ON mm.cvat_task_id = c.cvat_task_id
+      ${buildModerationJoin(kind)}
       LEFT JOIN LATERAL (
         SELECT species_id, mode, curator_comment
         FROM curator_certifications
@@ -119,17 +131,19 @@ router.get('/uploaders/:id', async (req, res) => {
       ORDER BY c.created_at ASC
     ` : `
       SELECT
-        c.id            AS contestation_id,
+        c.id              AS contestation_id,
+        c.media_kind,
         c.cvat_task_id,
+        c.video_id,
         c.message,
         c.created_at,
         c.contester_id,
         mm.uploader_id,
-        mm.reviewed_by  AS reviewer_id,
-        mm.reviewed_at  AS reviewed_at,
+        mm.reviewed_by    AS reviewer_id,
+        mm.reviewed_at    AS reviewed_at,
         mm.review_comment AS rejection_reason
       FROM moderation_contestations c
-      JOIN media_moderation         mm ON mm.cvat_task_id = c.cvat_task_id
+      ${buildModerationJoin(kind)}
       WHERE c.resolved_at IS NULL
         AND mm.uploader_id = $1
       ORDER BY c.created_at ASC
@@ -145,18 +159,24 @@ router.get('/uploaders/:id', async (req, res) => {
     const rolesById = await fetchAppRoles([...userIdsToFetch]);
     const actionsTotals = await fetchActionsTotals([...userIdsToFetch]);
 
-    const taskIds = rows.map((r) => r.cvat_task_id);
+    const imageTaskIds = rows.filter((r) => r.media_kind === 'image' && r.cvat_task_id).map((r) => r.cvat_task_id);
+    const videoIds     = rows.filter((r) => r.media_kind === 'video' && r.video_id).map((r) => r.video_id);
+
     const tasksById = {};
-    await Promise.all(taskIds.map(async (id) => {
-      try {
-        const r = await cvatGet(`/tasks/${id}`);
-        tasksById[id] = r.data;
-      } catch (err) {
-        if (err.response?.status !== 404) {
-          console.warn(`[admin/contestations] failed to fetch task ${id}:`, err.message);
-        }
-      }
+    await Promise.all(imageTaskIds.map(async (id) => {
+      try { const r = await cvatGet(`/tasks/${id}`); tasksById[id] = r.data; }
+      catch (err) { if (err.response?.status !== 404) console.warn(`[admin/contestations] task ${id}:`, err.message); }
     }));
+
+    let videosById = {};
+    if (videoIds.length) {
+      const { rows: vs } = await pool.query(
+        `SELECT id, filename, content_type, size_bytes, duration_seconds, width, height, has_poster, uploaded_at
+         FROM user_videos WHERE id = ANY($1)`,
+        [videoIds],
+      );
+      videosById = Object.fromEntries(vs.map((v) => [v.id, v]));
+    }
 
     const uploader = usersById[userId] ? {
       ...usersById[userId],
@@ -179,25 +199,25 @@ router.get('/uploaders/:id', async (req, res) => {
       if (r.created_at < lot.first_contested_at) lot.first_contested_at = r.created_at;
       if (r.created_at > lot.last_contested_at)  lot.last_contested_at  = r.created_at;
 
-      const reviewer = r.reviewer_id ? usersById[r.reviewer_id] : null;
+      const reviewer  = r.reviewer_id  ? usersById[r.reviewer_id]  : null;
       const contester = r.contester_id ? usersById[r.contester_id] : null;
-      const task = tasksById[r.cvat_task_id] || null;
 
       const baseItem = {
         contestation_id: r.contestation_id,
+        media_kind:      r.media_kind,
         cvat_task_id:    r.cvat_task_id,
+        video_id:        r.video_id,
         contested_at:    r.created_at,
         reviewed_at:     r.reviewed_at,
-        task,
+        task:  r.media_kind === 'image' ? (tasksById[r.cvat_task_id] || null) : null,
+        video: r.media_kind === 'video' ? (videosById[r.video_id] || null)   : null,
         reviewer: reviewer ? {
-          id: reviewer.id,
-          username: reviewer.username,
+          id: reviewer.id, username: reviewer.username,
           role: rolesById[reviewer.id] || 'annotator',
           actions_validated_total: actionsTotals[reviewer.id] ?? 0,
         } : null,
         contester: contester ? {
-          id: contester.id,
-          username: contester.username,
+          id: contester.id, username: contester.username,
           role: rolesById[contester.id] || 'annotator',
           actions_validated_total: actionsTotals[contester.id] ?? 0,
         } : null,
@@ -235,14 +255,19 @@ router.post('/resolve', async (req, res) => {
   }
 
   const adminId = req.cvatUser.id;
-  let tasksToDeleteOnCvat = [];
+  let imageTasksToDelete = [];
+  let videosToDelete = [];
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
+    const selectCols = kind === 'annotation'
+      ? 'id, cvat_task_id, \'image\'::text AS media_kind, NULL::int AS video_id'
+      : 'id, cvat_task_id, video_id, media_kind';
+
     const { rows } = await client.query(`
-      SELECT id, cvat_task_id
+      SELECT ${selectCols}
       FROM ${table}
       WHERE id = ANY($1) AND resolved_at IS NULL
       FOR UPDATE
@@ -254,7 +279,6 @@ router.post('/resolve', async (req, res) => {
     }
 
     const resolvedIds = rows.map((r) => r.id);
-    const taskIds     = rows.map((r) => r.cvat_task_id);
 
     await client.query(`
       UPDATE ${table}
@@ -262,30 +286,38 @@ router.post('/resolve', async (req, res) => {
       WHERE id = ANY($3)
     `, [action, adminId, resolvedIds]);
 
+    const imageTaskIds = rows.filter((r) => r.media_kind === 'image' && r.cvat_task_id).map((r) => r.cvat_task_id);
+    const videoIds     = rows.filter((r) => r.media_kind === 'video' && r.video_id).map((r) => r.video_id);
+
     if (kind === 'media') {
       if (action === 'overturned') {
-        // requalifie en validated, ne supprime pas les binaires
-        await client.query(`
-          UPDATE media_moderation
-          SET status = 'validated', reviewed_by = $1, reviewed_at = NOW()
-          WHERE cvat_task_id = ANY($2)
-        `, [adminId, taskIds]);
+        if (imageTaskIds.length) {
+          await client.query(`
+            UPDATE media_moderation
+            SET status='validated', reviewed_by=$1, reviewed_at=NOW()
+            WHERE media_kind='image' AND cvat_task_id = ANY($2)
+          `, [adminId, imageTaskIds]);
+        }
+        if (videoIds.length) {
+          await client.query(`
+            UPDATE media_moderation
+            SET status='validated', reviewed_by=$1, reviewed_at=NOW()
+            WHERE media_kind='video' AND video_id = ANY($2)
+          `, [adminId, videoIds]);
+        }
       } else {
-        tasksToDeleteOnCvat = taskIds;
+        imageTasksToDelete = imageTaskIds;
+        videosToDelete     = videoIds;
       }
     } else if (kind === 'annotation') {
       if (action === 'overturned') {
-        // rouvre la curation : le média redevient curateable, l'audit reste,
-        // et l'attribution est remise à zéro pour que l'admin réattribue
-        // (potentiellement à un autre curator pour un avis frais).
         await client.query(`
           UPDATE media_moderation
           SET curator_validated_at = NULL, curator_validated_by = NULL,
               assigned_curator_id = NULL, assigned_at = NULL, assigned_by = NULL
-          WHERE cvat_task_id = ANY($1)
-        `, [taskIds]);
+          WHERE media_kind='image' AND cvat_task_id = ANY($1)
+        `, [imageTaskIds]);
       }
-      // upheld → rien à faire côté média, juste résolution
     }
 
     await client.query('COMMIT');
@@ -297,38 +329,50 @@ router.post('/resolve', async (req, res) => {
   client.release();
 
   const deleteErrors = [];
-  const successfullyCleaned = [];
-  if (action === 'upheld' && tasksToDeleteOnCvat.length > 0) {
-    for (const taskId of tasksToDeleteOnCvat) {
-      try {
-        await cvatDelete(`/tasks/${taskId}`);
-        successfullyCleaned.push(taskId);
-      } catch (err) {
-        const status = err.response?.status;
-        if (status === 404) {
-          successfullyCleaned.push(taskId);
-        } else {
-          deleteErrors.push({ task_id: taskId, status, message: err.message });
-          console.warn(`[admin/contestations] CVAT delete failed for task ${taskId}:`, err.response?.data ?? err.message);
-        }
+  const cleanedTasks = [];
+  for (const taskId of imageTasksToDelete) {
+    try {
+      await cvatDelete(`/tasks/${taskId}`);
+      cleanedTasks.push(taskId);
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 404) cleanedTasks.push(taskId);
+      else {
+        deleteErrors.push({ task_id: taskId, status, message: err.message });
+        console.warn(`[admin/contestations] CVAT delete task ${taskId}:`, err.response?.data ?? err.message);
       }
     }
-    if (successfullyCleaned.length > 0) {
+  }
+  if (cleanedTasks.length > 0) {
+    await pool.query(
+      "UPDATE media_moderation SET binaries_deleted_at = NOW() WHERE media_kind='image' AND cvat_task_id = ANY($1)",
+      [cleanedTasks],
+    );
+  }
+
+  for (const vid of videosToDelete) {
+    try {
+      await pool.query('UPDATE user_videos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL', [vid]);
+      await deleteVideoFiles(vid);
       await pool.query(
-        'UPDATE media_moderation SET binaries_deleted_at = NOW() WHERE cvat_task_id = ANY($1)',
-        [successfullyCleaned],
+        "UPDATE media_moderation SET binaries_deleted_at = NOW() WHERE media_kind='video' AND video_id = $1",
+        [vid],
       );
+    } catch (err) {
+      deleteErrors.push({ video_id: vid, message: err.message });
+      console.warn(`[admin/contestations] video delete ${vid}:`, err.message);
     }
   }
 
   recordAction(adminId, 'contestation.resolved', {
-    payload: { kind, action, contestation_ids: ids, cvat_delete_errors: deleteErrors.length },
+    payload: {
+      kind, action, contestation_ids: ids,
+      cvat_delete_errors: deleteErrors.length,
+    },
   });
 
   res.json({
-    resolved:       ids.length,
-    kind,
-    action,
+    resolved: ids.length, kind, action,
     cvat_delete_errors: deleteErrors.length > 0 ? deleteErrors : undefined,
   });
 });
