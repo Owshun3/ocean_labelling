@@ -42,9 +42,7 @@ const styles = StyleSheet.create({
         marginVertical: SPACING.sm,
         backgroundColor: COLORS.background.card,
         borderRadius: 8,
-        shadowColor: '#000',
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
+        boxShadow: '0 0 4px rgba(0, 0, 0, 0.1)',
         elevation: 2,
     },
     image: {

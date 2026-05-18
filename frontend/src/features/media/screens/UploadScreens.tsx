@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
 		top: -6, right: -6, width: 22, height: 22, borderRadius: 11,
 		backgroundColor: COLORS.danger,
 		alignItems: 'center', justifyContent: 'center',
-		shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 2, shadowOffset: { width: 0, height: 1 },
+		boxShadow: '0 1px 2px rgba(0, 0, 0, 0.25)',
 		elevation: 3,
 	},
 	removeBtnText: { color: COLORS.text.inverse, fontSize: 13, fontWeight: 'bold', lineHeight: 14 },

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Platform } from 'react-native';
-import * as exifr from 'exifr';
+// Import explicite du build ESM browser : évite que Metro tente de résoudre
+// les fallbacks Node (`fs`, `zlib`) de la version UMD et warn au reload.
+import * as exifr from 'exifr/dist/full.esm.js';
 import { CvatMediaService } from '@/services/api/CvatMediaService';
 import { AppApiService } from '@/services/api/AppApiService';
 import { MediaMetadataService } from '@/services/api/MediaMetadataService';
