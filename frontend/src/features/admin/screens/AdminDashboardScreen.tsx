@@ -111,6 +111,14 @@ export const AdminDashboardScreen: React.FC = () => {
 					description="Taxonomie obligatoire/exclusive utilisée par le curator et l'export"
 					severity="neutral"
 				/>
+
+				<AdminCard
+					title="Historique des espèces"
+					href={'/(main)/admin/species-history' as Href}
+					icon="git-commit"
+					description="Modifications directes par les curators · annulation par l'admin"
+					severity="neutral"
+				/>
 			</View>
 		</ScrollView>
 	);

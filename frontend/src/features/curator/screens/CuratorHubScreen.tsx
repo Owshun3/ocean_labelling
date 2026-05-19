@@ -52,8 +52,16 @@ export const CuratorHubScreen: React.FC = () => {
 	return (
 		<View style={styles.container}>
 			<View style={styles.headerRow}>
-				<Text style={styles.title}>Curation</Text>
-				<Text style={styles.subtitle}>{tasks.length} média{tasks.length !== 1 ? 's' : ''} à curer</Text>
+				<View style={{ flex: 1 }}>
+					<Text style={styles.title}>Curation</Text>
+					<Text style={styles.subtitle}>{tasks.length} média{tasks.length !== 1 ? 's' : ''} à curer</Text>
+				</View>
+				<Pressable
+					onPress={() => router.push('/(main)/curator/species' as any)}
+					style={styles.catalogBtn}
+				>
+					<Text style={styles.catalogBtnText}>📖 Catalogue des espèces</Text>
+				</Pressable>
 			</View>
 
 			{adminView ? (
@@ -101,9 +109,15 @@ const styles = StyleSheet.create({
 
 	container: { flex: 1, padding: SPACING.lg },
 	center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACING.md },
-	headerRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm, marginBottom: SPACING.md },
+	headerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md },
 	title: { ...TYPOGRAPHY.h1 },
 	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary },
+	catalogBtn: {
+		paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+		borderRadius: 6, backgroundColor: COLORS.background.card,
+		borderWidth: 1, borderColor: COLORS.primary,
+	},
+	catalogBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
 
 	filterBar: {
 		flexDirection: 'row',

@@ -285,8 +285,10 @@ Endpoint compteur : `GET /admin/requests/summary` (un appel, retourne les 3 tota
 L'ancienne route `/admin/contestations` redirige vers `/admin/requests` (Expo `<Redirect />`). Le détail contestation `/admin/contestations/[userId]` reste fonctionnel (atteint via la liste embarquée).
 
 **Workflow fiche d'espèce** :
-- Curator (rôle `chercheur|curator|moderator`) : bouton « Proposer modification » sur la fiche → formulaire 3 noms + description + tags add/remove → `POST /species/:id/edit-request` → toast « envoyée à l'admin ». Une seule demande pending par espèce ; ré-éditer remplace le payload, et `DELETE /species/:id/edit-request` retire la demande.
-- Admin : direct edit via `PATCH /species/:id` (inchangé, recordAction `species.edited`). Pour traiter les demandes en attente : onglet « Fiches d'espèces » → diff → approve/reject.
+- Édition directe par tout rôle `curator+` (curator/chercheur/moderator/admin) via `PATCH /species/:id`. Chaque édition log automatiquement une row `admin_actions(action='species.edited', payload={before, after, direct:true})`.
+- Pas de mécanisme de validation admin a priori — choix assumé : le rôle curator est déjà profondément trusté (il certifie les annotations exportées). Demander permission pour corriger une faute de frappe serait inversement proportionnel au risque réel et créerait une friction démotivante.
+- L'admin garde un filet de sécurité a posteriori via `/admin/species-history` : liste les 200 dernières éditions, diff avant/après, bouton « Annuler cette modification » qui restaure le snapshot `before` et log un `species.reverted` (référence l'action_id annulée + nouveau snapshot). Une action déjà annulée affiche un badge « Annulée » et le bouton revert est masqué (409 si tentative).
+- L'ancien workflow `species_edit_requests` (édition → demande → admin valide) a été retiré (routes drop, table conservée pour historique mais plus alimentée). L'onglet « Fiches d'espèces » du hub `/admin/requests` est supprimé.
 
 ## Upload et annotation vidéos (ADR-013)
 

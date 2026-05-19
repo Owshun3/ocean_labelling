@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, TextInput, Image, StyleSheet, Linking } from 'react-native';
-import { useRouter, Href } from 'expo-router';
-import { SpeciesService, Species, WikipediaSummary, SpeciesEditRequestRow } from '@/services/api/SpeciesService';
+import { SpeciesService, Species, WikipediaSummary } from '@/services/api/SpeciesService';
+import { SpeciesTagService, SpeciesTagGroup, validateSpeciesTags } from '@/services/api/SpeciesTagService';
+import { SpeciesTagPicker } from '@/features/curator/components/SpeciesTagPicker';
 import { getUserProfile } from '@/services/api/authStorage';
 import { toast } from '@/shared/toast/Toast';
 import { BackButton } from '@/shared/components/BackButton';
@@ -20,12 +21,11 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const CURATOR_ROLES = new Set(['admin', 'moderator', 'curator', 'chercheur']);
 
-const PRESET_TAGS = ['terrestrial_fauna', 'marine_fauna', 'flora', 'endemic', 'other'];
-
 export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
-	const router = useRouter();
 	const service = useMemo(() => new SpeciesService(), []);
+	const tagSvc = useMemo(() => new SpeciesTagService(), []);
 	const [species, setSpecies] = useState<Species | null>(null);
+	const [tagGroups, setTagGroups] = useState<SpeciesTagGroup[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [editing, setEditing] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
@@ -38,13 +38,15 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 	const [draftSource,         setDraftSource]         = useState<'manual'|'wikipedia'|'annotator_proposal'|null>(null);
 	const [draftImageUrl,       setDraftImageUrl]       = useState('');
 	const [draftTags,           setDraftTags]           = useState<string[]>([]);
-	const [newTagText,          setNewTagText]          = useState('');
 	const [wikiPreview,         setWikiPreview]         = useState<WikipediaSummary | null>(null);
-	const [pendingRequest,      setPendingRequest]      = useState<SpeciesEditRequestRow | null>(null);
-
 	const profile = getUserProfile();
-	const isAdmin = profile?.appRole === 'admin' || profile?.is_superuser === true;
 	const canEdit = !!profile && CURATOR_ROLES.has(profile.appRole);
+
+	useEffect(() => {
+		tagSvc.list().then(setTagGroups).catch(() => setTagGroups([]));
+	}, [tagSvc]);
+
+	const tagsValidation = useMemo(() => validateSpeciesTags(draftTags, tagGroups), [draftTags, tagGroups]);
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -59,10 +61,6 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 			setDraftImageUrl(s.reference_image_url ?? '');
 			setDraftTags([...(s.tags ?? [])]);
 			setWikiPreview(null);
-			try {
-				const pending = await service.getPendingEdit(speciesId);
-				setPendingRequest(pending);
-			} catch { setPendingRequest(null); }
 		} catch (err: any) {
 			toast.error(err?.response?.data?.error ?? err?.message ?? 'Espèce introuvable.');
 		} finally {
@@ -96,6 +94,10 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 
 	const save = async () => {
 		if (submitting) return;
+		if (!tagsValidation.ok) {
+			toast.error(tagsValidation.error ?? 'Tags invalides.');
+			return;
+		}
 		setSubmitting(true);
 		try {
 			const payload = {
@@ -107,19 +109,11 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 				reference_image_url:  draftImageUrl.trim() || null,
 				tags:                 draftTags,
 			};
-			if (isAdmin) {
-				const updated = await service.update(speciesId, payload);
-				setSpecies(updated);
-				setEditing(false);
-				setWikiPreview(null);
-				toast.success('Fiche espèce mise à jour.');
-			} else {
-				const req = await service.proposeEdit(speciesId, payload);
-				setPendingRequest(req);
-				setEditing(false);
-				setWikiPreview(null);
-				toast.success('Demande envoyée à l\'administrateur pour validation.');
-			}
+			const updated = await service.update(speciesId, payload);
+			setSpecies(updated);
+			setEditing(false);
+			setWikiPreview(null);
+			toast.success('Fiche espèce mise à jour.');
 		} catch (err: any) {
 			toast.error(err?.response?.data?.error ?? err?.message ?? 'Mise à jour impossible.');
 		} finally {
@@ -136,29 +130,8 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 		setDraftSource(species.description_source ?? null);
 		setDraftImageUrl(species.reference_image_url ?? '');
 		setDraftTags([...(species.tags ?? [])]);
-		setNewTagText('');
 		setWikiPreview(null);
 		setEditing(false);
-	};
-
-	const addTag = (raw: string) => {
-		const t = raw.trim().toLowerCase().slice(0, 40);
-		if (!t || draftTags.includes(t)) return;
-		setDraftTags([...draftTags, t]);
-		setNewTagText('');
-	};
-
-	const removeTag = (t: string) => setDraftTags(draftTags.filter((x) => x !== t));
-
-	const withdrawProposal = async () => {
-		if (!pendingRequest) return;
-		try {
-			await service.withdrawEdit(speciesId);
-			setPendingRequest(null);
-			toast.success('Demande retirée.');
-		} catch (err: any) {
-			toast.error(err?.response?.data?.error ?? err?.message ?? 'Retrait impossible.');
-		}
 	};
 
 	if (loading) {
@@ -172,7 +145,14 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 
 	return (
 		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
-			<Text style={styles.title}>{title}</Text>
+			<View style={styles.titleRow}>
+				<Text style={styles.title}>{title}</Text>
+				{canEdit && !editing ? (
+					<Pressable onPress={() => setEditing(true)} style={styles.topEditBtn}>
+						<Text style={styles.topEditBtnText}>✎ Modifier la fiche</Text>
+					</Pressable>
+				) : null}
+			</View>
 			{species.status === 'pending' ? (
 				<View style={styles.pendingBlock}>
 					<Text style={styles.pendingTag}>Espèce en attente de validation par un curator</Text>
@@ -185,26 +165,6 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 				</View>
 			) : null}
 
-			{pendingRequest && !isAdmin ? (
-				<View style={styles.pendingProposalBanner}>
-					<Text style={styles.pendingProposalText}>
-						Vous avez une demande de modification en attente de validation.
-					</Text>
-					<Pressable onPress={withdrawProposal}>
-						<Text style={styles.pendingProposalAction}>Retirer la demande</Text>
-					</Pressable>
-				</View>
-			) : null}
-			{pendingRequest && isAdmin ? (
-				<View style={styles.pendingProposalBanner}>
-					<Text style={styles.pendingProposalText}>
-						Une demande de modification est en attente. Allez sur la page Requêtes pour la traiter.
-					</Text>
-					<Pressable onPress={() => router.push('/(main)/admin/requests' as Href)}>
-						<Text style={styles.pendingProposalAction}>Ouvrir les requêtes ↗</Text>
-					</Pressable>
-				</View>
-			) : null}
 
 			<View style={styles.card}>
 				<Text style={styles.sectionLabel}>Noms</Text>
@@ -239,11 +199,6 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 							{SOURCE_LABELS[species.description_source] || species.description_source}
 						</Text>
 					) : null}
-					{canEdit && !editing && !pendingRequest ? (
-						<Pressable onPress={() => setEditing(true)} style={styles.editBtn}>
-							<Text style={styles.editBtnText}>{isAdmin ? 'Modifier' : 'Proposer modification'}</Text>
-						</Pressable>
-					) : null}
 				</View>
 
 				{editing && canEdit ? (
@@ -261,36 +216,15 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 							placeholder="honu" placeholderTextColor={COLORS.text.placeholder} style={styles.input} autoCapitalize="none" />
 
 						<Text style={styles.fieldLabel}>Tags</Text>
-						<View style={styles.tagEditorRow}>
-							{draftTags.length === 0 ? <Text style={styles.empty}>Aucun</Text> : null}
-							{draftTags.map((t) => (
-								<Pressable key={t} onPress={() => removeTag(t)} style={styles.tagChipEditable}>
-									<Text style={styles.tagChipEditableText}>{t} ×</Text>
-								</Pressable>
-							))}
-						</View>
-						<View style={styles.tagEditorRow}>
-							{PRESET_TAGS.filter((t) => !draftTags.includes(t)).map((t) => (
-								<Pressable key={t} onPress={() => addTag(t)} style={styles.tagPreset}>
-									<Text style={styles.tagPresetText}>+ {t}</Text>
-								</Pressable>
-							))}
-						</View>
-						<View style={styles.tagAddRow}>
-							<TextInput
-								value={newTagText}
-								onChangeText={setNewTagText}
-								onSubmitEditing={() => addTag(newTagText)}
-								editable={!submitting}
-								placeholder="Tag personnalisé…"
-								placeholderTextColor={COLORS.text.placeholder}
-								autoCapitalize="none"
-								style={[styles.input, { flex: 1 }]}
-							/>
-							<Pressable onPress={() => addTag(newTagText)} disabled={!newTagText.trim()} style={[styles.editBtn, !newTagText.trim() && styles.btnDisabled]}>
-								<Text style={styles.editBtnText}>Ajouter</Text>
-							</Pressable>
-						</View>
+						<SpeciesTagPicker
+							groups={tagGroups}
+							tags={draftTags}
+							disabled={submitting}
+							onChange={setDraftTags}
+						/>
+						{!tagsValidation.ok ? (
+							<Text style={styles.tagValidationError}>{tagsValidation.error}</Text>
+						) : null}
 
 						<View style={styles.wikiRow}>
 							<Pressable onPress={importWikipedia} disabled={wikiLoading} style={[styles.wikiBtn, wikiLoading && styles.btnDisabled]}>
@@ -359,7 +293,7 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 							</Pressable>
 							<Pressable onPress={save} disabled={submitting} style={[styles.actionBtn, styles.saveBtn, submitting && styles.btnDisabled]}>
 								<Text style={styles.saveBtnText}>
-									{submitting ? 'Envoi…' : (isAdmin ? 'Enregistrer' : 'Envoyer la demande')}
+									{submitting ? 'Envoi…' : 'Enregistrer'}
 								</Text>
 							</Pressable>
 						</View>
@@ -397,7 +331,11 @@ const styles = StyleSheet.create({
 	content: { padding: SPACING.lg, paddingBottom: SPACING.xl * 2, gap: SPACING.md },
 	center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-	title: { ...TYPOGRAPHY.h1 },
+	title: { ...TYPOGRAPHY.h1, flex: 1 },
+	titleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.xs },
+	topEditBtn: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, backgroundColor: COLORS.primary },
+	topEditBtnText: { color: COLORS.text.inverse, fontWeight: '700', fontSize: 13 },
+	tagValidationError: { ...TYPOGRAPHY.caption, color: COLORS.danger, fontStyle: 'italic', marginTop: 4 },
 	pendingBlock: { gap: 4 },
 	pendingTag: { ...TYPOGRAPHY.body, color: COLORS.warning, fontStyle: 'italic' },
 	proposerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

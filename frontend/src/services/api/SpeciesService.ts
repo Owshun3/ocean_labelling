@@ -73,8 +73,10 @@ export interface SpeciesEditRequestRow {
 }
 
 export class SpeciesService {
-	async search(prefix: string): Promise<Species[]> {
-		const resp = await speciesClient.get<{ results: Species[] }>('/', { params: { q: prefix } });
+	async search(prefix: string, limit?: number): Promise<Species[]> {
+		const params: Record<string, any> = { q: prefix };
+		if (limit !== undefined) params.limit = limit;
+		const resp = await speciesClient.get<{ results: Species[] }>('/', { params });
 		return resp.data.results;
 	}
 
@@ -112,22 +114,4 @@ export class SpeciesService {
 		return resp.data;
 	}
 
-	async proposeEdit(id: number, payload: SpeciesEditPayload): Promise<SpeciesEditRequestRow> {
-		const resp = await speciesClient.post<SpeciesEditRequestRow>(`/${id}/edit-request`, payload);
-		return resp.data;
-	}
-
-	async getPendingEdit(id: number): Promise<SpeciesEditRequestRow | null> {
-		try {
-			const resp = await speciesClient.get<SpeciesEditRequestRow>(`/${id}/edit-request`);
-			return resp.data;
-		} catch (err: any) {
-			if (err?.response?.status === 404) return null;
-			throw err;
-		}
-	}
-
-	async withdrawEdit(id: number): Promise<void> {
-		await speciesClient.delete(`/${id}/edit-request`);
-	}
 }

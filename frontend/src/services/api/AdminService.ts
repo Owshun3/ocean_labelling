@@ -165,16 +165,24 @@ export interface SpeciesEditSnapshot {
 	description: string | null;
 	description_source: string | null;
 	reference_image_url: string | null;
+	category: string | null;
 	tags: string[];
 }
 
-export interface SpeciesEditRequest {
+export interface SpeciesEditHistoryEntry {
 	id: number;
+	action: 'species.edited' | 'species.reverted';
 	species_id: number;
-	proposed_at: string;
-	proposer: { id: number; username: string | null };
-	current:  SpeciesEditSnapshot;
-	proposed: Partial<SpeciesEditSnapshot>;
+	species: { id: number; name: string; scientific_name: string | null; usage_name: string | null } | null;
+	actor: { id: number; username: string | null };
+	created_at: string;
+	payload: {
+		before?: Partial<SpeciesEditSnapshot>;
+		after?:  Partial<SpeciesEditSnapshot>;
+		reverted_action_id?: number;
+		direct?: boolean;
+	};
+	already_reverted: boolean;
 }
 
 export interface AutoAssignSlot {
@@ -305,17 +313,13 @@ export class AdminService {
 		await adminClient.post(`/requests/chercheur-exports/${id}/resolve`, payload);
 	}
 
-	async listSpeciesEditRequests(): Promise<SpeciesEditRequest[]> {
-		const resp = await adminClient.get<{ results: SpeciesEditRequest[] }>('/requests/species-edits');
+	async listSpeciesEditHistory(): Promise<SpeciesEditHistoryEntry[]> {
+		const resp = await adminClient.get<{ results: SpeciesEditHistoryEntry[] }>('/species-history');
 		return resp.data.results;
 	}
 
-	async resolveSpeciesEditRequest(id: number, action: 'approve' | 'reject', comment?: string): Promise<{ resolved: boolean; action: string }> {
-		const resp = await adminClient.post<{ resolved: boolean; action: string }>(
-			`/requests/species-edits/${id}/resolve`,
-			{ action, comment },
-		);
-		return resp.data;
+	async revertSpeciesEdit(actionId: number): Promise<void> {
+		await adminClient.post(`/species-history/${actionId}/revert`);
 	}
 
 	async autoAssignCuration(dryRun: boolean): Promise<AutoAssignResponse> {

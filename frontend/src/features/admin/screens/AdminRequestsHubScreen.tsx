@@ -1,19 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
-import { AdminService, RequestsSummary, SpeciesEditRequest } from '@/services/api/AdminService';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { AdminService, RequestsSummary } from '@/services/api/AdminService';
 import { AdminContestationsListScreen } from './AdminContestationsListScreen';
-import { AdminSpeciesEditsTab } from './AdminSpeciesEditsTab';
 import { AdminResearcherRequestsTab } from './AdminResearcherRequestsTab';
 import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
-type Tab = 'contestations' | 'species' | 'researcher';
+type Tab = 'contestations' | 'researcher';
 
 const TABS: { value: Tab; label: string }[] = [
 	{ value: 'contestations', label: 'Contestations' },
-	{ value: 'species',       label: 'Fiches d\'espèces' },
 	{ value: 'researcher',    label: 'Accès chercheurs' },
 ];
 
@@ -21,7 +19,6 @@ export const AdminRequestsHubScreen: React.FC = () => {
 	const service = useMemo(() => new AdminService(), []);
 	const [tab, setTab] = useState<Tab>('contestations');
 	const [summary, setSummary] = useState<RequestsSummary | null>(null);
-	const [speciesItems, setSpeciesItems] = useState<SpeciesEditRequest[] | null>(null);
 	const [loadingSummary, setLoadingSummary] = useState(true);
 
 	const loadSummary = useCallback(async () => {
@@ -35,26 +32,10 @@ export const AdminRequestsHubScreen: React.FC = () => {
 		}
 	}, [service]);
 
-	const loadSpecies = useCallback(async () => {
-		setSpeciesItems(null);
-		try {
-			const items = await service.listSpeciesEditRequests();
-			setSpeciesItems(items);
-		} catch (err: any) {
-			toast.error(err?.response?.data?.error ?? err?.message ?? 'Chargement des demandes impossible.');
-			setSpeciesItems([]);
-		}
-	}, [service]);
-
 	useEffect(() => { loadSummary(); }, [loadSummary]);
-
-	useEffect(() => {
-		if (tab === 'species' && speciesItems === null) loadSpecies();
-	}, [tab, speciesItems, loadSpecies]);
 
 	const counts: Record<Tab, number> = {
 		contestations: summary?.contestations ?? 0,
-		species:       summary?.species_edits ?? 0,
 		researcher:    summary?.researcher_access ?? 0,
 	};
 
@@ -89,12 +70,6 @@ export const AdminRequestsHubScreen: React.FC = () => {
 			<View style={styles.body}>
 				{tab === 'contestations' ? (
 					<AdminContestationsListScreen embedded />
-				) : tab === 'species' ? (
-					speciesItems === null ? (
-						<View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
-					) : (
-						<AdminSpeciesEditsTab items={speciesItems} onChanged={() => { loadSpecies(); loadSummary(); }} />
-					)
 				) : (
 					<AdminResearcherRequestsTab onChanged={loadSummary} />
 				)}

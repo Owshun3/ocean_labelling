@@ -14,7 +14,8 @@ router.use('/cleanup', require('./cleanup'));
 router.use('/curation', require('./curation'));
 router.use('/requests', require('./requests'));
 router.use('/export',   require('./export'));
-router.use('/species-tags', require('./species-tags'));
+router.use('/species-tags',    require('./species-tags'));
+router.use('/species-history', require('./species-history'));
 router.use('/help-video',   require('./help-video'));
 
 module.exports = router;
