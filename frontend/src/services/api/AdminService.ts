@@ -60,6 +60,16 @@ export interface ContestationItem {
 	species_id?: number | null;
 	certification_mode?: 'review' | 'create' | null;
 	certification_comment?: string | null;
+	chosen_bbox?: { points: number[] } | null;     // [x1, y1, x2, y2] en pixels image
+	species?: {
+		id: number;
+		scientific_name: string | null;
+		usage_name: string | null;
+		polynesian_name: string | null;
+		tags: string[];
+	} | null;
+	image_width?:  number | null;
+	image_height?: number | null;
 }
 
 export interface ContestationLot {

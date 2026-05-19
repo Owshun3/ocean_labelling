@@ -54,4 +54,10 @@ async function cvatDelete(path) {
   );
 }
 
-module.exports = { getAdminToken, cvatGet, cvatPatch, cvatDelete, CVAT };
+async function cvatPut(path, body) {
+  return withFreshTokenOn401((token) =>
+    axios.put(`${CVAT}${path}`, body, { headers: adminHeaders(token) })
+  );
+}
+
+module.exports = { getAdminToken, cvatGet, cvatPatch, cvatPut, cvatDelete, CVAT };

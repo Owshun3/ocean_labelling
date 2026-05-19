@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Modal, Platform } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import {
 	AdminService,
+	ContestationItem,
 	ContestationUploaderDetail,
 	ContestationLot,
 	ContestationAction,
@@ -37,6 +38,7 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 
 	const [submitting, setSubmitting] = useState(false);
 	const [selected, setSelected] = useState<Set<number>>(new Set());
 	const [lastClicked, setLastClicked] = useState<number | null>(null);
+	const [lightboxItem, setLightboxItem] = useState<ContestationItem | null>(null);
 	const flatIdsRef = useRef<number[]>([]);
 
 	const load = useCallback(async () => {
@@ -232,10 +234,12 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 
 														? <AuthenticatedImage url={`${videoApiBase}/${item.video.id}/poster`} style={styles.tileImage} />
 														: <View style={[styles.tileImage, styles.tileImageMissing]}><Text style={styles.tileMissingText}>🎬 Vidéo</Text></View>
 												) : (
-													<AuthenticatedImage
-														url={`/moderation/media/${item.cvat_task_id}/preview`}
-														style={styles.tileImage}
-														client={appApiClient}
+													<TileImageWithBbox
+														taskId={item.cvat_task_id!}
+														bboxPoints={kind === 'annotation' && item.chosen_bbox ? item.chosen_bbox.points : null}
+														initialImgW={item.image_width ?? null}
+														initialImgH={item.image_height ?? null}
+														onDoubleClick={kind === 'annotation' ? () => setLightboxItem(item) : undefined}
 													/>
 												)}
 												<View style={styles.tileFooter}>
@@ -249,10 +253,28 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 
 															Rejet : {item.rejection_reason || '—'}
 														</Text>
 													) : (
-														<Text style={styles.tileReason} numberOfLines={2}>
-															Mode : {item.certification_mode === 'create' ? 'bbox curator' : 'bbox annotateur retenue'}
-															{item.certification_comment ? ` · « ${item.certification_comment} »` : ''}
-														</Text>
+														<>
+															{item.species ? (
+																<View style={{ gap: 1 }}>
+																	<Text style={styles.tileSpecies} numberOfLines={2}>
+																		<Text style={styles.tileSpeciesLabel}>Espèce : </Text>
+																		{item.species.usage_name || '—'}
+																		{item.species.polynesian_name ? ` (${item.species.polynesian_name})` : ''}
+																	</Text>
+																	{item.species.scientific_name ? (
+																		<Text style={styles.tileSpeciesScientific} numberOfLines={1}>
+																			{item.species.scientific_name}
+																		</Text>
+																	) : null}
+																</View>
+															) : (
+																<Text style={styles.tileReason}>Espèce inconnue</Text>
+															)}
+															<Text style={styles.tileReason} numberOfLines={2}>
+																Mode : {item.certification_mode === 'create' ? 'bbox curator' : 'bbox annotateur retenue'}
+																{item.certification_comment ? ` · « ${item.certification_comment} »` : ''}
+															</Text>
+														</>
 													)}
 													<Text style={styles.tileMod}>
 														par {item.reviewer?.username ?? '?'} · {fmtDate(item.reviewed_at)}
@@ -273,7 +295,7 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 
 						<Text style={styles.fieldHint}>
 							{kind === 'media'
 								? 'Accepter rétablit le média en « validé ». Refuser maintient le rejet et supprime la tâche CVAT (données binaires).'
-								: 'Accepter rouvre la curation : le média redevient curateable, l\'audit reste. Refuser maintient l\'annotation telle quelle.'}
+								: 'Accepter efface complètement la certification du curator (bbox, espèce, audit) et renvoie le média en pool de curation. Refuser maintient l\'annotation telle quelle.'}
 						</Text>
 						<Pressable
 							onPress={() => resolveSelected('overturned')}
@@ -296,9 +318,220 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 
 					</View>
 				</View>
 			</View>
+
+			<BboxLightbox item={lightboxItem} onClose={() => setLightboxItem(null)} />
 		</View>
 	);
 };
+
+function TileImageWithBbox({ taskId, bboxPoints, initialImgW, initialImgH, onDoubleClick }: {
+	taskId: number;
+	bboxPoints: number[] | null;
+	initialImgW: number | null;
+	initialImgH: number | null;
+	onDoubleClick?: () => void;
+}) {
+	const [natural, setNatural] = useState<{ w: number; h: number } | null>(
+		initialImgW && initialImgH ? { w: initialImgW, h: initialImgH } : null,
+	);
+	const content = (
+		<>
+			<AuthenticatedImage
+				url={`/moderation/media/${taskId}/preview`}
+				style={styles.tileImage}
+				resizeMode="contain"
+				client={appApiClient}
+				onNaturalSize={natural ? undefined : (w, h) => setNatural({ w, h })}
+			/>
+			{bboxPoints && natural ? (
+				<BboxOverlay points={bboxPoints} imgWidth={natural.w} imgHeight={natural.h} />
+			) : null}
+		</>
+	);
+	if (onDoubleClick && Platform.OS === 'web') {
+		return (
+			// @ts-ignore — onDoubleClick est un handler DOM natif sur RN Web
+			<div onDoubleClick={(e: any) => { e.stopPropagation(); onDoubleClick(); }} style={{ width: '100%', height: 120, position: 'relative', cursor: 'zoom-in' }}>
+				{content}
+			</div>
+		);
+	}
+	return <View style={styles.tileImageWrap}>{content}</View>;
+}
+
+function BboxLightbox({ item, onClose }: { item: ContestationItem | null; onClose: () => void }) {
+	const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+	useEffect(() => {
+		setNatural(item?.image_width && item?.image_height ? { w: item.image_width, h: item.image_height } : null);
+	}, [item?.contestation_id, item?.image_width, item?.image_height]);
+
+	if (!item || item.media_kind !== 'image' || !item.cvat_task_id) return null;
+
+	const species = item.species;
+	const bbox = item.chosen_bbox?.points ?? null;
+
+	return (
+		<Modal visible animationType="fade" transparent onRequestClose={onClose}>
+			<Pressable style={lightboxStyles.backdrop} onPress={onClose}>
+				<Pressable style={lightboxStyles.panel} onPress={(e) => e.stopPropagation()}>
+					<View style={lightboxStyles.imageCol}>
+						<View style={lightboxStyles.imageFrame}>
+							<AuthenticatedImage
+								url={`/moderation/media/${item.cvat_task_id}/frame?number=0&quality=original`}
+								style={lightboxStyles.image}
+								resizeMode="contain"
+								client={appApiClient}
+								onNaturalSize={natural ? undefined : (w, h) => setNatural({ w, h })}
+							/>
+							{bbox && natural ? (
+								<BboxOverlay points={bbox} imgWidth={natural.w} imgHeight={natural.h} />
+							) : null}
+						</View>
+					</View>
+
+					<ScrollView style={lightboxStyles.sideCol} contentContainerStyle={lightboxStyles.sideContent}>
+						<Text style={lightboxStyles.sideTitle}>Détails de la certification</Text>
+
+						<View style={lightboxStyles.field}>
+							<Text style={lightboxStyles.fieldLabel}>Média</Text>
+							<Text style={lightboxStyles.fieldValue}>{item.task?.name ?? `#${item.cvat_task_id}`}</Text>
+						</View>
+
+						<View style={lightboxStyles.field}>
+							<Text style={lightboxStyles.fieldLabel}>Espèce certifiée</Text>
+							{species ? (
+								<>
+									<Text style={lightboxStyles.fieldValue}>
+										{species.usage_name || '—'}
+										{species.polynesian_name ? `  (${species.polynesian_name})` : ''}
+									</Text>
+									{species.scientific_name ? (
+										<Text style={lightboxStyles.fieldScientific}>{species.scientific_name}</Text>
+									) : null}
+									{species.tags && species.tags.length > 0 ? (
+										<View style={lightboxStyles.tagRow}>
+											{species.tags.map((t) => (
+												<View key={t} style={lightboxStyles.tag}>
+													<Text style={lightboxStyles.tagText}>{t}</Text>
+												</View>
+											))}
+										</View>
+									) : null}
+								</>
+							) : (
+								<Text style={lightboxStyles.fieldMissing}>Espèce inconnue</Text>
+							)}
+						</View>
+
+						<View style={lightboxStyles.field}>
+							<Text style={lightboxStyles.fieldLabel}>Bounding box</Text>
+							{bbox ? (
+								<>
+									<Text style={lightboxStyles.fieldValueMono}>
+										x1, y1 : {Math.round(bbox[0])}, {Math.round(bbox[1])}
+									</Text>
+									<Text style={lightboxStyles.fieldValueMono}>
+										x2, y2 : {Math.round(bbox[2])}, {Math.round(bbox[3])}
+									</Text>
+									<Text style={lightboxStyles.fieldValueMono}>
+										Taille : {Math.round(Math.abs(bbox[2] - bbox[0]))} × {Math.round(Math.abs(bbox[3] - bbox[1]))} px
+									</Text>
+								</>
+							) : (
+								<Text style={lightboxStyles.fieldMissing}>Aucune bbox enregistrée.</Text>
+							)}
+						</View>
+
+						<View style={lightboxStyles.field}>
+							<Text style={lightboxStyles.fieldLabel}>Mode</Text>
+							<Text style={lightboxStyles.fieldValue}>
+								{item.certification_mode === 'create' ? 'Bbox tracée par le curator' :
+								 item.certification_mode === 'review' ? 'Bbox d\'un annotateur validée' : '—'}
+							</Text>
+						</View>
+
+						{item.certification_comment ? (
+							<View style={lightboxStyles.field}>
+								<Text style={lightboxStyles.fieldLabel}>Commentaire du curator</Text>
+								<Text style={lightboxStyles.fieldValue}>« {item.certification_comment} »</Text>
+							</View>
+						) : null}
+
+						<View style={lightboxStyles.field}>
+							<Text style={lightboxStyles.fieldLabel}>Certifié par</Text>
+							<Text style={lightboxStyles.fieldValue}>
+								{item.reviewer?.username ?? '?'}
+								{item.reviewed_at ? ` · ${fmtDate(item.reviewed_at)}` : ''}
+							</Text>
+						</View>
+					</ScrollView>
+
+					<Pressable style={lightboxStyles.closeBtn} onPress={onClose}>
+						<Text style={lightboxStyles.closeBtnText}>✕</Text>
+					</Pressable>
+				</Pressable>
+			</Pressable>
+		</Modal>
+	);
+}
+
+function BboxOverlay({ points, imgWidth, imgHeight }: { points: number[]; imgWidth: number; imgHeight: number }) {
+	if (!points || points.length < 4 || imgWidth <= 0 || imgHeight <= 0) return null;
+	const [x1, y1, x2, y2] = points;
+	const rectX = Math.min(x1, x2);
+	const rectY = Math.min(y1, y2);
+	const rectW = Math.abs(x2 - x1);
+	const rectH = Math.abs(y2 - y1);
+	// Trait scalé pour rester visible quelle que soit la taille rendue.
+	const stroke = Math.max(imgWidth, imgHeight) * 0.004;
+	if (Platform.OS !== 'web') return null;
+	return (
+		// @ts-ignore — éléments SVG natifs sur web
+		<svg
+			viewBox={`0 0 ${imgWidth} ${imgHeight}`}
+			preserveAspectRatio="xMidYMid meet"
+			style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+		>
+			{/* @ts-ignore */}
+			<rect
+				x={rectX} y={rectY} width={rectW} height={rectH}
+				fill="rgba(220, 38, 38, 0.15)"
+				stroke="#dc2626"
+				strokeWidth={stroke}
+			/>
+		</svg>
+	);
+}
+
+const lightboxStyles = StyleSheet.create({
+	backdrop: {
+		flex: 1, backgroundColor: 'rgba(0,0,0,0.78)',
+		alignItems: 'center', justifyContent: 'center',
+		padding: SPACING.xl,
+	},
+	panel: {
+		flexDirection: 'row', backgroundColor: COLORS.background.card,
+		borderRadius: 12, overflow: 'hidden',
+		width: '95%', maxWidth: 1400, height: '90%',
+	},
+	imageCol: { flex: 1, backgroundColor: '#000', padding: SPACING.md },
+	imageFrame: { flex: 1, position: 'relative' },
+	image: { width: '100%', height: '100%' },
+	sideCol: { width: 340, borderLeftWidth: 1, borderLeftColor: COLORS.border },
+	sideContent: { padding: SPACING.lg, gap: SPACING.md },
+	sideTitle: { ...TYPOGRAPHY.h2, fontSize: 16, marginBottom: SPACING.xs },
+	field: { gap: 4 },
+	fieldLabel: { fontSize: 11, color: COLORS.text.secondary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+	fieldValue: { ...TYPOGRAPHY.body, color: COLORS.text.primary, fontWeight: '600' },
+	fieldScientific: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontStyle: 'italic' },
+	fieldValueMono: { fontFamily: Platform.OS === 'web' ? ('ui-monospace, monospace' as any) : 'monospace', fontSize: 12, color: COLORS.text.primary },
+	fieldMissing: { ...TYPOGRAPHY.caption, color: COLORS.text.placeholder, fontStyle: 'italic' },
+	tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+	tag: { paddingHorizontal: SPACING.sm, paddingVertical: 2, borderRadius: 99, backgroundColor: COLORS.background.main, borderWidth: 1, borderColor: COLORS.border },
+	tagText: { fontSize: 11, color: COLORS.text.primary },
+	closeBtn: { position: 'absolute', top: SPACING.sm, right: SPACING.sm, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+	closeBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+});
 
 const styles = StyleSheet.create({
 	container: { flex: 1, padding: SPACING.lg, gap: SPACING.sm },
@@ -351,12 +584,16 @@ const styles = StyleSheet.create({
 	tile: { width: 180, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', backgroundColor: COLORS.background.main },
 	tileSelected: { borderColor: COLORS.primary, borderWidth: 2 },
 	tileOrphan: { opacity: 0.7 },
+	tileImageWrap: { width: '100%', height: 120, position: 'relative' },
 	tileImage: { width: '100%', height: 120 },
 	tileImageMissing: { backgroundColor: COLORS.background.imagePlaceholder, alignItems: 'center', justifyContent: 'center' },
 	tileMissingText: { fontSize: 11, color: COLORS.text.secondary, fontStyle: 'italic' },
 	tileFooter: { padding: SPACING.sm, gap: 2 },
 	tileName: { fontSize: 12, fontWeight: '700', color: COLORS.text.primary },
 	tileReason: { fontSize: 11, color: COLORS.text.secondary, fontStyle: 'italic' },
+	tileSpeciesLabel: { fontSize: 11, color: COLORS.text.secondary, fontWeight: '700' },
+	tileSpecies: { fontSize: 12, color: COLORS.text.primary, fontWeight: '600' },
+	tileSpeciesScientific: { fontSize: 11, color: COLORS.text.secondary, fontStyle: 'italic' },
 	tileMod: { fontSize: 10, color: COLORS.text.placeholder },
 
 	emptyState: { padding: SPACING.xl, alignItems: 'center' },

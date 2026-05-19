@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, ActivityIndicator, View, StyleSheet, ImageStyle, StyleProp } from 'react-native';
+import { Image, ActivityIndicator, View, StyleSheet, ImageStyle, StyleProp, Platform } from 'react-native';
 import { AxiosInstance } from 'axios';
 import { apiClient } from '@/services/api/axiosClient';
 import { COLORS } from '@/shared/theme/colors';
@@ -9,9 +9,10 @@ interface AuthenticatedImageProps {
 	style?: StyleProp<ImageStyle>;
 	resizeMode?: 'contain' | 'cover' | 'stretch' | 'center' | 'repeat';
 	client?: AxiosInstance;
+	onNaturalSize?: (width: number, height: number) => void;
 }
 
-export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({ url, style, resizeMode = 'cover', client }) => {
+export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({ url, style, resizeMode = 'cover', client, onNaturalSize }) => {
 	const fetcher = client ?? apiClient;
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState(false);
@@ -31,12 +32,31 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({ url, sty
 		const fetchImage = async () => {
 			try {
 				const response = await fetcher.get(url, { responseType: 'blob' });
-				
+
 				const reader = new FileReader();
 				reader.onloadend = () => {
-					if (isMounted) {
-						setImageDataUri(reader.result as string);
-						setIsLoading(false);
+					if (!isMounted) return;
+					const dataUri = reader.result as string;
+					setImageDataUri(dataUri);
+					setIsLoading(false);
+					if (onNaturalSize) {
+						// Image.getSize sur RN Web peut être capricieux avec les data-URIs.
+						// Sur web on passe par un HTMLImageElement natif (toujours fiable).
+						if (Platform.OS === 'web' && typeof window !== 'undefined') {
+							const probe = new window.Image();
+							probe.onload = () => {
+								if (isMounted && probe.naturalWidth > 0 && probe.naturalHeight > 0) {
+									onNaturalSize(probe.naturalWidth, probe.naturalHeight);
+								}
+							};
+							probe.src = dataUri;
+						} else {
+							Image.getSize(
+								dataUri,
+								(w, h) => { if (isMounted && w > 0 && h > 0) onNaturalSize(w, h); },
+								() => {},
+							);
+						}
 					}
 				};
 				reader.readAsDataURL(response.data);

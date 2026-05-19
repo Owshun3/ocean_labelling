@@ -3,7 +3,7 @@
 const express = require('express');
 const fs = require('fs');
 const { pool } = require('../../db');
-const { cvatGet, cvatDelete } = require('../../lib/cvatAdmin');
+const { cvatGet, cvatDelete, cvatPut } = require('../../lib/cvatAdmin');
 const { recordAction } = require('../../lib/auditLog');
 const { fetchActionsTotals } = require('../../lib/userStats');
 const { deleteVideoFiles } = require('../../lib/videoStorage');
@@ -116,16 +116,25 @@ router.get('/uploaders/:id', async (req, res) => {
         mm.curator_validated_at AS reviewed_at,
         cc.species_id,
         cc.mode             AS certification_mode,
-        cc.curator_comment  AS certification_comment
+        cc.curator_comment  AS certification_comment,
+        cc.chosen_bbox_data AS chosen_bbox_data,
+        s.scientific_name   AS species_scientific_name,
+        s.usage_name        AS species_usage_name,
+        s.polynesian_name   AS species_polynesian_name,
+        s.tags              AS species_tags,
+        meta.image_width    AS image_width,
+        meta.image_height   AS image_height
       FROM annotation_contestations c
       ${buildModerationJoin(kind)}
       LEFT JOIN LATERAL (
-        SELECT species_id, mode, curator_comment
+        SELECT species_id, mode, curator_comment, chosen_bbox_data
         FROM curator_certifications
         WHERE cvat_task_id = c.cvat_task_id
         ORDER BY certified_at DESC
         LIMIT 1
       ) cc ON TRUE
+      LEFT JOIN species s ON s.id = cc.species_id
+      LEFT JOIN media_metadata meta ON meta.cvat_task_id = c.cvat_task_id
       WHERE c.resolved_at IS NULL
         AND mm.uploader_id = $1
       ORDER BY c.created_at ASC
@@ -227,6 +236,16 @@ router.get('/uploaders/:id', async (req, res) => {
         baseItem.species_id           = r.species_id;
         baseItem.certification_mode   = r.certification_mode;
         baseItem.certification_comment = r.certification_comment;
+        baseItem.chosen_bbox          = r.chosen_bbox_data ?? null;
+        baseItem.species              = r.species_id ? {
+          id:               r.species_id,
+          scientific_name:  r.species_scientific_name,
+          usage_name:       r.species_usage_name,
+          polynesian_name:  r.species_polynesian_name,
+          tags:             r.species_tags || [],
+        } : null;
+        baseItem.image_width  = r.image_width  ?? null;
+        baseItem.image_height = r.image_height ?? null;
       } else {
         baseItem.rejection_reason = r.rejection_reason;
       }
@@ -257,6 +276,7 @@ router.post('/resolve', async (req, res) => {
   const adminId = req.cvatUser.id;
   let imageTasksToDelete = [];
   let videosToDelete = [];
+  let curatorJobsToReset = []; // [{ taskId, jobId }] — pour effacer les annotations CVAT après commit
 
   const client = await pool.connect();
   try {
@@ -310,7 +330,25 @@ router.post('/resolve', async (req, res) => {
         videosToDelete     = videoIds;
       }
     } else if (kind === 'annotation') {
-      if (action === 'overturned') {
+      if (action === 'overturned' && imageTaskIds.length) {
+        // Capture les jobs certifiés AVANT suppression, pour pouvoir vider
+        // leurs annotations CVAT après commit.
+        const certRows = await client.query(
+          `SELECT cvat_task_id, cvat_job_id
+           FROM curator_certifications
+           WHERE cvat_task_id = ANY($1)`,
+          [imageTaskIds],
+        );
+        curatorJobsToReset = certRows.rows.map((r) => ({
+          taskId: r.cvat_task_id, jobId: r.cvat_job_id,
+        }));
+
+        // Efface l'audit de certification — le média repart vierge en pool curation.
+        await client.query(
+          `DELETE FROM curator_certifications WHERE cvat_task_id = ANY($1)`,
+          [imageTaskIds],
+        );
+
         await client.query(`
           UPDATE media_moderation
           SET curator_validated_at = NULL, curator_validated_by = NULL,
@@ -348,6 +386,21 @@ router.post('/resolve', async (req, res) => {
       "UPDATE media_moderation SET binaries_deleted_at = NOW() WHERE media_kind='image' AND cvat_task_id = ANY($1)",
       [cleanedTasks],
     );
+  }
+
+  for (const { taskId, jobId } of curatorJobsToReset) {
+    try {
+      const existing = await cvatGet(`/jobs/${jobId}/annotations`);
+      await cvatPut(`/jobs/${jobId}/annotations`, {
+        version: existing.data?.version ?? 0,
+        tags:    existing.data?.tags ?? [],
+        shapes:  [],
+        tracks:  existing.data?.tracks ?? [],
+      });
+    } catch (err) {
+      deleteErrors.push({ task_id: taskId, job_id: jobId, message: err.message });
+      console.warn(`[admin/contestations] CVAT reset job ${jobId} (task ${taskId}):`, err.response?.data ?? err.message);
+    }
   }
 
   for (const vid of videosToDelete) {
