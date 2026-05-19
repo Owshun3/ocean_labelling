@@ -21,6 +21,7 @@ const NAV_ROUTES: NavRoute[] = [
 	{ name: 'Modération',      path: '/(main)/moderation' as Href, roles: ['admin', 'moderator'] },
 	{ name: 'Mes exports',     path: '/(main)/chercheur/export-requests' as Href, roles: ['chercheur'] },
 	{ name: 'Administration',  path: '/(main)/admin'     as Href, roles: ['admin'] },
+	{ name: 'Besoin d\'aide ?', path: '/(main)/help'     as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'] },
 	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'] },
 ];
 

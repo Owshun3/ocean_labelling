@@ -6,6 +6,7 @@ export type RankId = 'debutant' | 'bronze' | 'argent' | 'or' | 'platine';
 
 export interface PublicSettings {
 	'platform.name': string;
+	'platform.help_video_filename': string;
 	'platform.welcome_message': string;
 	'platform.contact_email': string;
 	'platform.contact_phone': string;
@@ -23,6 +24,7 @@ export interface PublicSettings {
 
 const DEFAULTS: PublicSettings = {
 	'platform.name':                    'Ora te Fenua',
+	'platform.help_video_filename':     '',
 	'platform.welcome_message':         'Bienvenue.',
 	'platform.contact_email':           '',
 	'platform.contact_phone':           '',

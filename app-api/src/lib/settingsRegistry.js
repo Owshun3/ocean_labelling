@@ -33,6 +33,15 @@ const REGISTRY = [
     group_name: 'contact', label: 'Adresse postale', description: '',
   },
 
+  // Vidéo d'aide affichée sur la page « Besoin d'aide ? ». Stockée sous
+  // /data/videos/.help/<filename>. Vide → aucun lecteur affiché côté frontend.
+  // Géré via POST /admin/help-video, pas via la PATCH générique.
+  {
+    key: 'platform.help_video_filename', type: 'string', default: '', is_public: true,
+    group_name: 'help', label: 'Vidéo explicative (nom du fichier)',
+    description: 'Géré via la section dédiée plus bas — vide = aucune vidéo.',
+  },
+
   // Maintenance
   {
     key: 'platform.maintenance_mode', type: 'bool', default: 'false', is_public: true,
@@ -115,6 +124,7 @@ const REGISTRY_BY_KEY = Object.fromEntries(REGISTRY.map((r) => [r.key, r]));
 const GROUP_LABELS = {
   branding:    'Branding',
   contact:     'Contact',
+  help:        'Aide',
   maintenance: 'Maintenance',
   access:      'Accès',
   upload:      'Téléversement',

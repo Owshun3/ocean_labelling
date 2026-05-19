@@ -15,5 +15,6 @@ router.use('/curation', require('./curation'));
 router.use('/requests', require('./requests'));
 router.use('/export',   require('./export'));
 router.use('/species-tags', require('./species-tags'));
+router.use('/help-video',   require('./help-video'));
 
 module.exports = router;

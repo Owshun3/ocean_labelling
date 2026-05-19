@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, StyleSheet, Switch, Modal } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, StyleSheet, Switch, Modal, Platform, Alert } from 'react-native';
 import { AdminService, SettingItem } from '@/services/api/AdminService';
 import { refreshPublicSettings } from '@/services/api/publicSettings';
 import { getRanks } from '@/shared/ranks';
@@ -7,6 +7,9 @@ import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
+
+const ACCEPTED_HELP_VIDEO_MIMES = ['video/mp4', 'video/webm', 'video/quicktime'];
+const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
 
 const MAINTENANCE_KEY = 'platform.maintenance_mode';
 
@@ -141,8 +144,19 @@ export const AdminSettingsScreen: React.FC = () => {
 					<View key={groupKey} style={styles.group}>
 						<Text style={styles.groupLabel}>{label}</Text>
 						{groupKey === 'ranks' ? <RankPreview drafts={drafts} /> : null}
+						{groupKey === 'help' ? (
+							<HelpVideoSection
+								filename={String(drafts['platform.help_video_filename'] || '')}
+								service={service}
+								onChanged={() => { load(); refreshPublicSettings(); }}
+							/>
+						) : null}
 						<View style={styles.groupCard}>
-							{groupItems.map((it, idx) => (
+							{groupItems
+								// La vidéo d'aide a son propre widget (HelpVideoSection) — on cache
+								// le champ texte par défaut qui sinon créerait un doublon.
+								.filter((it) => it.key !== 'platform.help_video_filename')
+								.map((it, idx) => (
 								<View key={it.key} style={[styles.row, idx > 0 && styles.rowBordered]}>
 									<View style={styles.rowText}>
 										<Text style={styles.itemLabel}>{it.label}</Text>
@@ -221,6 +235,124 @@ export const AdminSettingsScreen: React.FC = () => {
 		</>
 	);
 };
+
+const HelpVideoSection: React.FC<{ filename: string; service: AdminService; onChanged: () => void }> = ({ filename, service, onChanged }) => {
+	const [uploading, setUploading] = useState(false);
+	const [progress, setProgress] = useState(0);
+	const [deleting, setDeleting] = useState(false);
+	const hasVideo = !!filename;
+
+	const pickAndUpload = () => {
+		if (Platform.OS !== 'web') {
+			toast.error('Upload disponible sur web uniquement.');
+			return;
+		}
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = ACCEPTED_HELP_VIDEO_MIMES.join(',');
+		input.style.display = 'none';
+		input.addEventListener('change', async () => {
+			const file = input.files?.[0];
+			if (!file) return;
+			if (!ACCEPTED_HELP_VIDEO_MIMES.includes(file.type) && !/\.(mp4|webm|mov)$/i.test(file.name)) {
+				toast.error('Format non supporté. Utilise MP4, WebM ou MOV.');
+				return;
+			}
+			setUploading(true);
+			setProgress(0);
+			try {
+				await service.uploadHelpVideo(file, setProgress);
+				toast.success('Vidéo d\'aide mise à jour.');
+				onChanged();
+			} catch (err: any) {
+				toast.error(err?.response?.data?.error || err?.message || 'Upload impossible.');
+			} finally {
+				setUploading(false);
+				input.parentNode?.removeChild(input);
+			}
+		}, { once: true });
+		document.body.appendChild(input);
+		input.click();
+	};
+
+	const handleDelete = async () => {
+		const m = 'Supprimer la vidéo d\'aide actuelle ? La page « Besoin d\'aide ? » n\'affichera plus de vidéo tant qu\'une nouvelle ne sera pas téléversée.';
+		const proceed = Platform.OS === 'web' ? window.confirm(m) : await new Promise<boolean>((res) => Alert.alert('Confirmer', m, [
+			{ text: 'Annuler', style: 'cancel', onPress: () => res(false) },
+			{ text: 'Supprimer', style: 'destructive', onPress: () => res(true) },
+		]));
+		if (!proceed) return;
+		setDeleting(true);
+		try {
+			await service.deleteHelpVideo();
+			toast.success('Vidéo d\'aide supprimée.');
+			onChanged();
+		} catch (err: any) {
+			toast.error(err?.response?.data?.error || err?.message || 'Suppression impossible.');
+		} finally {
+			setDeleting(false);
+		}
+	};
+
+	return (
+		<View style={helpStyles.card}>
+			<Text style={helpStyles.title}>Vidéo explicative — affichée sur « Besoin d'aide ? »</Text>
+			{hasVideo ? (
+				<>
+					<View style={helpStyles.previewBox}>
+						{Platform.OS === 'web' ? (
+							<div style={{ width: '100%', background: '#000', borderRadius: 6, overflow: 'hidden' }}>
+								{/* @ts-ignore */}
+								<video
+									src={`${APP_API_BASE}/help-video/stream`}
+									controls
+									crossOrigin="use-credentials"
+									controlsList="nodownload"
+									onContextMenu={(e: any) => e.preventDefault()}
+									style={{ width: '100%', maxHeight: 300, display: 'block' }}
+								/>
+							</div>
+						) : <Text style={helpStyles.muted}>Aperçu disponible sur web uniquement.</Text>}
+					</View>
+					<Text style={helpStyles.filename}>Fichier actuel : {filename}</Text>
+				</>
+			) : (
+				<Text style={helpStyles.muted}>Aucune vidéo téléversée pour l'instant.</Text>
+			)}
+			<View style={helpStyles.actions}>
+				<Pressable onPress={pickAndUpload} disabled={uploading || deleting} style={[helpStyles.btn, helpStyles.btnPrimary, (uploading || deleting) && helpStyles.btnDisabled]}>
+					<Text style={helpStyles.btnPrimaryText}>
+						{uploading ? `Envoi… ${progress}%` : hasVideo ? 'Remplacer la vidéo' : 'Téléverser une vidéo'}
+					</Text>
+				</Pressable>
+				{hasVideo ? (
+					<Pressable onPress={handleDelete} disabled={uploading || deleting} style={[helpStyles.btn, helpStyles.btnDanger, (uploading || deleting) && helpStyles.btnDisabled]}>
+						<Text style={helpStyles.btnDangerText}>{deleting ? 'Suppression…' : 'Supprimer'}</Text>
+					</Pressable>
+				) : null}
+			</View>
+			<Text style={helpStyles.hint}>
+				Formats acceptés : MP4, WebM, MOV. Taille max : 500 Mo. La vidéo est servie de façon authentifiée et le clic droit + téléchargement direct sont bloqués côté navigateur.
+			</Text>
+		</View>
+	);
+};
+
+const helpStyles = StyleSheet.create({
+	card: { padding: SPACING.md, backgroundColor: COLORS.background.card, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, gap: SPACING.sm, marginBottom: SPACING.sm },
+	title: { ...TYPOGRAPHY.body, fontWeight: '700' },
+	previewBox: { width: '100%' },
+	filename: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontStyle: 'italic' },
+	muted: { ...TYPOGRAPHY.caption, color: COLORS.text.placeholder, fontStyle: 'italic' },
+	actions: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
+	btn: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6 },
+	btnPrimary: { backgroundColor: COLORS.primary },
+	btnPrimaryText: { color: COLORS.text.inverse, fontWeight: '700' },
+	btnDanger: { backgroundColor: COLORS.danger },
+	btnDangerText: { color: COLORS.text.inverse, fontWeight: '700' },
+	btnDisabled: { opacity: 0.5 },
+	hint: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontStyle: 'italic' },
+});
 
 const RANK_IDS = ['debutant', 'bronze', 'argent', 'or', 'platine'] as const;
 
