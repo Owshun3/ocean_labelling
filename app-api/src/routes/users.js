@@ -157,22 +157,20 @@ router.get('/me/profile', requireAuth, async (req, res) => {
     const stats = await pool.query(`
       SELECT
         (SELECT COUNT(*) FROM curator_certifications
-         WHERE chosen_bbox_annotator_id = $1 AND mode = 'review') AS annotations_validated,
-        (SELECT COUNT(*) FROM curator_certifications
-         WHERE rejected_proposals @> $2::jsonb)                    AS annotations_rejected,
+         WHERE chosen_bbox_annotator_id = $1 AND mode = 'review')   AS annotations_validated,
         (SELECT COUNT(*) FROM media_moderation
-         WHERE uploader_id = $1 AND status = 'validated')          AS media_validated,
+         WHERE uploader_id = $1 AND status = 'validated')           AS media_validated,
         (SELECT COUNT(*) FROM media_moderation
-         WHERE uploader_id = $1 AND status = 'rejected')           AS media_rejected
-    `, [me.id, JSON.stringify([{ annotator_id: me.id }])]);
+         WHERE uploader_id = $1 AND status = 'rejected')            AS media_rejected,
+        (SELECT COUNT(*) FROM media_moderation
+         WHERE uploader_id = $1)                                    AS media_uploaded_total
+    `, [me.id]);
 
     const s = stats.rows[0];
-    const annValid = Number(s.annotations_validated);
-    const annRej   = Number(s.annotations_rejected);
-    const medVal   = Number(s.media_validated);
-    const medRej   = Number(s.media_rejected);
-    const annDen   = annValid + annRej;
-    const medDen   = medVal + medRej;
+    const annValid     = Number(s.annotations_validated);
+    const medVal       = Number(s.media_validated);
+    const medRej       = Number(s.media_rejected);
+    const medUploaded  = Number(s.media_uploaded_total);
 
     res.json({
       id: me.id,
@@ -186,12 +184,11 @@ router.get('/me/profile', requireAuth, async (req, res) => {
       username_changed_at:      usernameChangedAt,
       username_next_change_at:  usernameNextChangeAt,
       stats: {
-        annotations_validated: annValid,
-        media_validated:       medVal,
-        media_rejected:        medRej,
+        annotations_validated:   annValid,
+        media_validated:         medVal,
+        media_rejected:          medRej,
+        media_uploaded_total:    medUploaded,
         actions_validated_total: annValid + medVal,
-        precision_annotations: annDen > 0 ? annValid / annDen : null,
-        acceptance_media:      medDen > 0 ? medVal   / medDen : null,
       },
     });
   } catch (err) {

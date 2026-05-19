@@ -25,12 +25,11 @@ export interface ModerationStatusEntry {
 export interface ContestItem { kind: MediaKind; id: number; }
 
 export interface UserProfileStats {
-	annotations_validated: number;
-	media_validated: number;
-	media_rejected: number;
+	annotations_validated:   number;
+	media_validated:         number;
+	media_rejected:          number;
+	media_uploaded_total:    number;
 	actions_validated_total: number;
-	precision_annotations: number | null;
-	acceptance_media: number | null;
 }
 
 export interface UserProfile {

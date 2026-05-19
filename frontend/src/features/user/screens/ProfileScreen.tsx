@@ -15,10 +15,6 @@ function fmtDate(s: string | null): string {
 	try { return new Date(s).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }); }
 	catch { return s; }
 }
-function fmtPct(v: number | null): string {
-	if (v === null || !Number.isFinite(v)) return '—';
-	return `${Math.round(v * 100)}%`;
-}
 
 export const ProfileScreen: React.FC = () => {
 	const router = useRouter();
@@ -114,24 +110,24 @@ export const ProfileScreen: React.FC = () => {
 
 					<View style={styles.kpiRow}>
 						<View style={styles.kpi}>
-							<Text style={styles.kpiValue}>{fmtPct(profile.stats.precision_annotations)}</Text>
-							<Text style={styles.kpiLabel}>Précision annotations</Text>
+							<Text style={styles.kpiValue}>{profile.stats.annotations_validated}</Text>
+							<Text style={styles.kpiLabel}>Annotations validées par curator</Text>
 						</View>
 						<View style={styles.kpi}>
-							<Text style={styles.kpiValue}>{fmtPct(profile.stats.acceptance_media)}</Text>
-							<Text style={styles.kpiLabel}>Acceptation médias</Text>
+							<Text style={styles.kpiValue}>{profile.stats.media_uploaded_total}</Text>
+							<Text style={styles.kpiLabel}>Médias téléversés au total</Text>
 						</View>
 					</View>
 
-					<View style={styles.statSubBlock}>
-						<Text style={styles.statSubHeading}>Annotations</Text>
-						<InfoRow label="Validées par curator" value={String(profile.stats.annotations_validated)} compact />
-					</View>
-
-					<View style={styles.statSubBlock}>
-						<Text style={styles.statSubHeading}>Médias</Text>
-						<InfoRow label="Acceptés en modération" value={String(profile.stats.media_validated)} compact />
-						<InfoRow label="Refusés en modération"  value={String(profile.stats.media_rejected)}  compact />
+					<View style={styles.kpiRow}>
+						<View style={styles.kpi}>
+							<Text style={[styles.kpiValue, { color: COLORS.success }]}>{profile.stats.media_validated}</Text>
+							<Text style={styles.kpiLabel}>Médias acceptés en modération</Text>
+						</View>
+						<View style={styles.kpi}>
+							<Text style={[styles.kpiValue, { color: COLORS.danger }]}>{profile.stats.media_rejected}</Text>
+							<Text style={styles.kpiLabel}>Médias refusés en modération</Text>
+						</View>
 					</View>
 				</View>
 			</View>
