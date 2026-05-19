@@ -202,6 +202,15 @@ Chaque item porte la bbox curator-certifiée (`curator_certifications.chosen_bbo
 
 **Sécurité Accept header** : la lecture frame CVAT (`GET /tasks/{id}/data?type=frame`) exige `Accept: application/vnd.cvat+json, application/json, text/plain, */*` (sinon 406). Pattern identique au proxy `/moderation/media/:taskId/preview`.
 
+**Conformité Datumaro 1.0** :
+- Format = **fichier JSON unique** `annotations/default.json` qui référence toutes les images par leur path relatif `images/task_<id>.jpg`. Pas de fichier d'annotation séparé par image — c'est la norme officielle.
+- Chaque item porte `subset: 'default'` (convention Datumaro pour la séparation train/val/test ; on n'en a qu'un seul pour l'instant).
+- `items[].annotations[].bbox` est au format `[x, y, w, h]` (origine top-left) — strictement la norme.
+- `items[].image.size` est `[height, width]` (ordre Datumaro). Quand `media_metadata.image_width/height` est NULL (uploads anciens sans EXIF), le backend lit les dimensions directement dans les segments SOF du JPEG fetché (zéro dépendance npm, lecture binaire).
+- Pour importer : `datum project import -f datumaro_1.0 <dossier-décompressé>` ou via CVAT « Create from dataset → Datumaro 1.0 ».
+
+**Nom de plateforme dynamique** : le titre dans `info.title`, le README et le nom du zip slugifient `platform.name` lu depuis `app_settings`. L'admin renomme depuis Paramètres système → tout l'export est aligné sans déploiement.
+
 ## Gestion des comptes (`/admin/accounts`)
 
 **Verrous métier** :
@@ -221,6 +230,14 @@ WHERE expires_at > NOW()
   AND last_seen_at > NOW() - INTERVAL '30 minutes'
 ```
 Aligné sur la politique idle (30 min côté `authenticate`). 1 utilisateur = 1 compte, peu importe le nombre de devices / onglets.
+
+**Indicateur par compte** : la liste `/admin/accounts` affiche désormais une colonne « Session » avec :
+- pastille verte « Connecté » + nombre de sessions actives (si plusieurs onglets/devices)
+- pastille grise « Hors-ligne » + « dernière activité il y a X min/h/j »
+
+Backend renvoie `active_sessions` (int) + `last_seen_at` (timestamp) sur chaque user dans `GET /users`. La requête JOIN `app_sessions` applique le même filtre idle 30 min que le dashboard.
+
+**Rôles assignables** : `['moderator', 'curator', 'chercheur', 'annotator', 'guest']`. Le rôle `guest` est désormais inclus (le user a confirmé qu'il sera utilisé plus tard pour des accès en lecture seule du mur communautaire). Le rôle `admin` reste exclu — uniquement via CVAT superuser.
 
 ## Hub admin /admin/requests
 

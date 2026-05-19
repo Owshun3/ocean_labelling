@@ -22,7 +22,7 @@ export interface PublicSettings {
 }
 
 const DEFAULTS: PublicSettings = {
-	'platform.name':                    'Ocean Labelling',
+	'platform.name':                    'Ora te Fenua',
 	'platform.welcome_message':         'Bienvenue.',
 	'platform.contact_email':           '',
 	'platform.contact_phone':           '',

@@ -6,6 +6,7 @@ import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 
 const ASSIGNABLE_ROLES: { value: AppRole; label: string }[] = [
+	{ value: 'guest',     label: 'Invité' },
 	{ value: 'annotator', label: 'Annotateur' },
 	{ value: 'chercheur', label: 'Chercheur' },
 	{ value: 'curator',   label: 'Curateur' },

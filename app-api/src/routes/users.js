@@ -339,6 +339,17 @@ router.get('/', requireAdmin, async (req, res) => {
 
     const actionsTotals = await fetchActionsTotals(cvatUsers.map((u) => u.id));
 
+    // Sessions actives par utilisateur (cohérent avec dashboard) :
+    // expires_at > NOW() ET last_seen_at récent (< 30 min).
+    const { rows: sessionRows } = await pool.query(`
+      SELECT cvat_user_id, COUNT(*)::int AS n, MAX(last_seen_at) AS last_seen_at
+      FROM app_sessions
+      WHERE expires_at > NOW()
+        AND last_seen_at > NOW() - INTERVAL '30 minutes'
+      GROUP BY cvat_user_id
+    `);
+    const sessionByUser = new Map(sessionRows.map((r) => [r.cvat_user_id, r]));
+
     const users = cvatUsers.map(u => {
       const ban = lastBanByUser.get(u.id);
       const banState = classifyBan(ban);
@@ -347,6 +358,10 @@ router.get('/', requireAdmin, async (req, res) => {
       if (banState === 'active') state = 'banned';
       else if (isActive) state = 'active';
       else state = 'disabled';
+
+      const sess = sessionByUser.get(u.id);
+      const sessionsCount = sess?.n ?? 0;
+      const lastSeenAt    = sess?.last_seen_at ?? null;
 
       return {
         id: u.id,
@@ -362,6 +377,8 @@ router.get('/', requireAdmin, async (req, res) => {
         ban: state === 'banned'
           ? { reason: ban.reason, expires_at: ban.expires_at, banned_at: ban.banned_at }
           : null,
+        active_sessions: sessionsCount,
+        last_seen_at:    lastSeenAt,
         actions_validated_total: actionsTotals[u.id] ?? 0,
       };
     });
@@ -402,8 +419,7 @@ router.patch('/:id/active', requireAdmin, async (req, res) => {
 });
 
 // Rôles assignables via l'UI : 'admin' est exclu (réservé aux CVAT superusers).
-// 'guest' aussi, on ne « rétrograde » pas explicitement en guest depuis l'UI.
-const ASSIGNABLE_ROLES = ['moderator', 'curator', 'chercheur', 'annotator'];
+const ASSIGNABLE_ROLES = ['moderator', 'curator', 'chercheur', 'annotator', 'guest'];
 
 // PATCH /users/:id/role — assigner un rôle (admin réservé aux superusers CVAT)
 router.patch('/:id/role', requireAdmin, async (req, res) => {

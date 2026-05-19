@@ -20,8 +20,8 @@ import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
 // Rôles assignables via l'UI : 'admin' est exclu (réservé aux superusers CVAT,
-// rang de fait, non attribuable). 'guest' n'est pas une promotion utile non plus.
-const ASSIGNABLE_ROLES: AppRole[] = ['moderator', 'curator', 'chercheur', 'annotator'];
+// rang de fait, non attribuable).
+const ASSIGNABLE_ROLES: AppRole[] = ['moderator', 'curator', 'chercheur', 'annotator', 'guest'];
 
 const ROLE_LABELS: Record<AppRole, string> = {
 	admin: 'Administrateur',
@@ -109,6 +109,37 @@ function StateSelect({ user, onSetActive, onRequestBan }: StateSelectProps) {
 			) : null}
 		</View>
 	);
+}
+
+function SessionCell({ user }: { user: UserWithRole }) {
+	const online = (user.active_sessions ?? 0) > 0;
+	const lastSeen = user.last_seen_at ? new Date(user.last_seen_at) : null;
+	const subtitle = online
+		? `${user.active_sessions} session${(user.active_sessions ?? 0) > 1 ? 's' : ''}`
+		: (lastSeen ? `dernière activité ${formatRelative(lastSeen)}` : '—');
+	return (
+		<View style={styles.colSession}>
+			<View style={styles.sessionRow}>
+				<View style={[styles.sessionDot, online ? styles.sessionDotOn : styles.sessionDotOff]} />
+				<Text style={[styles.sessionLabel, online && styles.sessionLabelOn]}>
+					{online ? 'Connecté' : 'Hors-ligne'}
+				</Text>
+			</View>
+			<Text style={styles.sessionSub}>{subtitle}</Text>
+		</View>
+	);
+}
+
+function formatRelative(d: Date): string {
+	const diff = Date.now() - d.getTime();
+	const m = Math.floor(diff / 60000);
+	if (m < 1)    return 'à l\'instant';
+	if (m < 60)   return `il y a ${m} min`;
+	const h = Math.floor(m / 60);
+	if (h < 24)   return `il y a ${h} h`;
+	const day = Math.floor(h / 24);
+	if (day < 30) return `il y a ${day} j`;
+	return d.toLocaleDateString('fr-FR');
 }
 
 function RoleSelect({ user, onSave }: { user: UserWithRole; onSave: (role: AppRole) => Promise<void> }) {
@@ -251,7 +282,9 @@ export const AdminScreen: React.FC = () => {
 			<View style={styles.topBar}>
 				<View style={{ flex: 1 }}>
 					<Text style={styles.title}>Gestion des comptes</Text>
-					<Text style={styles.subtitle}>{users.length} compte(s) enregistré(s)</Text>
+					<Text style={styles.subtitle}>
+						{users.length} compte(s) enregistré(s) · {users.filter((u) => (u.active_sessions ?? 0) > 0).length} actuellement connecté(s)
+					</Text>
 				</View>
 				<Pressable onPress={() => setCreateOpen(true)} style={styles.createBtn}>
 					<Text style={styles.createBtnText}>+ Créer un compte</Text>
@@ -261,6 +294,7 @@ export const AdminScreen: React.FC = () => {
 			<View style={styles.tableHeader}>
 				<Text style={[styles.colUsername, styles.headerCell]}>Identifiant</Text>
 				<Text style={[styles.colEmail, styles.headerCell]}>Email</Text>
+				<Text style={[styles.colSession, styles.headerCell]}>Session</Text>
 				<Text style={[styles.colRole, styles.headerCell]}>Rôle</Text>
 				<Text style={[styles.colStatus, styles.headerCell]}>Compte</Text>
 			</View>
@@ -282,6 +316,7 @@ export const AdminScreen: React.FC = () => {
 							<RankBadge actions={item.actions_validated_total ?? 0} size="sm" withCount />
 						</View>
 						<Text style={[styles.colEmail, styles.cell]}>{item.email || '—'}</Text>
+						<SessionCell user={item} />
 						<RoleSelect
 							user={item}
 							onSave={(role) => handleRoleChange(item.id, role)}
@@ -347,10 +382,18 @@ const styles = StyleSheet.create({
 
 	colUsername: { flex: 2 },
 	colEmail: { flex: 3 },
+	colSession: { flex: 2 },
 	colRole: { flex: 2 },
 	colStatus: { flex: 2 },
 	roleCell: { flex: 2 },
 	stateCell: { flex: 2 },
+	sessionRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+	sessionDot: { width: 8, height: 8, borderRadius: 4 },
+	sessionDotOn:  { backgroundColor: '#16a34a' },
+	sessionDotOff: { backgroundColor: '#9ca3af' },
+	sessionLabel: { fontSize: 12, color: COLORS.text.secondary, fontWeight: '600' },
+	sessionLabelOn: { color: '#16a34a' },
+	sessionSub: { ...TYPOGRAPHY.caption, color: COLORS.text.placeholder, fontStyle: 'italic' },
 	lockedRole: {
 		flexDirection: 'row', alignItems: 'baseline', gap: SPACING.xs,
 		paddingHorizontal: SPACING.sm, paddingVertical: 4,

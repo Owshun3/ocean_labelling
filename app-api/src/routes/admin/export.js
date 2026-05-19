@@ -12,6 +12,38 @@ const CVAT   = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
 
 const VALID_SOURCE_TYPES = new Set(['all', 'image', 'video_frame']);
 
+// Lit le nom de plateforme depuis app_settings (modifiable par l'admin).
+// Fallback codé en dur uniquement si la table n'a pas encore été seed.
+async function getPlatformName() {
+  try {
+    const { rows } = await pool.query("SELECT value FROM app_settings WHERE key = 'platform.name'");
+    const v = rows[0]?.value;
+    return (typeof v === 'string' && v.trim().length > 0) ? v.trim() : 'Ora te Fenua';
+  } catch { return 'Ora te Fenua'; }
+}
+
+// Lit width/height directement depuis le binaire JPEG. Évite d'ajouter une dépendance npm.
+// Marqueurs SOF (Start Of Frame) FFC0-FFCF (sauf FFC4/FFC8/FFCC) → 5 octets après le marqueur :
+// [precision(1), height(2BE), width(2BE)].
+function readJpegSize(buf) {
+  if (!buf || buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
+  let i = 2;
+  while (i < buf.length - 8) {
+    if (buf[i] !== 0xff) return null;
+    const marker = buf[i + 1];
+    if (marker === 0xd8 || marker === 0xd9) return null;
+    const segLen = buf.readUInt16BE(i + 2);
+    const isSOF = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSOF) {
+      const height = buf.readUInt16BE(i + 5);
+      const width  = buf.readUInt16BE(i + 7);
+      return { width, height };
+    }
+    i += 2 + segLen;
+  }
+  return null;
+}
+
 function parseFilters(body) {
   const b = body && typeof body === 'object' ? body : {};
   const f = {};
@@ -159,6 +191,7 @@ router.post('/run', async (req, res) => {
     });
   });
 
+  // Items construits sans size_image (rempli après lecture des binaires JPEG).
   const items = rows.map((r) => {
     const bbox = bboxFromChosen(r.chosen_bbox_data);
     const annotation = bbox ? {
@@ -193,20 +226,24 @@ router.post('/run', async (req, res) => {
       source_frame_time_ms: r.source_frame_time_ms,
     } : {};
 
+    // Convention Datumaro 1.0 : items groupés par "subset". Notre dataset n'ayant
+    // pas (encore) de split train/val/test, tout va dans 'default'.
     return {
       id:          `task_${r.cvat_task_id}`,
+      subset:      'default',
       annotations: annotation ? [annotation] : [],
       image: {
         path: `images/task_${r.cvat_task_id}.jpg`,
-        size: [r.image_height || 0, r.image_width || 0],
+        size: r.image_height && r.image_width ? [r.image_height, r.image_width] : [0, 0],
       },
       attr: itemAttrs,
     };
   });
 
+  const platformName = await getPlatformName();
   const datumaro = {
     info: {
-      title:        'Ocean Labelling Export',
+      title:        `${platformName} — export`,
       format:       'datumaro_1.0',
       exported_at:  new Date().toISOString(),
       exported_by:  req.cvatUser.id,
@@ -219,7 +256,8 @@ router.post('/run', async (req, res) => {
     items,
   };
 
-  const filename = `ocean-export-${new Date().toISOString().slice(0, 10)}-${items.length}items.zip`;
+  const slug = platformName.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'export';
+  const filename = `${slug}-${new Date().toISOString().slice(0, 10)}-${items.length}items.zip`;
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Cache-Control', 'no-store');
@@ -232,9 +270,11 @@ router.post('/run', async (req, res) => {
   });
   archive.pipe(res);
 
-  archive.append(JSON.stringify(datumaro, null, 2), { name: 'annotations/default.json' });
-  archive.append(buildReadme(filters, items.length), { name: 'README.md' });
+  archive.append(buildReadme(filters, items.length, platformName), { name: 'README.md' });
 
+  // On itère d'abord pour lire les binaires + dimensions, puis on append le JSON.
+  // Cela permet de patcher item.image.size avec la taille réelle quand metadata est manquante.
+  const itemById = new Map(items.map((it) => [it.id, it]));
   const token = await getAdminToken();
   let imageFailures = 0;
   for (const r of rows) {
@@ -250,12 +290,23 @@ router.post('/run', async (req, res) => {
         responseType: 'arraybuffer',
         timeout: 30_000,
       });
-      archive.append(Buffer.from(imgResp.data), { name: `images/task_${r.cvat_task_id}.jpg` });
+      const buf = Buffer.from(imgResp.data);
+
+      // Patch item.image.size si manquant (lecture SOF JPEG, sans dep externe).
+      const item = itemById.get(`task_${r.cvat_task_id}`);
+      if (item && (!item.image.size[0] || !item.image.size[1])) {
+        const dims = readJpegSize(buf);
+        if (dims) item.image.size = [dims.height, dims.width];
+      }
+      archive.append(buf, { name: `images/task_${r.cvat_task_id}.jpg` });
     } catch (err) {
       imageFailures += 1;
       console.warn(`[export] image task ${r.cvat_task_id} failed:`, err.response?.status ?? err.message);
     }
   }
+
+  // Le JSON est ajouté APRÈS la boucle pour intégrer les dimensions patchées.
+  archive.append(JSON.stringify(datumaro, null, 2), { name: 'annotations/default.json' });
 
   await archive.finalize();
 
@@ -268,9 +319,9 @@ router.post('/run', async (req, res) => {
   });
 });
 
-function buildReadme(filters, count) {
+function buildReadme(filters, count, platformName) {
   return [
-    '# Ocean Labelling — Export Datumaro',
+    `# ${platformName} — Export Datumaro 1.0`,
     '',
     `Généré le ${new Date().toISOString()}.`,
     `Nombre d'items : ${count}.`,
@@ -280,11 +331,21 @@ function buildReadme(filters, count) {
     JSON.stringify(filters, null, 2),
     '```',
     '',
-    '## Contenu',
-    '- `annotations/default.json` : dataset Datumaro 1.0 (labels, items, bbox).',
+    '## Contenu du zip',
+    '- `annotations/default.json` : dataset Datumaro 1.0 (labels + items + annotations).',
     '- `images/task_<id>.jpg` : image originale (sans EXIF — stripped à l\'upload).',
     '',
-    'Chaque item correspond à une tâche CVAT validée par un curator. La bbox est la',
+    '## Schéma Datumaro 1.0',
+    'C\'est un **fichier JSON unique** qui référence toutes les images et leurs annotations.',
+    'Aucun fichier d\'annotation séparé par image — c\'est la norme Datumaro. Vérifie',
+    '`items[].annotations[].bbox` (format `[x, y, w, h]`) et `items[].annotations[].label_id`',
+    '(index dans `categories.label.labels`).',
+    '',
+    'Pour importer le dataset :',
+    '- Datumaro CLI : `datum project import -f datumaro_1.0 <zip-extracted-dir>`',
+    '- CVAT : « Create from dataset » → format « Datumaro 1.0 ».',
+    '',
+    'Chaque item correspond à une tâche validée par un curator. La bbox est la',
     'certification finale (`chosen_bbox_data`). Les attributs item portent les méta',
     'EXIF + le lien vidéo d\'origine si la frame a été extraite d\'une vidéo.',
   ].join('\n');
