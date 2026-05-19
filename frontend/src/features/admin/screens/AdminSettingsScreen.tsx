@@ -10,7 +10,7 @@ import { TYPOGRAPHY } from '@/shared/theme/typography';
 
 const ACCEPTED_HELP_VIDEO_MIMES = ['video/mp4', 'video/webm', 'video/quicktime'];
 const ACCEPTED_LOGO_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
-const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+import { APP_API_BASE } from '@/services/api/runtimeUrls';
 
 const MAINTENANCE_KEY = 'platform.maintenance_mode';
 

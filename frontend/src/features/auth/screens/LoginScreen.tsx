@@ -11,7 +11,7 @@ import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
-const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+import { APP_API_BASE } from '@/services/api/runtimeUrls';
 
 interface BanState {
 	username: string | null;

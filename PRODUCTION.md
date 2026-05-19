@@ -232,52 +232,225 @@ systemctl --user disable --now expo
 
 ## Découplage des configurations dev local ↔ VM
 
-**Principe** : aucun fichier suivi par git ne contient d'URL ou de mot de passe propre à un environnement. Tout vit dans **deux fichiers `.env` gitignorés** (un par machine) :
+**Principe** : aucun fichier suivi par git ne contient d'URL ou de mot de passe propre à un environnement.
 
-| Fichier | Gitignoré ? | Contient |
-|---|---|---|
-| `.env` (racine) | oui (`*.env`) | `POSTGRES_PASSWORD`, `CVAT_ADMIN_PASS`, `CSRF_TRUSTED_ORIGINS` |
-| `frontend/.env` | oui (`*.env`) | les 3 `EXPO_PUBLIC_*` (URLs API et CVAT UI) |
+### URLs API — dérivées au runtime
 
-`docker-compose.yml` lit `${CSRF_TRUSTED_ORIGINS}` depuis l'environnement avec un **défaut localhost** : `${CSRF_TRUSTED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,http://localhost:8888,http://127.0.0.1:8888}`. Donc en dev, ne **pas** définir la var → fallback localhost automatique. Sur la VM, définir la var dans `.env` → surcharge.
+Depuis le refactor `runtimeUrls.ts` ([frontend/src/services/api/runtimeUrls.ts](frontend/src/services/api/runtimeUrls.ts)), les URLs API sont **calculées au runtime depuis `window.location`**. Un seul bundle Expo fonctionne partout :
 
-**Conséquence** : `git pull` de chaque côté ne touche jamais aux fichiers `.env` locaux. Pas de réécriture, pas de conflit, pas de procédure manuelle après pull.
+- Browser sur `http://localhost:8081/` (Metro dev) → API sur `http://localhost:8888/app-api`
+- Browser sur `http://10.16.1.253:8081/` (LAN UPF) → API sur `http://10.16.1.253:8888/app-api`
+- Browser sur `https://otf.upf.pf/` (prod HTTPS) → API sur `https://otf.upf.pf/app-api`
 
-### Configuration côté dev local (poste maison)
+Règle : si le port du `window.location` est `8081` (Expo Metro), l'API est sur le port `8888` du même host. Sinon (gateway HTTP 8888 ou gateway HTTPS 443), l'API est sur la même origine. Override possible via `EXPO_PUBLIC_APP_API_URL` dans `frontend/.env` pour les cas particuliers (tunnel ngrok, dev distribué).
 
-`.env` racine — laisser tel quel après `cp .env.example .env`. Pas de `CSRF_TRUSTED_ORIGINS` à définir.
+→ **Plus besoin de toucher `frontend/.env` quand on change d'environnement**. Le fichier reste avec juste un commentaire explicatif.
 
-`frontend/.env` :
-```
-EXPO_PUBLIC_API_URL=http://localhost:8888/api
-EXPO_PUBLIC_APP_API_URL=http://localhost:8888/app-api
-EXPO_PUBLIC_CVAT_UI_URL=http://localhost:8888
-```
+### CSRF origins — lus depuis `.env`
 
-### Configuration côté VM (réseau université)
+`docker-compose.yml` lit `${CSRF_TRUSTED_ORIGINS}` depuis l'environnement avec un **défaut localhost** : `${CSRF_TRUSTED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,http://localhost:8888,http://127.0.0.1:8888}`. En dev, ne **pas** définir la var → fallback localhost automatique. Sur la VM en HTTPS, définir la var dans `.env` → surcharge.
 
-`.env` racine — ajouter la dernière ligne :
+### Configuration côté VM (HTTPS prod)
+
+`.env` racine :
 ```
 POSTGRES_PASSWORD=<...>
 CVAT_ADMIN_USER=admin
 CVAT_ADMIN_PASS=<...>
-CSRF_TRUSTED_ORIGINS=http://<IP_VM>:8081,http://<IP_VM>:8888
+CSRF_TRUSTED_ORIGINS=https://otf.upf.pf
 ```
 
-`frontend/.env` :
-```
-EXPO_PUBLIC_API_URL=http://<IP_VM>:8888/api
-EXPO_PUBLIC_APP_API_URL=http://<IP_VM>:8888/app-api
-EXPO_PUBLIC_CVAT_UI_URL=http://<IP_VM>:8888
-```
+`frontend/.env` — laisser tel quel (juste un commentaire, pas de URLs).
 
-Après modification de l'un ou l'autre :
+Après modification :
 ```bash
 docker compose up -d --force-recreate cvat_server   # si .env racine a changé
 systemctl --user restart expo                       # si frontend/.env a changé
 ```
 
-> Première migration sur la VM (passage de localhost → IP) : la valeur en dur de `CSRF_TRUSTED_ORIGINS` a été retirée de `docker-compose.yml` au commit qui a introduit cette section. Si la VM avait un `.env` sans la nouvelle var → fallback localhost → CVAT rejette les POST depuis l'IP. Ajouter la var dans `.env` puis recreate `cvat_server`.
+---
+
+## Activer HTTPS production (Let's Encrypt + `otf.upf.pf`)
+
+Procédure pour basculer la VM en mode HTTPS production une fois que :
+- ✅ Le DNS A record `otf.upf.pf → 10.16.1.253` est en place côté DSI.
+- ✅ La DSI confirme que le port 80 est ouvert pour le challenge ACME HTTP-01 de Let's Encrypt (sinon utiliser DNS-01, voir variante en bas).
+- ✅ Les ports 80 et 443 sont ouverts pour l'IP du testeur (ton prof).
+
+Tout le reste se fait côté VM. Aucune intervention DSI requise pour l'émission ni le renouvellement.
+
+### 1. Builder le bundle statique du frontend
+
+En production, le frontend n'est plus servi par Metro mais par NGINX (un seul port, pas de dépendance à 8081, supporte HTTPS).
+
+```bash
+cd /home/stage/ocean_labelling/frontend
+npx expo export -p web -o dist/
+ls -la dist/   # doit contenir index.html, _expo/, etc.
+cd ..
+```
+
+À refaire après chaque modification du code frontend que tu veux exposer au testeur.
+
+### 2. Préparer `docker-compose.yml` pour exposer 80 et 443
+
+Modifier le service `gateway` :
+
+```yaml
+gateway:
+  image: nginx:alpine
+  ports:
+    - "8888:8080"      # garde 8888 pour test rapide en local
+    - "80:80"          # ACME HTTP-01 + redirection
+    - "443:443"        # HTTPS prod
+  volumes:
+    - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    - ./nginx/static:/etc/nginx/ocean-static:ro
+    - ./frontend/dist:/usr/share/nginx/ocean-dist:ro     # bundle statique
+    - /etc/letsencrypt:/etc/letsencrypt:ro               # certs Let's Encrypt
+    - /var/www/certbot:/var/www/certbot:ro               # webroot pour ACME challenge
+```
+
+### 3. Émettre le premier certificat Let's Encrypt
+
+Avant d'activer la config HTTPS, on a besoin du cert. On utilise Certbot en mode **standalone** (Certbot écoute lui-même sur le port 80 pour la validation, le temps de l'émission). Plus simple que le mode webroot pour le premier coup.
+
+```bash
+sudo mkdir -p /var/www/certbot /etc/letsencrypt
+
+# Stopper le gateway pour liberer le port 80 (sera reactive juste apres)
+docker compose stop gateway
+
+# Certbot standalone (15 secondes)
+sudo docker run --rm \
+  -p 80:80 \
+  -v /etc/letsencrypt:/etc/letsencrypt \
+  certbot/certbot certonly --standalone \
+  -d otf.upf.pf \
+  --agree-tos -m ton.email@upf.pf --non-interactive
+
+# Verification : les fichiers PEM doivent etre la
+sudo ls /etc/letsencrypt/live/otf.upf.pf/
+# attendu: cert.pem, chain.pem, fullchain.pem, privkey.pem
+```
+
+### 4. Activer la config NGINX HTTPS
+
+```bash
+# Sauvegarde de la config HTTP courante (pour rollback eventuel)
+cp nginx/nginx.conf nginx/nginx.conf.http-backup
+
+# Bascule sur la config HTTPS
+cp nginx/nginx-https.conf nginx/nginx.conf
+
+# Relance le gateway avec les nouveaux volumes + ports + config
+docker compose up -d --force-recreate gateway
+```
+
+### 5. Mettre `.env` racine + CVAT en mode HTTPS
+
+`.env` racine :
+```env
+CSRF_TRUSTED_ORIGINS=https://otf.upf.pf
+```
+
+`cvat-extras/ocean.py` — ajouter en bas :
+```python
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+```
+
+Et `docker-compose.yml` — passer app-api en prod (cookie de session devient `Secure`) :
+```yaml
+app-api:
+  environment:
+    - NODE_ENV=production
+```
+
+Recréer les services :
+```bash
+docker compose up -d --force-recreate cvat_server app-api
+```
+
+### 6. Tests depuis la VM (sans avoir besoin d'accès externe)
+
+Tu peux **tout valider en local** depuis la VM, sans browser externe.
+
+```bash
+# DNS resolve
+getent hosts otf.upf.pf
+# attendu: 10.16.1.253  otf.upf.pf
+
+# NGINX ecoute bien sur 80 + 443
+ss -ltn | grep -E ":(80|443) "
+
+# Redirection HTTP -> HTTPS
+curl -sI http://otf.upf.pf/ | head -3
+# attendu: HTTP/1.1 301 Moved Permanently / Location: https://otf.upf.pf/
+
+# Certificat valide et bonne identite
+openssl s_client -connect otf.upf.pf:443 -servername otf.upf.pf </dev/null 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -dates
+# attendu: subject=CN = otf.upf.pf / issuer=Let's Encrypt / notAfter = +90 jours
+
+# Chaine de certification valide
+openssl s_client -connect otf.upf.pf:443 -servername otf.upf.pf -showcerts </dev/null 2>&1 \
+  | grep "Verify return code"
+# attendu: Verify return code: 0 (ok)
+
+# HTTPS sert le frontend (page Ocean)
+curl -sI https://otf.upf.pf/ | head -3
+# attendu: HTTP/2 200
+
+# APIs joignables en HTTPS
+curl -sI https://otf.upf.pf/api/server/about      # CVAT, attendu HTTP/2 200
+curl -sI -X POST https://otf.upf.pf/app-api/auth/login  # attendu 400 ou 401 (pas de body)
+```
+
+Audit complet (optionnel, note A/B/C/F) :
+```bash
+docker run --rm -ti drwetter/testssl.sh https://otf.upf.pf/
+```
+
+### 7. Tests demandés au prof (browser réel)
+
+C'est l'unique chose non-testable en local depuis la VM :
+
+- [ ] Ouvrir `https://otf.upf.pf/` dans Chrome → cadenas fermé, pas d'alerte
+- [ ] Login → session persiste (cookie `Secure` transmis)
+- [ ] **Upload d'une photo** — test critique HTTPS (`expo-image-picker` ne marche qu'en secure context)
+- [ ] Console F12 → aucune requête en `http://`, tout en `https://`
+- [ ] Studio d'annotation → tracer un rectangle, valider
+
+### 8. Renouvellement automatique du certificat
+
+Let's Encrypt expire à 90 jours. Configurer un cron sur la VM (en mode standalone, brève interruption de gateway de ~20s tous les 60-89 jours) :
+
+```bash
+sudo crontab -e
+```
+
+Ajouter :
+```
+0 3 * * 1 cd /home/stage/ocean_labelling && docker compose stop gateway && docker run --rm -p 80:80 -v /etc/letsencrypt:/etc/letsencrypt certbot/certbot renew --quiet && docker compose start gateway
+```
+
+Cron lance le renouvellement tous les lundis à 3h. Certbot ne renouvelle vraiment que si le cert expire dans <30 jours.
+
+### Variante — Si HTTP-01 ne passe pas (port 80 strictement filtré par UPF)
+
+Si la DSI n'a pu ouvrir le 80 qu'à l'IP de ton prof et pas aux IPs Let's Encrypt, HTTP-01 échouera. Bascule sur DNS-01 (manuel, nécessite que la DSI publie un TXT à chaque renouvellement) :
+
+```bash
+sudo docker run --rm -it \
+  -v /etc/letsencrypt:/etc/letsencrypt \
+  certbot/certbot certonly --manual --preferred-challenges dns \
+  -d otf.upf.pf \
+  --agree-tos -m ton.email@upf.pf
+```
+
+Certbot affiche un TXT record à publier. Tu transfères à la DSI, elle publie, tu vérifies avec `dig +short TXT _acme-challenge.otf.upf.pf`, puis Entrée. Cert obtenu. Le renouvellement est manuel tous les 90 jours.
 
 ---
 
@@ -554,4 +727,4 @@ docker exec -i $(docker compose ps -q postgres) \
 
 ---
 
-*Dernière mise à jour : 2026-05-07 — Procédure post-pull étoffée + sections « Faire tourner Expo en permanence » et « Passage à une vraie IP » + découplage .env (CSRF_TRUSTED_ORIGINS lu depuis l'env, plus de valeur en dur dans docker-compose.yml)*
+*Dernière mise à jour : 2026-05-07 — URLs frontend dérivées au runtime (plus de bundle à rebuild par environnement) + section « Activer HTTPS production » avec procédure Let's Encrypt HTTP-01 standalone + nginx-https.conf prêt à activer*

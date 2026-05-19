@@ -6,7 +6,7 @@ import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 
-const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+import { APP_API_BASE } from '@/services/api/runtimeUrls';
 const STREAM_URL = `${APP_API_BASE}/help-video/stream`;
 
 export const HelpScreen: React.FC = () => {

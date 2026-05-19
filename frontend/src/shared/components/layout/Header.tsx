@@ -25,7 +25,7 @@ const NAV_ROUTES: NavRoute[] = [
 	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'] },
 ];
 
-const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+import { APP_API_BASE } from '@/services/api/runtimeUrls';
 
 const LOGO_HEIGHT = 40;
 

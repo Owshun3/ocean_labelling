@@ -2,7 +2,7 @@ import axios from 'axios';
 import { attachBanInterceptor } from './banInterceptor';
 import type { ExportFilters, ExportPreview } from './AdminService';
 
-const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+import { APP_API_BASE } from './runtimeUrls';
 const client = axios.create({ baseURL: `${APP_API_BASE}/chercheur`, withCredentials: true });
 attachBanInterceptor(client);
 

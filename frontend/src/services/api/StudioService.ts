@@ -3,7 +3,7 @@ import { SpeciesService } from './SpeciesService';
 import { attachBanInterceptor } from './banInterceptor';
 import { StudioShape } from '@/features/studio/types';
 
-const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+import { APP_API_BASE } from './runtimeUrls';
 
 export const studioClient = axios.create({ baseURL: `${APP_API_BASE}/studio`, withCredentials: true });
 

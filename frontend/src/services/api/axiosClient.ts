@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+import { APP_API_BASE } from './runtimeUrls';
 
 export const apiClient = axios.create({
 	baseURL: `${APP_API_BASE}/cvat`,

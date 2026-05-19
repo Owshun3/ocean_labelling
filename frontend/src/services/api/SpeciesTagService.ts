@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { attachBanInterceptor } from './banInterceptor';
 
-const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+import { APP_API_BASE } from './runtimeUrls';
 
 const publicClient = axios.create({ baseURL: `${APP_API_BASE}/species-tags`,   withCredentials: true });
 const adminClient  = axios.create({ baseURL: `${APP_API_BASE}/admin/species-tags`, withCredentials: true });
