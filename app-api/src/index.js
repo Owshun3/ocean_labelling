@@ -20,6 +20,7 @@ app.use('/upload-history', require('./routes/history'));
 app.use('/curator', require('./routes/curator'));
 app.use('/moderation', require('./routes/moderation'));
 app.use('/species', require('./routes/species'));
+app.use('/species-tags', require('./routes/species-tags'));
 app.use('/studio', require('./routes/studio'));
 app.use('/settings', require('./routes/settings'));
 app.use('/media', require('./routes/media-metadata'));

@@ -449,6 +449,13 @@ router.post('/tasks/:taskId/certify', requireCuratorOrAbove, async (req, res) =>
     return res.status(400).json({ error: 'species.scientific_name, usage_name, polynesian_name required' });
   }
 
+  // Validation taxonomie tags : refuse la certification si la taxonomie n'est pas
+  // respectée (groupe obligatoire manquant, exclusif violé, valeur inconnue).
+  const { validateTags } = require('../lib/speciesTagValidation');
+  const tagsCandidate = Array.isArray(sp.tags) ? sp.tags.filter((t) => typeof t === 'string') : [];
+  const tagsCheck = await validateTags(tagsCandidate);
+  if (!tagsCheck.ok) return res.status(400).json({ error: tagsCheck.error });
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

@@ -60,6 +60,29 @@ async function cvatFetchAllUsers() {
   }
 }
 
+async function cvatAdminGet(path) {
+  const doGet = (token) => axios.get(`${CVAT_API}${path}`, {
+    headers: { Authorization: `Token ${token}`, Accept: 'application/vnd.cvat+json', Host: 'localhost' },
+    timeout: 8000,
+  });
+  try {
+    return await doGet(await getCvatAdminToken());
+  } catch (err) {
+    if (err.response?.status === 401) return doGet(await getCvatAdminToken(true));
+    throw err;
+  }
+}
+
+async function cvatGetUser(userId) {
+  try {
+    const resp = await cvatAdminGet(`/users/${userId}`);
+    return resp.data;
+  } catch (err) {
+    if (err.response?.status === 404) return null;
+    throw err;
+  }
+}
+
 async function cvatPatchUser(userId, body) {
   const doPatch = (token) => axios.patch(`${CVAT_API}/users/${userId}`, body, {
     headers: {
@@ -378,16 +401,30 @@ router.patch('/:id/active', requireAdmin, async (req, res) => {
   }
 });
 
-// PATCH /users/:id/role — assigner un rôle
+// Rôles assignables via l'UI : 'admin' est exclu (réservé aux CVAT superusers).
+// 'guest' aussi, on ne « rétrograde » pas explicitement en guest depuis l'UI.
+const ASSIGNABLE_ROLES = ['moderator', 'curator', 'chercheur', 'annotator'];
+
+// PATCH /users/:id/role — assigner un rôle (admin réservé aux superusers CVAT)
 router.patch('/:id/role', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { role } = req.body;
 
-  if (!VALID_ROLES.includes(role)) {
-    return res.status(400).json({ error: `Role must be one of: ${VALID_ROLES.join(', ')}` });
+  if (!ASSIGNABLE_ROLES.includes(role)) {
+    return res.status(400).json({
+      error: `Le rôle doit être l'un de : ${ASSIGNABLE_ROLES.join(', ')}. Le rôle administrateur est réservé aux superusers CVAT.`,
+    });
   }
 
   try {
+    // Verrouille le rôle du superuser CVAT : il est administrateur de fait, on ne touche pas.
+    const cvatUser = await cvatGetUser(id);
+    if (cvatUser?.is_superuser || cvatUser?.is_staff) {
+      return res.status(403).json({
+        error: 'Le rôle du superuser CVAT est verrouillé sur « administrateur ».',
+      });
+    }
+
     const prev = (await pool.query('SELECT role FROM user_roles WHERE cvat_user_id = $1', [id])).rows[0]?.role ?? null;
     await pool.query(`
       INSERT INTO user_roles (cvat_user_id, role, updated_at)
@@ -405,5 +442,74 @@ router.patch('/:id/role', requireAdmin, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// POST /users — crée un compte CVAT + assigne un rôle (admin only)
+router.post('/', requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const username   = typeof b.username   === 'string' ? b.username.trim()   : '';
+  const password   = typeof b.password   === 'string' ? b.password          : '';
+  const email      = typeof b.email      === 'string' ? b.email.trim()      : '';
+  const firstName  = typeof b.first_name === 'string' ? b.first_name.trim() : '';
+  const lastName   = typeof b.last_name  === 'string' ? b.last_name.trim()  : '';
+  const role       = typeof b.role       === 'string' ? b.role              : 'annotator';
+
+  if (!username) return res.status(400).json({ error: 'Identifiant requis.' });
+  if (!password || password.length < 8) return res.status(400).json({ error: 'Mot de passe requis (≥ 8 caractères).' });
+  if (!email) return res.status(400).json({ error: 'Email requis.' });
+  if (!ASSIGNABLE_ROLES.includes(role)) {
+    return res.status(400).json({
+      error: `Le rôle doit être l'un de : ${ASSIGNABLE_ROLES.join(', ')}. Pour créer un administrateur, passe par le shell CVAT.`,
+    });
+  }
+
+  try {
+    // 1. Créer le compte CVAT via /auth/register (la route est publique côté CVAT).
+    await axios.post(`${CVAT_API}/auth/register`, {
+      username, email,
+      first_name: firstName, last_name: lastName,
+      password1: password, password2: password,
+    }, { headers: { Host: 'localhost', 'Content-Type': 'application/json' } });
+
+    // 2. Récupérer l'id CVAT créé (auth/register ne le renvoie pas systématiquement).
+    const userId = await resolveCvatUserIdByUsername(username);
+    if (!userId) {
+      return res.status(500).json({ error: 'Compte CVAT créé mais id introuvable — recharge la liste.' });
+    }
+
+    // 3. Poser le rôle dans user_roles.
+    await pool.query(`
+      INSERT INTO user_roles (cvat_user_id, username, email, role)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (cvat_user_id) DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()
+    `, [userId, username, email, role]);
+
+    recordAction(req.cvatUser.id, 'user.created', {
+      targetType: 'user', targetId: userId, payload: { username, email, role },
+    });
+    res.status(201).json({ id: userId, username, email, role });
+  } catch (err) {
+    const status = err?.response?.status;
+    const data   = err?.response?.data;
+    if (status === 400 && data) {
+      // CVAT répond { username: [...], email: [...] } en cas de doublon/violation.
+      const firstError = (() => {
+        for (const k of Object.keys(data)) {
+          const v = data[k];
+          if (Array.isArray(v) && v.length > 0) return `${k} : ${v[0]}`;
+        }
+        return JSON.stringify(data);
+      })();
+      return res.status(400).json({ error: firstError });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+async function resolveCvatUserIdByUsername(username) {
+  // CVAT n'expose pas de filtre exact, on parcourt les pages de search.
+  const resp = await cvatAdminGet(`/users?search=${encodeURIComponent(username)}&page_size=20`);
+  const match = (resp.data?.results || []).find((u) => u.username === username);
+  return match?.id ?? null;
+}
 
 module.exports = router;

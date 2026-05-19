@@ -16,7 +16,12 @@ router.get('/summary', async (_req, res) => {
                (SELECT value::int FROM app_settings WHERE key = 'consensus_replicas_default'),
                2
              ))                                                                       AS media_awaiting_curation,
-        (SELECT COUNT(*) FROM app_sessions WHERE expires_at > NOW())                  AS active_sessions,
+        -- Comptage des utilisateurs actuellement actifs : 1 par cvat_user_id, et
+        -- seules les sessions touchées dans la fenêtre d'idle (30 min) comptent.
+        -- Sinon on accumule les sessions zombies de navigateurs fermés.
+        (SELECT COUNT(DISTINCT cvat_user_id) FROM app_sessions
+           WHERE expires_at > NOW()
+             AND last_seen_at > NOW() - INTERVAL '30 minutes')                       AS active_sessions,
         (SELECT COUNT(*) FROM user_bans
            WHERE released_at IS NULL AND (expires_at IS NULL OR expires_at > NOW()))  AS active_bans,
         (SELECT COUNT(*) FROM species WHERE status = 'pending')                       AS pending_species,

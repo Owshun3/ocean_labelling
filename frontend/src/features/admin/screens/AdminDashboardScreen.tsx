@@ -46,7 +46,7 @@ export const AdminDashboardScreen: React.FC = () => {
 					href={'/(main)/admin/accounts' as Href}
 					icon="people"
 					kpiValue={summary?.accounts.active_sessions ?? 0}
-					kpiLabel="sessions actives"
+					kpiLabel="utilisateur(s) connecté(s)"
 					description={`${summary?.accounts.active_bans ?? 0} compte(s) banni(s) actuellement`}
 					severity={banSev}
 				/>
@@ -100,6 +100,14 @@ export const AdminDashboardScreen: React.FC = () => {
 					href={'/(main)/admin/export' as Href}
 					icon="cloud-download"
 					description="Datumaro, filtres par espèce, tag, utilisateur"
+					severity="neutral"
+				/>
+
+				<AdminCard
+					title="Tags d'espèces"
+					href={'/(main)/admin/species-tags' as Href}
+					icon="pricetags"
+					description="Taxonomie obligatoire/exclusive utilisée par le curator et l'export"
 					severity="neutral"
 				/>
 			</View>

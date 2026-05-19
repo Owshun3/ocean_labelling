@@ -96,6 +96,14 @@ export class AppApiService {
 		await appApiClient.patch(`/users/${userId}/role`, { role });
 	}
 
+	async createUser(payload: {
+		username: string; password: string; email: string;
+		first_name?: string; last_name?: string; role: AppRole;
+	}): Promise<{ id: number; username: string; email: string; role: AppRole }> {
+		const resp = await appApiClient.post('/users', payload);
+		return resp.data;
+	}
+
 	async setUserActive(userId: number, isActive: boolean): Promise<void> {
 		await appApiClient.patch(`/users/${userId}/active`, { is_active: isActive });
 	}

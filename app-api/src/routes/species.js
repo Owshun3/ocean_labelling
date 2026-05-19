@@ -40,17 +40,40 @@ function normalizeName(raw) {
   return trimmed;
 }
 
+// Annotator (et guest) ne voient que les espèces approuvées + leurs propres propositions.
+// Les rôles ≥ chercheur voient tout — ils interviennent dans la validation/curation.
+const PRIVILEGED_ROLES = new Set(['admin', 'moderator', 'curator', 'chercheur']);
+
 router.get('/', requireAuth, async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   try {
     const params = [];
-    let where = '';
+    const conditions = [];
+
     if (q.length > 0) {
       params.push(`%${q.toLowerCase()}%`);
-      where = `WHERE LOWER(name) LIKE $1
-            OR LOWER(COALESCE(scientific_name, '')) LIKE $1
-            OR LOWER(COALESCE(polynesian_name, '')) LIKE $1`;
+      conditions.push(`(LOWER(name) LIKE $${params.length}
+                    OR LOWER(COALESCE(scientific_name, '')) LIKE $${params.length}
+                    OR LOWER(COALESCE(polynesian_name, '')) LIKE $${params.length})`);
     }
+
+    // Visibilité : si le user est un annotateur, n'expose pas les pending d'autrui.
+    const isStaff = req.cvatUser.is_superuser || req.cvatUser.is_staff;
+    let isPrivileged = isStaff;
+    if (!isStaff) {
+      const { rows: roleRow } = await pool.query(
+        'SELECT role FROM user_roles WHERE cvat_user_id = $1',
+        [req.cvatUser.id],
+      );
+      const role = roleRow[0]?.role || 'annotator';
+      isPrivileged = PRIVILEGED_ROLES.has(role);
+    }
+    if (!isPrivileged) {
+      params.push(req.cvatUser.id);
+      conditions.push(`(status = 'approved' OR proposed_by = $${params.length})`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await pool.query(`
       SELECT id, name, scientific_name, polynesian_name, category, description, description_source, status, usage_count, proposed_by
       FROM species
@@ -98,6 +121,12 @@ router.post('/full', requireCuratorOrAbove, async (req, res) => {
   if (!sName || !uName || !pName) {
     return res.status(400).json({ error: 'scientific_name, usage_name, polynesian_name required' });
   }
+
+  // Validation taxonomie tags : un groupe `is_required` doit avoir une valeur,
+  // un `is_exclusive` au plus une, et tous les tags doivent être connus.
+  const { validateTags } = require('../lib/speciesTagValidation');
+  const check = await validateTags(tags);
+  if (!check.ok) return res.status(400).json({ error: check.error });
 
   try {
     const match = await pool.query(

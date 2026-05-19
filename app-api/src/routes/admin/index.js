@@ -13,5 +13,7 @@ router.use('/activity', require('./activity'));
 router.use('/cleanup', require('./cleanup'));
 router.use('/curation', require('./curation'));
 router.use('/requests', require('./requests'));
+router.use('/export',   require('./export'));
+router.use('/species-tags', require('./species-tags'));
 
 module.exports = router;

@@ -3,6 +3,7 @@ import {
 	ActivityIndicator,
 	FlatList,
 	Platform,
+	Pressable,
 	StyleSheet,
 	Text,
 	View,
@@ -10,6 +11,7 @@ import {
 import { AppApiService, AppRole, AccountState, UserWithRole } from '@/services/api/AppApiService';
 import { getUserProfile } from '@/services/api/authStorage';
 import { BanModal } from '@/features/moderation/components/BanModal';
+import { CreateAccountModal } from '../components/CreateAccountModal';
 import { formatRemaining } from '@/services/api/banInterceptor';
 import { toast } from '@/shared/toast/Toast';
 import { RankBadge } from '@/shared/components/RankBadge';
@@ -17,7 +19,9 @@ import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
-const ROLES: AppRole[] = ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'];
+// Rôles assignables via l'UI : 'admin' est exclu (réservé aux superusers CVAT,
+// rang de fait, non attribuable). 'guest' n'est pas une promotion utile non plus.
+const ASSIGNABLE_ROLES: AppRole[] = ['moderator', 'curator', 'chercheur', 'annotator'];
 
 const ROLE_LABELS: Record<AppRole, string> = {
 	admin: 'Administrateur',
@@ -115,6 +119,20 @@ function RoleSelect({ user, onSave }: { user: UserWithRole; onSave: (role: AppRo
 
 	if (Platform.OS !== 'web') return <Text style={{ color: COLORS.text.secondary }}>Web only</Text>;
 
+	// Le superuser CVAT est administrateur de fait — le rôle est verrouillé.
+	if (user.is_superuser) {
+		return (
+			<View style={styles.roleCell}>
+				<View style={[styles.lockedRole, { borderColor: ROLE_COLORS.admin }]}>
+					<Text style={[styles.lockedRoleText, { color: ROLE_COLORS.admin }]}>
+						{ROLE_LABELS.admin}
+					</Text>
+					<Text style={styles.lockedHint}>verrouillé</Text>
+				</View>
+			</View>
+		);
+	}
+
 	return (
 		<View style={styles.roleCell}>
 			<select
@@ -145,7 +163,7 @@ function RoleSelect({ user, onSave }: { user: UserWithRole; onSave: (role: AppRo
 					cursor: saving ? 'wait' : 'pointer',
 				} as any}
 			>
-				{ROLES.map(r => (
+				{ASSIGNABLE_ROLES.map(r => (
 					<option key={r} value={r}>{ROLE_LABELS[r]}</option>
 				))}
 			</select>
@@ -159,6 +177,8 @@ export const AdminScreen: React.FC = () => {
 	const [error, setError] = useState<string | null>(null);
 	const [banTarget, setBanTarget] = useState<UserWithRole | null>(null);
 	const [banSubmitting, setBanSubmitting] = useState(false);
+	const [createOpen, setCreateOpen] = useState(false);
+	const [createSubmitting, setCreateSubmitting] = useState(false);
 	const service = useMemo(() => new AppApiService(), []);
 	const currentProfile = getUserProfile();
 
@@ -179,6 +199,20 @@ export const AdminScreen: React.FC = () => {
 	const handleSetActive = async (userId: number, isActive: boolean) => {
 		await service.setUserActive(userId, isActive);
 		await reload();
+	};
+
+	const handleCreateAccount = async (input: { username: string; password: string; email: string; first_name: string; last_name: string; role: AppRole }) => {
+		setCreateSubmitting(true);
+		try {
+			const created = await service.createUser(input);
+			toast.success(`Compte ${created.username} créé (${created.role}).`);
+			setCreateOpen(false);
+			await reload();
+		} catch (err: any) {
+			toast.error(err?.response?.data?.error ?? err?.message ?? 'Création impossible.');
+		} finally {
+			setCreateSubmitting(false);
+		}
 	};
 
 	const handleConfirmBan = async (durationDays: number | null, reason: string) => {
@@ -214,8 +248,15 @@ export const AdminScreen: React.FC = () => {
 
 	return (
 		<View style={styles.container}>
-			<Text style={styles.title}>Gestion des comptes</Text>
-			<Text style={styles.subtitle}>{users.length} compte(s) enregistré(s)</Text>
+			<View style={styles.topBar}>
+				<View style={{ flex: 1 }}>
+					<Text style={styles.title}>Gestion des comptes</Text>
+					<Text style={styles.subtitle}>{users.length} compte(s) enregistré(s)</Text>
+				</View>
+				<Pressable onPress={() => setCreateOpen(true)} style={styles.createBtn}>
+					<Text style={styles.createBtnText}>+ Créer un compte</Text>
+				</Pressable>
+			</View>
 
 			<View style={styles.tableHeader}>
 				<Text style={[styles.colUsername, styles.headerCell]}>Identifiant</Text>
@@ -262,6 +303,13 @@ export const AdminScreen: React.FC = () => {
 				onCancel={() => setBanTarget(null)}
 				onConfirm={handleConfirmBan}
 			/>
+
+			<CreateAccountModal
+				visible={createOpen}
+				submitting={createSubmitting}
+				onCancel={() => setCreateOpen(false)}
+				onConfirm={handleCreateAccount}
+			/>
 		</View>
 	);
 };
@@ -269,6 +317,9 @@ export const AdminScreen: React.FC = () => {
 const styles = StyleSheet.create({
 	container: { flex: 1, padding: SPACING.lg },
 	center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+	topBar: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
+	createBtn: { backgroundColor: COLORS.primary, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6 },
+	createBtnText: { color: COLORS.text.inverse, fontWeight: '700' },
 	title: { ...TYPOGRAPHY.h1, marginBottom: SPACING.xs },
 	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.lg },
 	errorText: { ...TYPOGRAPHY.body, color: '#dc2626' },
@@ -300,6 +351,14 @@ const styles = StyleSheet.create({
 	colStatus: { flex: 2 },
 	roleCell: { flex: 2 },
 	stateCell: { flex: 2 },
+	lockedRole: {
+		flexDirection: 'row', alignItems: 'baseline', gap: SPACING.xs,
+		paddingHorizontal: SPACING.sm, paddingVertical: 4,
+		borderRadius: 4, borderWidth: 1, alignSelf: 'flex-start',
+		backgroundColor: COLORS.background.card,
+	},
+	lockedRoleText: { fontWeight: '700', fontSize: 13 },
+	lockedHint: { ...TYPOGRAPHY.caption, color: COLORS.text.placeholder, fontStyle: 'italic' },
 	banSubLine: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginTop: 2 },
 
 	username: { ...TYPOGRAPHY.body, fontWeight: '600' },

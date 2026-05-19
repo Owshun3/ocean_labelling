@@ -237,6 +237,50 @@ async function _createSchema() {
     CREATE INDEX IF NOT EXISTS idx_media_metadata_source_video
       ON media_metadata(source_video_id) WHERE source_video_id IS NOT NULL;
 
+    -- Taxonomie des tags d'espèces (séparée du contenu) : l'admin peut éditer
+    -- les groupes et leurs valeurs sans toucher au code. La table species.tags TEXT[]
+    -- continue de porter les valeurs ; ici on porte les méta (label, group, exclusivité,
+    -- obligatoirité). is_exclusive = au plus 1 valeur du groupe par espèce.
+    -- is_required = au moins 1 valeur du groupe obligatoire à la création.
+    CREATE TABLE IF NOT EXISTS species_tag_groups (
+      id          SERIAL      PRIMARY KEY,
+      key         TEXT        UNIQUE NOT NULL,
+      label       TEXT        NOT NULL,
+      is_required BOOLEAN     NOT NULL DEFAULT FALSE,
+      is_exclusive BOOLEAN    NOT NULL DEFAULT FALSE,
+      sort_order  INTEGER     NOT NULL DEFAULT 0,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS species_tag_definitions (
+      id          SERIAL      PRIMARY KEY,
+      group_id    INTEGER     NOT NULL REFERENCES species_tag_groups(id) ON DELETE CASCADE,
+      value       TEXT        UNIQUE NOT NULL,
+      label       TEXT        NOT NULL,
+      sort_order  INTEGER     NOT NULL DEFAULT 0,
+      archived_at TIMESTAMPTZ,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_std_group  ON species_tag_definitions(group_id);
+    CREATE INDEX IF NOT EXISTS idx_std_active ON species_tag_definitions(group_id) WHERE archived_at IS NULL;
+
+    -- Seed minimal : groupe 'type' (Type d'espèce) requis + exclusif, avec 2 valeurs.
+    -- L'admin pourra ajouter flore, faune aérienne, etc. via l'UI.
+    INSERT INTO species_tag_groups (key, label, is_required, is_exclusive, sort_order)
+    VALUES ('type', 'Type d''espèce', TRUE, TRUE, 0)
+    ON CONFLICT (key) DO NOTHING;
+
+    INSERT INTO species_tag_definitions (group_id, value, label, sort_order)
+    SELECT g.id, x.value, x.label, x.so
+    FROM species_tag_groups g, (VALUES
+      ('terrestrial_fauna', 'Faune terrestre', 0),
+      ('marine_fauna',      'Faune marine',    1)
+    ) AS x(value, label, so)
+    WHERE g.key = 'type'
+    ON CONFLICT (value) DO NOTHING;
+
     CREATE TABLE IF NOT EXISTS curator_certifications (
       id                       SERIAL      PRIMARY KEY,
       cvat_task_id             INTEGER     NOT NULL,

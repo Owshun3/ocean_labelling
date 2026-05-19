@@ -2,14 +2,18 @@ import React from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { SpeciesTriFieldForm, SpeciesTriValue } from './SpeciesTriFieldForm';
+import { SpeciesTagPicker } from './SpeciesTagPicker';
 import { ImageMetadata } from './ImageMetadata';
 import type { ProposalsPayload } from '@/services/api/CuratorService';
+import type { SpeciesTagGroup } from '@/services/api/SpeciesTagService';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 
 interface Props {
 	speciesValue: SpeciesTriValue;
+	tags: string[];
+	tagGroups: SpeciesTagGroup[];
 	comment: string;
 	canCertify: boolean;
 	submitting: boolean;
@@ -21,14 +25,15 @@ interface Props {
 	speciesApprovedName: string | null;
 	speciesApprovedId?: number | null;
 	onSpeciesChange: (v: SpeciesTriValue) => void;
+	onTagsChange:    (tags: string[]) => void;
 	onCommentChange: (s: string) => void;
 	onCertify:       () => void;
 }
 
 export const CuratorSidebarRight: React.FC<Props> = ({
-	speciesValue, comment, canCertify, submitting, disabledHint,
+	speciesValue, tags, tagGroups, comment, canCertify, submitting, disabledHint,
 	metadata, task, canTypeSpecies, speciesApproved, speciesApprovedName, speciesApprovedId,
-	onSpeciesChange, onCommentChange, onCertify,
+	onSpeciesChange, onTagsChange, onCommentChange, onCertify,
 }) => {
 	const router = useRouter();
 	return (
@@ -53,6 +58,16 @@ export const CuratorSidebarRight: React.FC<Props> = ({
 				value={speciesValue}
 				disabled={submitting || !canTypeSpecies}
 				onChange={onSpeciesChange}
+			/>
+		</View>
+
+		<View style={styles.block}>
+			<Text style={styles.heading}>Tags d'espèce</Text>
+			<SpeciesTagPicker
+				groups={tagGroups}
+				tags={tags}
+				disabled={submitting || !canTypeSpecies}
+				onChange={onTagsChange}
 			/>
 		</View>
 

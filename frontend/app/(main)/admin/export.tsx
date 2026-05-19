@@ -1,9 +1,5 @@
-import { AdminPlaceholderScreen } from '@/features/admin/screens/AdminPlaceholderScreen';
+import { AdminExportScreen } from '@/features/admin/screens/AdminExportScreen';
+
 export default function AdminExportRoute() {
-	return (
-		<AdminPlaceholderScreen
-			title="Export des données"
-			hint="Prévu : export Datumaro avec page de sélection (filtres par utilisateur, espèce, tag, période). Le périmètre exportable pour le rôle chercheur sera contraint par cette même page."
-		/>
-	);
+	return <AdminExportScreen />;
 }

@@ -16,6 +16,7 @@ import { CuratorSidebarRight } from '../components/CuratorSidebarRight';
 import { BboxTooltip } from '../components/BboxTooltip';
 import { SpeciesTriValue } from '../components/SpeciesTriFieldForm';
 import { buildSpeciesOptions, SpeciesOption } from '../components/SpeciesProposalList';
+import { SpeciesTagService, SpeciesTagGroup, validateSpeciesTags } from '@/services/api/SpeciesTagService';
 
 interface Props {
 	taskId: number;
@@ -35,9 +36,16 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 	const [tool, setTool] = useState<StudioTool>('rectangle');
 	const [hovered, setHovered] = useState<HoveredProposal | null>(null);
 	const [species, setSpecies] = useState<SpeciesTriValue>(EMPTY_SPECIES);
+	const [tags, setTags] = useState<string[]>([]);
+	const [tagGroups, setTagGroups] = useState<SpeciesTagGroup[]>([]);
 	const [comment, setComment] = useState('');
 	const [submitting, setSubmitting] = useState(false);
 	const [selectedSpeciesKey, setSelectedSpeciesKey] = useState<string | null>(null);
+
+	const tagSvc = useMemo(() => new SpeciesTagService(), []);
+	useEffect(() => {
+		tagSvc.list().then(setTagGroups).catch(() => setTagGroups([]));
+	}, [tagSvc]);
 
 	useEffect(() => { saveCuratorAnnotatorColor(state.annotatorColor); }, [state.annotatorColor]);
 
@@ -83,6 +91,7 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 	useEffect(() => {
 		if (state.mode === 'drawing' || !selectedSpeciesOpt) {
 			setSpecies(EMPTY_SPECIES);
+			setTags([]);
 			return;
 		}
 		const sp = selectedSpeciesOpt.species;
@@ -92,6 +101,7 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				usage_name:      selectedSpeciesOpt.fallbackLabel ?? selectedSpeciesOpt.displayName,
 				polynesian_name: '',
 			});
+			setTags([]);
 			return;
 		}
 		setSpecies({
@@ -99,6 +109,7 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 			usage_name:      sp.usage_name ?? sp.name ?? '',
 			polynesian_name: sp.polynesian_name ?? '',
 		});
+		setTags(Array.isArray(sp.tags) ? sp.tags : []);
 	}, [state.mode, selectedSpeciesOpt]);
 
 	// Re-clic sur l'option déjà sélectionnée → désélection.
@@ -110,12 +121,14 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 		state.enterDrawing();
 		setTool('rectangle');
 		setSpecies(EMPTY_SPECIES);
+		setTags([]);
 		setSelectedSpeciesKey(null);
 	}, [state]);
 
 	const onExitDrawing = useCallback(() => {
 		state.exitDrawing();
 		setSpecies(EMPTY_SPECIES);
+		setTags([]);
 		setSelectedSpeciesKey(null);
 	}, [state]);
 
@@ -125,12 +138,14 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 	}, [state]);
 
 	const speciesComplete = species.scientific_name.trim() && species.usage_name.trim() && species.polynesian_name.trim();
+	const tagsValidation  = useMemo(() => validateSpeciesTags(tags, tagGroups), [tags, tagGroups]);
 	const hasOneSelected  = state.mode === 'review' && state.selectedIds.size === 1;
 	const hasCuratorBbox  = state.mode === 'drawing' && !!state.curatorBbox;
-	const canCertify      = !!speciesComplete && (hasOneSelected || hasCuratorBbox);
+	const canCertify      = !!speciesComplete && tagsValidation.ok && (hasOneSelected || hasCuratorBbox);
 
 	const disabledHint =
 		!speciesComplete ? 'Renseignez les 3 noms d\'espèce.'
+		: !tagsValidation.ok ? (tagsValidation.error ?? 'Tags invalides.')
 		: state.mode === 'review' && state.selectedIds.size === 0 ? 'Sélectionnez une proposition.'
 		: state.mode === 'review' && state.selectedIds.size > 1 ? 'Une seule bbox doit être cochée.'
 		: state.mode === 'drawing' && !state.curatorBbox ? 'Tracez une bounding box.'
@@ -186,6 +201,7 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 					scientific_name: species.scientific_name.trim(),
 					usage_name:      species.usage_name.trim(),
 					polynesian_name: species.polynesian_name.trim(),
+					tags,
 					source_name:     sourceName,
 				},
 				comment: comment.trim() || undefined,
@@ -267,6 +283,8 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 
 			<CuratorSidebarRight
 				speciesValue={species}
+				tags={tags}
+				tagGroups={tagGroups}
 				comment={comment}
 				canCertify={canCertify}
 				submitting={submitting}
@@ -278,6 +296,7 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				speciesApprovedName={selectedSpeciesOpt?.displayName ?? null}
 				speciesApprovedId={selectedSpeciesOpt?.species?.id ?? null}
 				onSpeciesChange={setSpecies}
+				onTagsChange={setTags}
 				onCommentChange={setComment}
 				onCertify={onCertify}
 			/>

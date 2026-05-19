@@ -130,6 +130,98 @@ Services frontend :
 - `Header.tsx` — lit `appRole` au mount, affiche selon hiérarchie des rôles
 - Gardes de route : `admin.tsx` (admin only), `media/annotate/upload.tsx` (pas guest)
 
+## Taxonomie des tags d'espèces (admin-éditable)
+
+**Pourquoi cette couche** : les tags d'espèces (`species.tags TEXT[]`) sont la pierre angulaire du filtrage export ET de la classification finale. Le user les distingue entre :
+- Tags **obligatoires** (every espèce doit en avoir un — ex : type marine/terrestre)
+- Tags **exclusifs** (au plus un du groupe — ex : type)
+- Tags **optionnels multi-valeurs** (ex : habitat, statut conservation)
+
+Au lieu de coder en dur ces règles, on les externalise dans une taxonomie éditable par l'admin sans déploiement.
+
+**Schéma** :
+```sql
+species_tag_groups(id, key UNIQUE, label, is_required, is_exclusive, sort_order, ...)
+species_tag_definitions(id, group_id FK, value UNIQUE, label, sort_order, archived_at, ...)
+```
+La table `species.tags TEXT[]` reste source pour les filtres ; les définitions servent de meta + de validation. Soft-delete via `archived_at` plutôt que DELETE — une valeur peut être référencée par d'anciennes espèces.
+
+**Seed initial** : groupe `type` (Type d'espèce, requis + exclusif) avec `terrestrial_fauna` et `marine_fauna`. L'admin ajoute ensuite ce qu'il veut (habitat, taille, statut, etc.) depuis l'UI sans toucher au code.
+
+**Endpoints** :
+| Méthode | Route | But |
+|---|---|---|
+| GET  | `/species-tags`                            | (auth) lit la taxonomie active — alimente curator + export |
+| GET  | `/admin/species-tags`                      | (admin) inclut les archivés |
+| POST | `/admin/species-tags/groups`               | crée un groupe (`key`, `label`, `is_required`, `is_exclusive`) |
+| PATCH| `/admin/species-tags/groups/:id`           | modifie label / flags / ordre |
+| DELETE | `/admin/species-tags/groups/:id`         | supprime (CASCADE sur définitions) |
+| POST | `/admin/species-tags/definitions`          | ajoute une valeur dans un groupe |
+| PATCH| `/admin/species-tags/definitions/:id`      | modifie label / ordre / `archived: bool` |
+| DELETE | `/admin/species-tags/definitions/:id`    | suppression dure (à éviter si déjà référencée) |
+
+**Validation centralisée** : `app-api/src/lib/speciesTagValidation.js` exporte `validateTags(tags)` utilisé par `POST /species/full` ET `POST /curator/tasks/:id/certify`. Trois règles : tags inconnus → 400, groupe requis sans valeur → 400, groupe exclusif avec > 1 valeur → 400.
+
+**UI** :
+- **Curator studio** : composant `SpeciesTagPicker` rend une section par groupe (radio si exclusif, chips multi sinon, * si requis). Branché dans `CuratorSidebarRight`. La validation client (`validateSpeciesTags`) bloque le bouton « Certifier » avec un hint explicite si la taxonomie n'est pas respectée.
+- **Export admin** : remplace les anciennes constantes hardcodées par les définitions chargées au mount. Chaque groupe exclusif devient un filtre radio (Toutes/valeurs), chaque groupe non-exclusif un multi-chips. Les « tags orphelins » (valeurs présentes sur des espèces mais non rattachées à un groupe) apparaissent en garde-fou pour les nettoyer.
+- **Admin** `/admin/species-tags` : page CRUD complète — création groupes + valeurs, toggle des flags `is_required`/`is_exclusive`, archivage soft.
+
+**Visibilité espèces côté annotateur** (`GET /species?q=`) : isolation entre annotateurs — un annotateur ne voit dans son autocomplete que les espèces `status='approved'` OU celles qu'il a proposées lui-même. Il peut re-proposer un nom déjà soumis par un collègue, la réutilisation par `name` UNIQUE est gérée côté backend. Les rôles ≥ chercheur (`PRIVILEGED_ROLES`) voient tout. Évite la pollution par les pending de la communauté avant validation.
+
+**Suggestions ouvertes (non implémentées)** :
+- Future « tags obligatoires » comme filtre export distinct (« n'exporte que les espèces qui ont une valeur dans chaque groupe `is_required` »).
+- Synonymes / aliases dans `species_tag_definitions` (ex : « fish » → marine_fauna) — utile pour l'autocomplete.
+- Tag couleur (hex) pour distinction visuelle dans les listes.
+
+## Export Datumaro (admin)
+
+Page `/admin/export` (`AdminExportScreen`). Génère un zip Datumaro 1.0 des médias **validés par un curator** (`media_moderation.curator_validated_at IS NOT NULL`). Réservé admin (`requireAdmin` sur `/app-api/admin/*`). Le rôle `chercheur` aura un périmètre restreint via la future table `chercheur_export_scopes` (placeholder dans `/admin/requests`).
+
+**Endpoints app-api** :
+| Méthode | Route | But |
+|---|---|---|
+| GET  | `/admin/export/facets`   | Liste les tags d'espèces déclarés + les uploadeurs ayant ≥ 1 certification (alimente l'UI filtre) |
+| POST | `/admin/export/preview`  | Aperçu : `count` + breakdown (photos vs frames vidéo, espèces distinctes, uploadeurs distincts) |
+| POST | `/admin/export/run`      | Stream zip Datumaro (axios `responseType: 'blob'` côté client) |
+
+**Filtres acceptés** (body JSON) : `date_from`, `date_to` (sur `curator_validated_at`), `species_ids[]`, `tags[]`, `uploader_ids[]`, `source_type` (`all|image|video_frame`), `include_metadata` (défaut `true`).
+
+**Contenu du zip** :
+```
+annotations/default.json   # Datumaro 1.0
+images/task_<id>.jpg       # binaire original (EXIF stripped à l'upload)
+README.md                  # filtres appliqués + count
+```
+
+Chaque item porte la bbox curator-certifiée (`curator_certifications.chosen_bbox_data → [x, y, w, h]`), `label_id` indexé dans `categories.label.labels` (nom = `scientific_name || usage_name || species_name`), attributs annotation (mode, curator_id, certified_at, species multi-nom, tags), attributs item (uploader_id, GPS, EXIF, `source_video_id`, `source_frame_time_ms`).
+
+**Robustesse** : tâche introuvable côté CVAT (drift entre `media_moderation` et CVAT) → image skipée, loggée, le zip est quand même livré. Pas de blocage si une seule image manque.
+
+**Stack** : `archiver@7` (npm) côté backend, streaming gzip level 5. Headers `Content-Disposition: attachment` + `Cache-Control: no-store`. Pas de file d'attente async pour v1 — un export sync est OK jusqu'à plusieurs centaines d'images (limite pratique = `proxy_read_timeout 600s` côté NGINX).
+
+**Sécurité Accept header** : la lecture frame CVAT (`GET /tasks/{id}/data?type=frame`) exige `Accept: application/vnd.cvat+json, application/json, text/plain, */*` (sinon 406). Pattern identique au proxy `/moderation/media/:taskId/preview`.
+
+## Gestion des comptes (`/admin/accounts`)
+
+**Verrous métier** :
+- Le superuser CVAT est administrateur **de fait** : `is_superuser` ⇒ `role='admin'` dans toutes les UIs, dropdown remplacé par un badge « Administrateur (verrouillé) ». Backend `PATCH /users/:id/role` rejette 403 si la cible est `is_superuser` ou `is_staff`.
+- Le rôle `admin` n'est **jamais attribuable** via l'UI — `ASSIGNABLE_ROLES = ['moderator', 'curator', 'chercheur', 'annotator']` (côté backend ET frontend). Pour créer un autre administrateur, passer par le shell CVAT (`createsuperuser`).
+
+**Création de compte par l'admin** : bouton « + Créer un compte » en haut de l'écran. `CreateAccountModal` (formulaire similaire à `/register` + dropdown rôle parmi les assignables). Endpoint `POST /app-api/users` (admin only) qui orchestre :
+1. `POST /api/auth/register` côté CVAT (CVAT exige une email valide RFC + password ≥ 8).
+2. Résolution de l'id CVAT par `/users?search=<username>`.
+3. UPSERT dans `user_roles` avec le rôle choisi.
+Le password n'est jamais persisté côté app-api ; l'utilisateur le change ensuite depuis son profil. CVAT remonte ses erreurs structurées (`{field: [...]}`) qu'on aplatit en message FR pour le toast.
+
+**Comptage « utilisateurs connectés »** dashboard : passé de `COUNT(*) FROM app_sessions WHERE expires_at > NOW()` (qui comptait les sessions zombies de navigateurs fermés) à :
+```sql
+SELECT COUNT(DISTINCT cvat_user_id) FROM app_sessions
+WHERE expires_at > NOW()
+  AND last_seen_at > NOW() - INTERVAL '30 minutes'
+```
+Aligné sur la politique idle (30 min côté `authenticate`). 1 utilisateur = 1 compte, peu importe le nombre de devices / onglets.
+
 ## Hub admin /admin/requests
 
 Page unique réunissant toutes les requêtes en attente de validation admin. Trois onglets :

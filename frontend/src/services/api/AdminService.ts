@@ -313,4 +313,48 @@ export class AdminService {
 		);
 		return resp.data;
 	}
+
+	async getExportFacets(): Promise<ExportFacets> {
+		const resp = await adminClient.get<ExportFacets>('/export/facets');
+		return resp.data;
+	}
+
+	async previewExport(filters: ExportFilters): Promise<ExportPreview> {
+		const resp = await adminClient.post<ExportPreview>('/export/preview', filters);
+		return resp.data;
+	}
+
+	async runExport(filters: ExportFilters): Promise<{ filename: string; blob: Blob }> {
+		const resp = await adminClient.post('/export/run', filters, { responseType: 'blob' });
+		const disposition = (resp.headers['content-disposition'] as string | undefined) || '';
+		const match = /filename="([^"]+)"/.exec(disposition);
+		const filename = match?.[1] || `ocean-export-${new Date().toISOString().slice(0, 10)}.zip`;
+		return { filename, blob: resp.data as Blob };
+	}
+}
+
+export type ExportSourceType = 'all' | 'image' | 'video_frame';
+
+export interface ExportFilters {
+	date_from?:    string;
+	date_to?:      string;
+	species_ids?:  number[];
+	tags?:         string[];
+	source_type?:  ExportSourceType;
+	include_metadata?: boolean;
+}
+
+export interface ExportPreview {
+	count: number;
+	breakdown: {
+		image_count: number;
+		frame_count: number;
+		distinct_species: number;
+		distinct_uploaders: number;
+	};
+	filters: ExportFilters;
+}
+
+export interface ExportFacets {
+	tags: string[];
 }
