@@ -174,6 +174,40 @@ La table `species.tags TEXT[]` reste source pour les filtres ; les définitions 
 - Synonymes / aliases dans `species_tag_definitions` (ex : « fish » → marine_fauna) — utile pour l'autocomplete.
 - Tag couleur (hex) pour distinction visuelle dans les listes.
 
+## Demandes d'export chercheur (workflow approbation)
+
+**Décision** : la capacité de demander un export est **exclusive au rôle chercheur** — middleware `requireChercheur` strict (l'admin et le moderator ne passent pas par ce flux, ils ont leurs propres voies). Le chercheur formule une demande avec un périmètre (mêmes filtres qu'admin) + un message de justification + une organisation optionnelle. L'admin approuve ou rejette dans `/admin/requests` onglet « Accès chercheurs ». Une approbation accorde un droit de téléchargement réutilisable jusqu'à `expires_at` (défaut 30 jours, max 365, configurable par l'admin à la résolution).
+
+**Table** : `chercheur_export_requests(id, requester_id, message, organization, scope JSONB, status pending|approved|rejected|withdrawn, reviewed_by, reviewed_at, review_comment, expires_at, created_at)`. Le `scope` JSONB porte un payload `ExportFilters` complet (mêmes champs que `/admin/export/run`).
+
+**Endpoints** :
+| Méthode | Route | Auth | But |
+|---|---|---|---|
+| GET  | `/chercheur/export/facets`           | requireChercheur | Tags distincts pour l'UI filtre |
+| POST | `/chercheur/export/preview`          | requireChercheur | Aperçu count avant de soumettre |
+| POST | `/chercheur/export-requests`         | requireChercheur | Crée la demande (message ≥ 10 chars) |
+| GET  | `/chercheur/export-requests`         | requireChercheur | Mes demandes (tous statuts) |
+| DELETE | `/chercheur/export-requests/:id`   | requireChercheur | Annule ma demande pending |
+| POST | `/chercheur/export-requests/:id/download` | requireChercheur | Stream zip si approved + non expiré |
+| GET  | `/admin/requests/chercheur-exports`  | requireAdmin | Liste pending pour validation |
+| POST | `/admin/requests/chercheur-exports/:id/resolve` | requireAdmin | Approve (+ duration_days) ou reject (+ comment obligatoire) |
+
+**Refactor export** : `app-api/src/lib/datumaroExport.js` extrait depuis `routes/admin/export.js` — fonction `streamExportZip(res, filters, actor, originContext)` partagée par admin direct + chercheur post-approbation. `originContext` ∈ `'admin' | 'chercheur-approved'` apparaît dans le README du zip et dans l'audit log `data.export`. Permet de tracer qui a téléchargé quoi via quel canal.
+
+**Réutilisabilité de l'approbation** : un chercheur peut télécharger plusieurs fois la même demande approuvée tant qu'elle n'est pas expirée. Utile car les nouvelles certifications dans le scope apparaîtront aux téléchargements suivants — pas de single-use forcé. Si l'admin veut bloquer, il peut soit fixer une `expires_at` courte, soit fermer la demande (table actuelle ne supporte pas la révocation, à ajouter si besoin).
+
+**Champs obligatoires à la soumission** :
+- `message` (justification) ≥ 10 caractères
+- `organization` (affiliation) ≥ 2 caractères — sert à la traçabilité des accès, jamais optionnel
+
+**Durée par défaut à l'approbation** : 7 jours (max 365). Pensée pour un accès court et renouvelable plutôt qu'un droit dormant. L'admin peut ajuster au moment de la résolution (champ « Durée (jours) » dans la carte).
+
+**Routes Expo** :
+- `/chercheur/export-requests` (chercheur strict) : formulaire + historique des demandes + bouton « Télécharger » sur les approuvées + bouton « Annuler » sur les pending.
+- Hub admin `/admin/requests` : onglet « Accès chercheurs » avec compteur en badge, liste des demandes pending, formulaire inline (commentaire + durée) + boutons Approuver/Rejeter.
+
+**Header** : entrée « Mes exports » visible **uniquement** par les chercheurs.
+
 ## Export Datumaro (admin)
 
 Page `/admin/export` (`AdminExportScreen`). Génère un zip Datumaro 1.0 des médias **validés par un curator** (`media_moderation.curator_validated_at IS NOT NULL`). Réservé admin (`requireAdmin` sur `/app-api/admin/*`). Le rôle `chercheur` aura un périmètre restreint via la future table `chercheur_export_scopes` (placeholder dans `/admin/requests`).

@@ -9,6 +9,8 @@ router.get('/summary', async (_req, res) => {
       SELECT
         (SELECT COUNT(*) FROM moderation_contestations    WHERE resolved_at IS NULL) AS open_media_contestations,
         (SELECT COUNT(*) FROM annotation_contestations    WHERE resolved_at IS NULL) AS open_annotation_contestations,
+        (SELECT COUNT(*) FROM species_edit_requests        WHERE status = 'pending')  AS open_species_edits,
+        (SELECT COUNT(*) FROM chercheur_export_requests    WHERE status = 'pending')  AS open_chercheur_exports,
         (SELECT COUNT(*) FROM media_moderation
            WHERE status = 'validated' AND curator_validated_at IS NULL
              AND binaries_deleted_at IS NULL AND assigned_curator_id IS NULL
@@ -28,11 +30,24 @@ router.get('/summary', async (_req, res) => {
         (SELECT value FROM app_settings WHERE key = 'upload_max_bytes')               AS upload_max_bytes
     `);
     const r = rows[0];
+    // Total « requêtes en attente » : tout ce que l'admin doit traiter sur le hub
+    // /admin/requests (contestations + fiches d'espèces + accès chercheur).
+    const requestsTotal =
+      Number(r.open_media_contestations) +
+      Number(r.open_annotation_contestations) +
+      Number(r.open_species_edits) +
+      Number(r.open_chercheur_exports);
     res.json({
       contestations: {
         media:      Number(r.open_media_contestations),
         annotation: Number(r.open_annotation_contestations),
         total:      Number(r.open_media_contestations) + Number(r.open_annotation_contestations),
+      },
+      requests: {
+        total:             requestsTotal,
+        contestations:     Number(r.open_media_contestations) + Number(r.open_annotation_contestations),
+        species_edits:     Number(r.open_species_edits),
+        chercheur_exports: Number(r.open_chercheur_exports),
       },
       curation: {
         media_awaiting: Number(r.media_awaiting_curation),

@@ -8,6 +8,12 @@ attachBanInterceptor(adminClient);
 
 export interface DashboardSummary {
 	contestations: { media: number; annotation: number; total: number };
+	requests: {
+		total: number;
+		contestations: number;
+		species_edits: number;
+		chercheur_exports: number;
+	};
 	curation: { media_awaiting: number };
 	accounts: { active_sessions: number; active_bans: number };
 	species: { pending: number };
@@ -135,6 +141,21 @@ export interface RequestsSummary {
 	contestations_breakdown: { media: number; annotation: number };
 	species_edits: number;
 	researcher_access: number;
+}
+
+export interface ChercheurExportRequestAdminView {
+	id: number;
+	requester_id: number;
+	requester_username: string | null;
+	message: string;
+	organization: string | null;
+	scope: ExportFilters;
+	status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
+	reviewed_by: number | null;
+	reviewed_at: string | null;
+	review_comment: string | null;
+	expires_at: string | null;
+	created_at: string;
 }
 
 export interface SpeciesEditSnapshot {
@@ -273,6 +294,15 @@ export class AdminService {
 	async getRequestsSummary(): Promise<RequestsSummary> {
 		const resp = await adminClient.get<RequestsSummary>('/requests/summary');
 		return resp.data;
+	}
+
+	async listChercheurExportRequests(): Promise<ChercheurExportRequestAdminView[]> {
+		const resp = await adminClient.get<{ results: ChercheurExportRequestAdminView[] }>('/requests/chercheur-exports');
+		return resp.data.results;
+	}
+
+	async resolveChercheurExportRequest(id: number, payload: { action: 'approve' | 'reject'; comment?: string; duration_days?: number }): Promise<void> {
+		await adminClient.post(`/requests/chercheur-exports/${id}/resolve`, payload);
 	}
 
 	async listSpeciesEditRequests(): Promise<SpeciesEditRequest[]> {

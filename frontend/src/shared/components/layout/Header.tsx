@@ -19,6 +19,7 @@ const NAV_ROUTES: NavRoute[] = [
 	{ name: 'Annotation',      path: '/(main)/studio/select' as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator'] },
 	{ name: 'Curation',        path: '/(main)/curator'    as Href, roles: ['admin', 'moderator', 'curator', 'chercheur'] },
 	{ name: 'Modération',      path: '/(main)/moderation' as Href, roles: ['admin', 'moderator'] },
+	{ name: 'Mes exports',     path: '/(main)/chercheur/export-requests' as Href, roles: ['chercheur'] },
 	{ name: 'Administration',  path: '/(main)/admin'     as Href, roles: ['admin'] },
 	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'] },
 ];

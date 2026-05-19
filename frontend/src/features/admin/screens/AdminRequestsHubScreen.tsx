@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from
 import { AdminService, RequestsSummary, SpeciesEditRequest } from '@/services/api/AdminService';
 import { AdminContestationsListScreen } from './AdminContestationsListScreen';
 import { AdminSpeciesEditsTab } from './AdminSpeciesEditsTab';
+import { AdminResearcherRequestsTab } from './AdminResearcherRequestsTab';
 import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
@@ -95,16 +96,7 @@ export const AdminRequestsHubScreen: React.FC = () => {
 						<AdminSpeciesEditsTab items={speciesItems} onChanged={() => { loadSpecies(); loadSummary(); }} />
 					)
 				) : (
-					<ScrollView contentContainerStyle={styles.placeholder}>
-						<Text style={styles.placeholderTitle}>Onglet à connecter</Text>
-						<Text style={styles.placeholderText}>
-							Les chercheurs pourront demander l'accès à un sous-ensemble de données certifiées (par espèce, tag, plage de date).
-							Cet onglet listera les demandes et permettra d'accorder un périmètre d'export via la table {`chercheur_export_scopes`}.
-						</Text>
-						<Text style={styles.placeholderText}>
-							À brancher une fois l'écran d'export Datumaro déployé.
-						</Text>
-					</ScrollView>
+					<AdminResearcherRequestsTab onChanged={loadSummary} />
 				)}
 			</View>
 		</View>

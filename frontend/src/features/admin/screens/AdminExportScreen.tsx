@@ -40,6 +40,7 @@ export const AdminExportScreen: React.FC = () => {
 	const [preview, setPreview] = useState<ExportPreview | null>(null);
 	const [previewing, setPreviewing] = useState(false);
 	const [running, setRunning] = useState(false);
+	const [previewError, setPreviewError] = useState<string | null>(null);
 
 	useEffect(() => {
 		Promise.all([
@@ -135,19 +136,30 @@ export const AdminExportScreen: React.FC = () => {
 
 	const handlePreview = useCallback(async () => {
 		setPreviewing(true);
+		setPreviewError(null);
 		try {
 			const p = await service.previewExport(filters);
 			setPreview(p);
 		} catch (err: any) {
-			toast.error(err?.response?.data?.error || err?.message || 'Aperçu impossible.');
+			const msg = err?.response?.data?.error || err?.message || 'Aperçu impossible.';
+			setPreviewError(msg);
+			setPreview(null);
 		} finally {
 			setPreviewing(false);
 		}
 	}, [service, filters]);
 
+	// Rafraîchissement automatique : 400ms après le dernier changement de filtre,
+	// on relance l'aperçu. Pas besoin de bouton manuel — le count reflète l'état courant.
+	useEffect(() => {
+		if (facetsLoading) return;
+		const t = setTimeout(() => { handlePreview(); }, 400);
+		return () => clearTimeout(t);
+	}, [filters, facetsLoading, handlePreview]);
+
 	const handleRun = useCallback(async () => {
-		if (!preview || preview.count === 0) {
-			toast.error('Lance d\'abord un aperçu (et vérifie qu\'il y a au moins 1 item).');
+		if (preview?.count === 0) {
+			toast.error('Aucun item ne correspond aux filtres.');
 			return;
 		}
 		setRunning(true);
@@ -367,7 +379,10 @@ export const AdminExportScreen: React.FC = () => {
 				</View>
 
 				<View style={styles.sideCol}>
-					<Text style={styles.sideTitle}>Aperçu</Text>
+					<View style={styles.previewHeader}>
+						<Text style={styles.sideTitle}>Aperçu</Text>
+						{previewing ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}
+					</View>
 					{preview ? (
 						<View style={styles.previewBox}>
 							<Text style={styles.previewCount}>{preview.count}</Text>
@@ -379,26 +394,22 @@ export const AdminExportScreen: React.FC = () => {
 								<Row label="Uploadeurs"         value={preview.breakdown.distinct_uploaders} />
 							</View>
 						</View>
+					) : previewError ? (
+						<Text style={[styles.previewEmpty, { color: COLORS.danger }]}>{previewError}</Text>
 					) : (
-						<Text style={styles.previewEmpty}>Lance un aperçu pour voir le périmètre.</Text>
+						<Text style={styles.previewEmpty}>{previewing ? 'Calcul en cours…' : 'Aperçu en attente…'}</Text>
 					)}
 
 					<View style={{ gap: SPACING.sm, marginTop: SPACING.md }}>
 						<Pressable
-							onPress={handlePreview}
-							disabled={previewing || running}
-							style={[styles.btn, styles.btnSecondary, (previewing || running) && styles.btnDisabled]}
-						>
-							<Text style={styles.btnSecondaryText}>{previewing ? 'Aperçu…' : 'Calculer l\'aperçu'}</Text>
-						</Pressable>
-						<Pressable
 							onPress={handleRun}
-							disabled={!preview || preview.count === 0 || running || previewing}
-							style={[styles.btn, styles.btnPrimary, (!preview || preview.count === 0 || running || previewing) && styles.btnDisabled]}
+							disabled={running || (preview?.count === 0)}
+							style={[styles.btn, styles.btnPrimary, (running || preview?.count === 0) && styles.btnDisabled]}
 						>
 							<Text style={styles.btnPrimaryText}>
-								{running ? 'Génération en cours…' : preview && preview.count > 0
-									? `Télécharger le zip (${preview.count} item${preview.count > 1 ? 's' : ''})`
+								{running ? 'Génération en cours…'
+									: preview?.count === 0 ? 'Aucun item à exporter'
+									: preview ? `Télécharger le zip (${preview.count} item${preview.count > 1 ? 's' : ''})`
 									: 'Télécharger'}
 							</Text>
 						</Pressable>
@@ -544,6 +555,7 @@ const styles = StyleSheet.create({
 	btnDisabled: { opacity: 0.4 },
 
 	sideTitle: { ...TYPOGRAPHY.h2, fontSize: 16 },
+	previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 	previewBox: { padding: SPACING.md, backgroundColor: COLORS.background.card, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', gap: 4 },
 	previewCount: { fontSize: 36, fontWeight: '800', color: COLORS.primary, fontVariant: ['tabular-nums'] },
 	previewLabel: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary },

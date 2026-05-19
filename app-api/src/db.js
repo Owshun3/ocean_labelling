@@ -328,6 +328,27 @@ async function _createSchema() {
       ON species_edit_requests (species_id) WHERE status = 'pending';
     CREATE INDEX IF NOT EXISTS idx_species_edit_status ON species_edit_requests (status);
 
+    -- Demandes d'accès à l'export par les chercheurs.
+    -- Le champ scope JSONB = payload ExportFilters que le chercheur souhaite voir approuvé.
+    -- L'admin approuve ou rejette ; en cas d'approbation, le chercheur peut télécharger
+    -- l'export selon ce scope jusqu'à expires_at (par défaut +30 jours, ré-utilisable).
+    CREATE TABLE IF NOT EXISTS chercheur_export_requests (
+      id              SERIAL      PRIMARY KEY,
+      requester_id    INTEGER     NOT NULL,
+      message         TEXT        NOT NULL,
+      organization    TEXT,
+      scope           JSONB       NOT NULL,
+      status          TEXT        NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected', 'withdrawn')),
+      reviewed_by     INTEGER,
+      reviewed_at     TIMESTAMPTZ,
+      review_comment  TEXT,
+      expires_at      TIMESTAMPTZ,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_chx_requester ON chercheur_export_requests(requester_id);
+    CREATE INDEX IF NOT EXISTS idx_chx_status_pending ON chercheur_export_requests(status) WHERE status = 'pending';
+
     CREATE TABLE IF NOT EXISTS admin_actions (
       id           SERIAL      PRIMARY KEY,
       actor_id     INTEGER     NOT NULL,

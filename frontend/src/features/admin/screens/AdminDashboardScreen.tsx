@@ -31,7 +31,8 @@ export const AdminDashboardScreen: React.FC = () => {
 		return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
 	}
 
-	const contestSev: AdminCardSeverity = (summary?.contestations.total ?? 0) > 0 ? 'warning' : 'success';
+	const requestsTotal = summary?.requests?.total ?? summary?.contestations.total ?? 0;
+	const contestSev: AdminCardSeverity = requestsTotal > 0 ? 'warning' : 'success';
 	const curationSev: AdminCardSeverity = (summary?.curation.media_awaiting ?? 0) > 0 ? 'info' : 'neutral';
 	const banSev: AdminCardSeverity = (summary?.accounts.active_bans ?? 0) > 0 ? 'warning' : 'success';
 
@@ -63,9 +64,9 @@ export const AdminDashboardScreen: React.FC = () => {
 					title="Requêtes"
 					href={'/(main)/admin/requests' as Href}
 					icon="alert-circle"
-					kpiValue={summary?.contestations.total ?? 0}
+					kpiValue={requestsTotal}
 					kpiLabel="en attente"
-					description={`Contestations : ${summary?.contestations.media ?? 0} média / ${summary?.contestations.annotation ?? 0} annotation · fiches d'espèces, accès chercheurs`}
+					description={`Contestations : ${summary?.requests?.contestations ?? summary?.contestations.total ?? 0} · Fiches d'espèces : ${summary?.requests?.species_edits ?? 0} · Accès chercheurs : ${summary?.requests?.chercheur_exports ?? 0}`}
 					severity={contestSev}
 				/>
 
