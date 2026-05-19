@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Platform, Linking, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
 import { getPublicSettings, refreshPublicSettings, subscribePublicSettings } from '@/services/api/publicSettings';
 import type { PublicSettings } from '@/services/api/publicSettings';
 import { COLORS } from '@/shared/theme/colors';
@@ -66,8 +66,8 @@ export const HelpScreen: React.FC = () => {
 					<Text style={styles.muted}>Aucune coordonnée n'a encore été renseignée par l'administrateur.</Text>
 				) : (
 					<View style={styles.contactList}>
-						{email   ? <ContactRow icon="✉" label="Email"      value={email}   linkable={`mailto:${email}`} /> : null}
-						{phone   ? <ContactRow icon="☎" label="Téléphone"  value={phone}   linkable={`tel:${phone.replace(/[^\d+]/g, '')}`} /> : null}
+						{email   ? <ContactRow icon="✉" label="Email"      value={email}   /> : null}
+						{phone   ? <ContactRow icon="☎" label="Téléphone"  value={phone}   /> : null}
 						{hours   ? <ContactRow icon="◷" label="Horaires"   value={hours}   /> : null}
 						{address ? <ContactRow icon="◉" label="Adresse"    value={address} /> : null}
 					</View>
@@ -94,25 +94,15 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 	</View>
 );
 
-const ContactRow: React.FC<{ icon: string; label: string; value: string; linkable?: string }> = ({ icon, label, value, linkable }) => {
-	const text = (
-		<View style={styles.contactRow}>
-			<Text style={styles.contactIcon}>{icon}</Text>
-			<View style={{ flex: 1 }}>
-				<Text style={styles.contactLabel}>{label}</Text>
-				<Text style={styles.contactValue}>{value}</Text>
-			</View>
+const ContactRow: React.FC<{ icon: string; label: string; value: string }> = ({ icon, label, value }) => (
+	<View style={styles.contactRow}>
+		<Text style={styles.contactIcon}>{icon}</Text>
+		<View style={{ flex: 1 }}>
+			<Text style={styles.contactLabel}>{label}</Text>
+			<Text style={styles.contactValue}>{value}</Text>
 		</View>
-	);
-	if (linkable) {
-		return (
-			<Pressable onPress={() => Linking.openURL(linkable).catch(() => {})}>
-				{text}
-			</Pressable>
-		);
-	}
-	return text;
-};
+	</View>
+);
 
 const styles = StyleSheet.create({
 	container: { flex: 1 },

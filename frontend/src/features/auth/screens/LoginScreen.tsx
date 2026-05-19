@@ -167,13 +167,6 @@ export const LoginScreen: React.FC = () => {
 					</Pressable>
 				</View>
 
-				{(settings['platform.contact_email'] || settings['platform.contact_phone'] || settings['platform.contact_hours']) ? (
-					<View style={styles.contactBlock}>
-						{settings['platform.contact_email'] ? <Text style={styles.contactLine}>✉ {settings['platform.contact_email']}</Text> : null}
-						{settings['platform.contact_phone'] ? <Text style={styles.contactLine}>☎ {settings['platform.contact_phone']}</Text> : null}
-						{settings['platform.contact_hours'] ? <Text style={styles.contactLine}>🕐 {settings['platform.contact_hours']}</Text> : null}
-					</View>
-				) : null}
 			</View>
 		</SafeAreaView>
 	);

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, Platform } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
@@ -25,10 +25,15 @@ const NAV_ROUTES: NavRoute[] = [
 	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'] },
 ];
 
+const APP_API_BASE = process.env.EXPO_PUBLIC_APP_API_URL || 'http://localhost:8888/app-api';
+
+const LOGO_HEIGHT = 40;
+
 export const Header: React.FC = () => {
 	const router = useRouter();
 	const settings = usePublicSettings();
 	const [userRole, setUserRole] = useState<string>('annotator');
+	const [logoAspect, setLogoAspect] = useState<number | null>(null);
 
 	useEffect(() => {
 		const profile = getUserProfile();
@@ -37,14 +42,37 @@ export const Header: React.FC = () => {
 	}, []);
 
 	const authorizedRoutes = NAV_ROUTES.filter(route => route.roles.includes(userRole));
+	const hasLogo = !!settings['platform.logo_filename'];
+	const logoCacheBust = settings['platform.logo_filename'] || '';
+	const logoUri = hasLogo ? `${APP_API_BASE}/logo/stream?v=${encodeURIComponent(logoCacheBust)}` : null;
+
+	useEffect(() => {
+		if (!logoUri) { setLogoAspect(null); return; }
+		let cancelled = false;
+		Image.getSize(
+			logoUri,
+			(w, h) => { if (!cancelled && h > 0) setLogoAspect(w / h); },
+			() => { if (!cancelled) setLogoAspect(1); },
+		);
+		return () => { cancelled = true; };
+	}, [logoUri]);
 
 	return (
 		<View style={styles.header}>
-			<Text style={styles.logo}>{settings['platform.name']}</Text>
+			<Pressable onPress={() => router.push('/(main)' as Href)} style={styles.brand}>
+				{hasLogo && logoUri ? (
+					<Image
+						source={{ uri: logoUri }}
+						style={{ height: LOGO_HEIGHT, width: logoAspect ? LOGO_HEIGHT * logoAspect : LOGO_HEIGHT }}
+						resizeMode="contain"
+					/>
+				) : null}
+				<Text style={styles.logo}>{settings['platform.name']}</Text>
+			</Pressable>
 			<View style={styles.navContainer}>
 				{authorizedRoutes.map((route) => (
-					<Pressable 
-						key={route.name} 
+					<Pressable
+						key={route.name}
 						onPress={() => router.push(route.path)}
 						style={({ hovered }) => [
 							styles.navItem,
@@ -69,8 +97,8 @@ const styles = StyleSheet.create({
 		backgroundColor: COLORS.background.card,
 		borderBottomWidth: 1,
 		borderBottomColor: COLORS.border,
-
 	},
+	brand: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
 	logo: {
 		...TYPOGRAPHY.h2,
 		color: COLORS.primary,

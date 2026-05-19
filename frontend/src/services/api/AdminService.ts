@@ -363,6 +363,21 @@ export class AdminService {
 		await adminClient.delete('/help-video');
 	}
 
+	async uploadLogo(file: File, onProgress?: (pct: number) => void): Promise<{ filename: string; size_bytes: number; content_type: string }> {
+		const fd = new FormData();
+		fd.append('logo', file, file.name);
+		const resp = await adminClient.post('/logo', fd, {
+			onUploadProgress: (e) => {
+				if (e.total && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+			},
+		});
+		return resp.data as any;
+	}
+
+	async deleteLogo(): Promise<void> {
+		await adminClient.delete('/logo');
+	}
+
 	async getExportFacets(): Promise<ExportFacets> {
 		const resp = await adminClient.get<ExportFacets>('/export/facets');
 		return resp.data;

@@ -356,6 +356,28 @@ Routes Expo :
 
 Le studio injecté NGINX (`ocean-studio.{js,css}`, route `/tasks/{id}/jobs/{j}`) reste en place comme **fallback admin** pendant la transition. Voir ADR-006 vs ADR-007.
 
+## Branding — logo + footer
+
+**Logo de plateforme** : géré comme la vidéo d'aide. Fichier dans `/data/videos/.logo/logo.<ext>` (volume `ocean_videos`, sous-dossier dédié pour ne pas multiplier les mounts). Setting public `platform.logo_filename` pointe sur le nom de fichier ; vide = aucun logo, le nom de la plateforme s'affiche seul dans le header.
+
+Endpoints :
+| Méthode | Route | Auth | But |
+|---|---|---|---|
+| POST   | `/app-api/admin/logo`   | admin | multipart `logo` (PNG/JPEG/WEBP/SVG, max 2 Mo), remplace l'existant, UPSERT setting |
+| DELETE | `/app-api/admin/logo`   | admin | supprime fichier + clear setting |
+| GET    | `/app-api/logo/stream`  | **public** | sert le logo, `Cache-Control: public, max-age=300` |
+
+Le stream est **non authentifié** (vs help-video qui exige auth) : pure branding, aucun contenu sensible, et autorise l'affichage côté login si besoin futur. Cache-bust côté frontend via `?v=<filename>` dans l'URL — le navigateur cache l'image, mais une upload change le nom de fichier ; le hook `usePublicSettings` force le refresh à la sauvegarde.
+
+`Header.tsx` rend `<Image>` à côté du nom de plateforme quand `platform.logo_filename` est non vide. `AdminSettingsScreen.tsx` expose un widget `LogoSection` dans le groupe `branding` (similaire à `HelpVideoSection`), avec preview + boutons Téléverser / Remplacer / Supprimer. Le champ texte `platform.logo_filename` est filtré du rendu par défaut pour éviter le doublon.
+
+**Footer** : composant `frontend/src/shared/components/layout/Footer.tsx`, layout 3 colonnes wrappable (`flexWrap: 'wrap'`, `minWidth: 220` par colonne) :
+- Col 1 — Plateforme : `platform.name`, baseline, copyright année courante + « Open Data Polynésie ».
+- Col 2 — Contact (rendue seulement si au moins un champ contact est rempli) : email (`mailto:`), téléphone (`tel:`), horaires, adresse, chacun avec icône Unicode (✉/☎/◷/◉). Email + téléphone sont des `Pressable` qui appellent `Linking.openURL`.
+- Col 3 — Liens utiles : « Besoin d'aide ? » → `/help`, « Mon profil » → `/profile`.
+
+Le bloc contacts a été **retiré de `LoginScreen`** — il faisait doublon. Il vit maintenant exclusivement dans le footer.
+
 ## Rangs (médailles) — paramétrables
 
 Les seuils restent figés dans [frontend/src/shared/ranks.ts](frontend/src/shared/ranks.ts) (modifier rétroactivement fausserait l'historique). Le **libellé** et la **couleur** de chaque rang (`debutant|bronze|argent|or|platine`) sont des `app_settings` publics dans le groupe `ranks`, modifiables depuis Paramètres système (preview live dans la page admin). `computeRank` lit les valeurs courantes via `getPublicSettings()` au moment de l'appel ; le cache est rafraîchi à chaque save admin via `refreshPublicSettings()`. Validation serveur : `pattern: /^#[0-9a-fA-F]{6}$/` sur les couleurs (settingsRegistry).

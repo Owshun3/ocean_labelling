@@ -17,5 +17,6 @@ router.use('/export',   require('./export'));
 router.use('/species-tags',    require('./species-tags'));
 router.use('/species-history', require('./species-history'));
 router.use('/help-video',   require('./help-video'));
+router.use('/logo',         require('./logo'));
 
 module.exports = router;

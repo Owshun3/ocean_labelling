@@ -33,6 +33,15 @@ const REGISTRY = [
     group_name: 'contact', label: 'Adresse postale', description: '',
   },
 
+  // Logo affiché dans le header. Stocké sous /data/videos/.logo/<filename>
+  // (réutilise le volume ocean_videos pour ne pas multiplier les mounts).
+  // Géré via POST /admin/logo, pas via la PATCH générique.
+  {
+    key: 'platform.logo_filename', type: 'string', default: '', is_public: true,
+    group_name: 'branding', label: 'Logo (nom du fichier)',
+    description: 'Géré via la section dédiée plus bas — vide = aucun logo, le nom seul s\'affiche.',
+  },
+
   // Vidéo d'aide affichée sur la page « Besoin d'aide ? ». Stockée sous
   // /data/videos/.help/<filename>. Vide → aucun lecteur affiché côté frontend.
   // Géré via POST /admin/help-video, pas via la PATCH générique.

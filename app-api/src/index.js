@@ -27,6 +27,7 @@ app.use('/media', require('./routes/media-metadata'));
 app.use('/videos', require('./routes/videos'));
 app.use('/chercheur', require('./routes/chercheur'));
 app.use('/help-video', require('./routes/help-video'));
+app.use('/logo',       require('./routes/logo'));
 
 app.use((_err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
