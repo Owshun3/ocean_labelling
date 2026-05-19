@@ -378,6 +378,19 @@ Le stream est **non authentifié** (vs help-video qui exige auth) : pure brandin
 
 Le bloc contacts a été **retiré de `LoginScreen`** — il faisait doublon. Il vit maintenant exclusivement dans le footer.
 
+## Fil d'Ariane (`Breadcrumb`)
+
+Composant unique [`frontend/src/shared/components/layout/Breadcrumb.tsx`](frontend/src/shared/components/layout/Breadcrumb.tsx) rendu dans `app/(main)/_layout.tsx`. Le chemin est dérivé automatiquement de `usePathname()` — **toute nouvelle route apparaît sans modification du Breadcrumb**. En revanche, deux choses ne sont **pas** automatiques :
+
+1. **Libellé français du segment** : si le segment d'URL n'est pas dans `STATIC_LABELS`, le fil affiche le segment brut (ex : `accounts`, `health`). Pour chaque nouvelle route, ajouter une entrée dans `STATIC_LABELS` avec son libellé final.
+2. **Overrides pour routes spéciales** (`ROUTE_OVERRIDES`) — nécessaires dans deux cas :
+   - L'URL contient des IDs techniques au milieu et tu veux un libellé métier en bout de fil (ex : `/studio/<task>/<job>` → `Annoter ce média`).
+   - Un segment parent n'a pas de page réelle navigable (ex : `/chercheur` n'existe pas, donc `linkSegments: 0` court-circuite son rendu comme lien).
+
+Un override déclare `{ match: (parts) => boolean, linkSegments: number, currentLabel: string }`. Les `linkSegments` premiers segments deviennent des liens, puis `currentLabel` est ajouté comme texte non cliquable. Les IDs numériques ont déjà un traitement par défaut (`#X`, ou `Utilisateur #X` / `Média #X` selon le parent `moderation`/`contestations`).
+
+**Règle invariante** : la page courante est **toujours rendue en bout de fil comme texte non cliquable**, jamais comme lien — quel que soit le scénario.
+
 ## Rangs (médailles) — paramétrables
 
 Les seuils restent figés dans [frontend/src/shared/ranks.ts](frontend/src/shared/ranks.ts) (modifier rétroactivement fausserait l'historique). Le **libellé** et la **couleur** de chaque rang (`debutant|bronze|argent|or|platine`) sont des `app_settings` publics dans le groupe `ranks`, modifiables depuis Paramètres système (preview live dans la page admin). `computeRank` lit les valeurs courantes via `getPublicSettings()` au moment de l'appel ; le cache est rafraîchi à chaque save admin via `refreshPublicSettings()`. Validation serveur : `pattern: /^#[0-9a-fA-F]{6}$/` sur les couleurs (settingsRegistry).

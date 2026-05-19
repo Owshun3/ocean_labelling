@@ -10,54 +10,121 @@ interface Crumb {
 }
 
 const STATIC_LABELS: Record<string, string> = {
-	media:      'Mes Médias',
-	upload:     'Nouveau Dépôt',
-	annotate:   'Annoter',
-	curator:    'Curation',
-	studio:     'Annotation',
-	select:     'Sélection',
-	done:       'Validation enregistrée',
-	moderation: 'Modération',
-	profile:    'Mon Profil',
-	admin:      'Administration',
-	welcome:    'Bienvenue',
+	accounts:          'Gestion des comptes',
+	activity:          'Historique d\'activité',
+	admin:             'Administration',
+	annotate:          'Annoter',
+	chercheur:         'Espace chercheur',
+	contestations:     'Contestations',
+	curation:          'Pool de curation',
+	curator:           'Curation',
+	done:              'Validation enregistrée',
+	edit:              'Modifier le profil',
+	export:            'Export Datumaro',
+	'export-requests': 'Mes exports',
+	health:            'État système',
+	help:              'Besoin d\'aide ?',
+	media:             'Mes Médias',
+	moderation:        'Modération',
+	password:          'Mot de passe',
+	profile:           'Mon Profil',
+	requests:          'Demandes',
+	select:            'Choisir un média',
+	settings:          'Paramètres système',
+	species:           'Espèces',
+	'species-history': 'Historique des fiches espèces',
+	'species-tags':    'Tags d\'espèces',
+	studio:            'Annotation',
+	upload:            'Nouveau Dépôt',
+	welcome:           'Bienvenue',
 };
+
+// Routes dont l'URL contient des segments techniques (ids) ou pour lesquelles le
+// chemin parent n'est pas une vraie page. On y substitue un libellé contextuel
+// pour la page courante et un nombre fixe de segments-liens.
+interface RouteOverride {
+	match: (parts: string[]) => boolean;
+	linkSegments: number;     // nombre de segments à conserver comme liens cliquables
+	currentLabel: string;     // libellé de la page courante (jamais cliquable)
+}
+
+const ROUTE_OVERRIDES: RouteOverride[] = [
+	// /studio/<taskId>/<jobId> → studio annotateur
+	{
+		match: (p) => p[0] === 'studio' && p.length >= 3 && /^\d+$/.test(p[1]) && /^\d+$/.test(p[2]),
+		linkSegments: 1,
+		currentLabel: 'Annoter ce média',
+	},
+	// /studio/video/<videoId> → extracteur de frames
+	{
+		match: (p) => p[0] === 'studio' && p[1] === 'video' && p.length >= 3,
+		linkSegments: 1,
+		currentLabel: 'Extracteur de frames',
+	},
+	// /studio/view/<taskId> → consultation d'une annotation
+	{
+		match: (p) => p[0] === 'studio' && p[1] === 'view' && p.length >= 3,
+		linkSegments: 1,
+		currentLabel: 'Aperçu d\'annotation',
+	},
+	// /curator/studio/<taskId>/<jobId> → studio curator
+	{
+		match: (p) => p[0] === 'curator' && p[1] === 'studio',
+		linkSegments: 1,
+		currentLabel: 'Certifier ce média',
+	},
+	// /chercheur/export-requests : /chercheur tout court n'existe pas comme page.
+	{
+		match: (p) => p[0] === 'chercheur' && p[1] === 'export-requests',
+		linkSegments: 0,
+		currentLabel: 'Mes exports',
+	},
+	// /species/<id> : /species index n'existe pas non plus.
+	{
+		match: (p) => p[0] === 'species' && p.length >= 2 && /^\d+$/.test(p[1]),
+		linkSegments: 0,
+		currentLabel: 'Fiche d\'espèce',
+	},
+];
 
 function labelForSegment(parts: string[], idx: number): string {
 	const seg = parts[idx];
 	if (/^\d+$/.test(seg)) {
 		const parent = parts[idx - 1];
-		if (parent === 'moderation') return `Utilisateur #${seg}`;
-		if (idx >= 2 && parts[idx - 2] === 'moderation') return `Média #${seg}`;
+		if (parent === 'moderation' || parent === 'contestations') {
+			return `Utilisateur #${seg}`;
+		}
+		if (idx >= 2 && parts[idx - 2] === 'moderation') {
+			return `Média #${seg}`;
+		}
 		return `#${seg}`;
 	}
 	return STATIC_LABELS[seg] ?? seg;
 }
 
-function truncateTechnicalSegments(parts: string[]): string[] {
-	if (parts[0] === 'studio' && parts.length >= 2 && /^\d+$/.test(parts[1])) {
-		return ['studio'];
-	}
-	if (parts[0] === 'curator' && parts[1] === 'studio') {
-		return ['curator'];
-	}
-	return parts;
-}
-
 function buildCrumbs(pathname: string): Crumb[] {
 	const parts = pathname.split('/').filter(Boolean);
 	if (parts.length === 0) return [];
-	const truncated = truncateTechnicalSegments(parts);
-	const truncationApplied = truncated.length < parts.length;
 
 	const crumbs: Crumb[] = [{ label: 'Accueil', href: '/' }];
+
+	const override = ROUTE_OVERRIDES.find((r) => r.match(parts));
+	if (override) {
+		let cumulative = '';
+		for (let i = 0; i < override.linkSegments; i++) {
+			cumulative += '/' + parts[i];
+			crumbs.push({ label: labelForSegment(parts, i), href: cumulative });
+		}
+		crumbs.push({ label: override.currentLabel });
+		return crumbs;
+	}
+
 	let cumulative = '';
-	truncated.forEach((seg, i) => {
+	parts.forEach((seg, i) => {
 		cumulative += '/' + seg;
-		const isLeafOfTruncated = i === truncated.length - 1;
-		const isLast = isLeafOfTruncated && !truncationApplied;
+		const isLast = i === parts.length - 1;
 		crumbs.push({
-			label: labelForSegment(truncated, i),
+			label: labelForSegment(parts, i),
 			href: isLast ? undefined : cumulative,
 		});
 	});
