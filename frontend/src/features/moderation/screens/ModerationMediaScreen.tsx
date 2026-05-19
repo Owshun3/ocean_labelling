@@ -240,7 +240,6 @@ const styles = StyleSheet.create({
 	imageBox: {
 		flex: 1,
 		alignItems: 'stretch',
-		justifyContent: 'stretch',
 		backgroundColor: COLORS.background.card,
 		borderRadius: 8,
 		borderWidth: 1,
