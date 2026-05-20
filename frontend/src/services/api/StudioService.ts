@@ -56,18 +56,22 @@ function pointsClose(a: number[], b: number[]): boolean {
 
 export type ModerationStatus = 'pending' | 'validated' | 'rejected';
 export type AnnotationState  = 'not_annotated' | 'annotated' | 'curator_validated';
+export type FeedSourceKind   = 'image' | 'video_frame';
 
 export interface FeedTask {
 	cvat_task_id:      number;
 	name:              string;
 	created_date:      string;
 	moderation_status: ModerationStatus;
+	moderation_reviewed_at?: string | null;
 	jobs_count:        number;
 	completed_count:   number;
+	annotators_count?: number;
 	my_job_id:         number | null;
 	my_job_state:      string | null;
 	free_job_count:    number;
 	annotation_state:  AnnotationState;
+	source_kind?:      FeedSourceKind;
 	already_contested?: boolean;
 }
 
@@ -79,8 +83,13 @@ export interface StudioFeed {
 export class StudioService {
 	private species = new SpeciesService();
 
-	async getFeed(): Promise<StudioFeed> {
-		const resp = await studioClient.get<StudioFeed>('/feed');
+	async getFeed(opts?: { communitySort?: 'taken_at'; communityDirection?: 'asc' | 'desc' }): Promise<StudioFeed> {
+		const params: Record<string, string> = {};
+		if (opts?.communitySort) {
+			params.community_sort = opts.communitySort;
+			if (opts.communityDirection) params.community_direction = opts.communityDirection;
+		}
+		const resp = await studioClient.get<StudioFeed>('/feed', { params });
 		return resp.data;
 	}
 

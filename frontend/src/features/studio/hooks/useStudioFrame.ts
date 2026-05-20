@@ -26,6 +26,13 @@ export function useStudioFrame(jobId: number, frameNumber: number, custom?: Fetc
 		setError(null);
 		setImage(null);
 
+		// Sentinel: callers pass jobId <= 0 when the real id n'est pas encore résolu
+		// (chargement async). On bail out — sinon /jobs/-1/data 404 polue la console.
+		if (!Number.isFinite(jobId) || jobId <= 0) {
+			setLoading(false);
+			return () => { cancelled = true; };
+		}
+
 		const client = custom?.client ?? apiClient;
 		const path   = custom?.path   ?? `/jobs/${jobId}/data`;
 		const params = custom?.params ?? { type: 'frame', number: frameNumber, quality: 'compressed' };

@@ -147,17 +147,26 @@ async function countShapesInJob(jobId, token) {
 
 router.get('/feed', requireAuth, async (req, res) => {
   const me = req.cvatUser.id;
+  // Tri server-side pour les colonnes sensibles (taken_at = date de prise de vue).
+  // La valeur n'est JAMAIS retournée au client — uniquement l'ordre.
+  const communitySort = req.query.community_sort === 'taken_at' ? 'taken_at' : null;
+  const communityDir  = req.query.community_direction === 'desc' ? 'DESC' : 'ASC';
   try {
     // Pour le studio annotateur :
     // - mes médias en attente OU validés peuvent être annotés (mes frames extraites
     //   apparaissent dès l'upload, avant validation modérateur)
     // - le mur communautaire ne montre que les médias validés (filtré plus bas)
     // - les rejetés ne sont jamais annotables (ils n'apparaissent pas)
+    // On lit taken_at depuis media_metadata pour pouvoir trier le mur dessus,
+    // mais on ne renvoie JAMAIS sa valeur dans la réponse (sécurité espèces).
     const { rows } = await pool.query(`
-      SELECT cvat_task_id, uploader_id, status, created_at, curator_validated_at
-      FROM media_moderation
-      WHERE media_kind = 'image'
-        AND status IN ('pending', 'validated')
+      SELECT mm.cvat_task_id, mm.uploader_id, mm.status, mm.created_at,
+             mm.curator_validated_at, mm.reviewed_at,
+             meta.source_video_id, meta.taken_at
+      FROM media_moderation mm
+      LEFT JOIN media_metadata meta ON meta.cvat_task_id = mm.cvat_task_id
+      WHERE mm.media_kind = 'image'
+        AND mm.status IN ('pending', 'validated')
     `, []);
     if (rows.length === 0) return res.json({ own: [], community: [] });
 
@@ -215,6 +224,9 @@ router.get('/feed', requireAuth, async (req, res) => {
 
     const own = [];
     const community = [];
+    // taken_at par taskId pour le tri server-side ; la valeur ne sort JAMAIS
+    // de cette map vers la réponse — uniquement comparée ici pour ordonner.
+    const takenAtByTaskId = new Map();
 
     for (const row of rows) {
       const task = tasksById.get(row.cvat_task_id);
@@ -230,17 +242,21 @@ router.get('/feed', requireAuth, async (req, res) => {
         else if ((myShapesCounts.get(row.cvat_task_id) ?? 0) > 0) annotationState = 'annotated';
       }
 
+      const annotatorsCount = jobs.filter((j) => !!j.assignee).length;
       const summary = {
         cvat_task_id: row.cvat_task_id,
         name: task.name,
         created_date: task.created_date,
         moderation_status: row.status,
+        moderation_reviewed_at: row.reviewed_at,
         jobs_count: jobs.length,
         completed_count: completed,
+        annotators_count: annotatorsCount,
         my_job_id: myAssigned?.id ?? null,
         my_job_state: myAssigned?.state ?? null,
         free_job_count: freeJobs.length,
         annotation_state: annotationState,
+        source_kind: row.source_video_id ? 'video_frame' : 'image',
         already_contested: alreadyContestedSet.has(row.cvat_task_id),
       };
 
@@ -254,14 +270,30 @@ router.get('/feed', requireAuth, async (req, res) => {
         if (myShapes > 0 || myJobDone) continue;
         if (myAssigned || freeJobs.length > 0) {
           community.push(summary);
+          takenAtByTaskId.set(row.cvat_task_id, row.taken_at);
         }
       }
     }
 
     own.sort((a, b) => a.completed_count - b.completed_count
       || new Date(b.created_date) - new Date(a.created_date));
-    community.sort((a, b) => a.completed_count - b.completed_count
-      || new Date(b.created_date) - new Date(a.created_date));
+
+    if (communitySort === 'taken_at') {
+      // NULLS LAST quelle que soit la direction (médias sans EXIF en fin de liste).
+      const mult = communityDir === 'DESC' ? -1 : 1;
+      community.sort((a, b) => {
+        const av = takenAtByTaskId.get(a.cvat_task_id);
+        const bv = takenAtByTaskId.get(b.cvat_task_id);
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        const cmp = new Date(av) - new Date(bv);
+        return cmp !== 0 ? cmp * mult : 0;
+      });
+    } else {
+      community.sort((a, b) => a.completed_count - b.completed_count
+        || new Date(b.created_date) - new Date(a.created_date));
+    }
 
     res.json({ own, community });
   } catch (err) {

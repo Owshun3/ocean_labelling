@@ -378,6 +378,50 @@ Le stream est **non authentifié** (vs help-video qui exige auth) : pure brandin
 
 Le bloc contacts a été **retiré de `LoginScreen`** — il faisait doublon. Il vit maintenant exclusivement dans le footer.
 
+## Filtres / tris réutilisables (`FilterSortBar`)
+
+Composant générique [`frontend/src/shared/components/filters/`](frontend/src/shared/components/filters/) destiné à être réutilisé sur toutes les listes du site (mur communautaire, mes médias, modération, etc.). Trois pièces :
+
+1. **`types.ts`** : schéma déclaratif (`FilterField`, `SortOption`, `FilterSortState`, `FieldExtractors<T>`). Types de champs supportés : `text`, `chips` (multi ou single), `bool` (tri-état : tous/oui/non), `date-range` (ISO), `number-range`.
+2. **`FilterSortBar`** : UI **en accordéon** — barre compacte par défaut (input de recherche toujours visible si `searchKey` passé + boutons « Filtres (N) ▾ » et « Trier : <critère> ↕ ▾ »). Le clic déplie un panneau sous la barre, sans superposition. Tri : radio-list des critères + boutons explicites « ↑ Croissant / ↓ Décroissant » séparés.
+3. **`useFilteredAndSorted<T>(items, filters, sorts, value, extractors)`** : applique filtres et tri en mémoire. Hook pur (`useMemo`). Tri stable. Comparaisons date-aware et locale-aware (`fr`, sensitivity base). **Une clé de tri sans extractor est ignorée par le hook** — utile pour confier ce tri au serveur.
+
+**Pourquoi en deux pièces** : composant + hook indépendants. Une page peut utiliser uniquement le hook (UI custom) ou uniquement la barre (filtrage serveur). Pour passer plus tard à du filtrage serveur complet, on conserve le même schéma et on POST `FilterSortState` au backend.
+
+**Tris server-side (sécurité)** : quand un critère de tri requiert des données sensibles qu'on ne veut pas exposer au client (ex : `taken_at` pour ne pas révéler la date de capture d'espèces protégées aux annotateurs non-propriétaires), on :
+- **N'expose PAS l'extractor côté client** → le hook ignore la clé.
+- **Trie côté serveur** via params `?community_sort=<key>&community_direction=asc|desc` sur l'endpoint backend.
+- **Refetch sur changement** : la page écoute la clé de tri, si elle est dans `SERVER_SORT_KEYS`, déclenche un refetch via le service avec les params.
+
+Le client n'a jamais accès à la valeur — uniquement à l'ordre.
+
+**Exemple d'usage** (mur communautaire dans [`StudioSelectScreen`](frontend/src/features/studio/screens/StudioSelectScreen.tsx)) :
+```ts
+const COMMUNITY_FILTERS: FilterField[] = [
+  { kind: 'text',       key: 'name',    label: 'Rechercher', placeholder: 'Nom du média…' },
+  { kind: 'chips',      key: 'source',  label: 'Source', multi: false, options: [...] },
+  { kind: 'bool',       key: 'started', label: 'Engagement', trueLabel: 'Déjà commencé', falseLabel: 'Vierge' },
+  { kind: 'date-range', key: 'created', label: 'Date de dépôt' },
+];
+const COMMUNITY_SORTS: SortOption[] = [
+  { key: 'completed_count',  label: 'Nombre d\'annotations',  defaultDirection: 'asc' },
+  { key: 'annotators_count', label: 'Annotateurs engagés',    defaultDirection: 'desc' },
+  { key: 'created_date',     label: 'Date de dépôt',          defaultDirection: 'desc' },
+  { key: 'taken_at',         label: 'Date de prise de vue',   defaultDirection: 'desc' },
+  // ...
+];
+const SERVER_SORT_KEYS = new Set(['taken_at']);
+// Pas d'extractor pour taken_at → hook skip → server pre-sort utilisé.
+```
+
+**Backend `/studio/feed`** :
+- Exposé côté payload (non sensible) : `source_kind`, `annotators_count`, `moderation_reviewed_at`.
+- **Pas exposé** : `taken_at` (lu côté serveur pour pouvoir trier dessus, jamais retourné dans la réponse). Tri appliqué via `?community_sort=taken_at&community_direction=asc|desc`. NULLS LAST quelle que soit la direction (médias sans EXIF en fin de liste).
+
+**Périmètre actuel des filtres mur communautaire** : recherche par nom, source (image/frame vidéo), toggle engagement (déjà commencé / vierge), plage de dates de dépôt. **Pas de filtre** uploadeur, espèces, tags, archipel, GPS — délibéré (sécurité ou pertinence).
+
+**Tri par défaut** : `completed_count` ascendant (« moins de validations finales en premier ») — distribue sainement l'effort entre annotateurs.
+
 ## Fil d'Ariane (`Breadcrumb`)
 
 Composant unique [`frontend/src/shared/components/layout/Breadcrumb.tsx`](frontend/src/shared/components/layout/Breadcrumb.tsx) rendu dans `app/(main)/_layout.tsx`. Le chemin est dérivé automatiquement de `usePathname()` — **toute nouvelle route apparaît sans modification du Breadcrumb**. En revanche, deux choses ne sont **pas** automatiques :
