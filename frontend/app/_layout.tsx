@@ -50,6 +50,26 @@ export default function RootLayout() {
 		document.title = settings['platform.name'] || 'Ocean Labelling';
 	}, [settings]);
 
+	// Empêche la sélection accidentelle du texte des boutons quand l'utilisateur
+	// clique un peu vite ou drague la souris. Cible toutes les Pressable RN Web
+	// (rendues `role="button"`) + les <button> HTML natifs + leur descendance.
+	useEffect(() => {
+		if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+		const styleId = 'ocean-no-select-buttons';
+		if (document.getElementById(styleId)) return;
+		const style = document.createElement('style');
+		style.id = styleId;
+		style.textContent = `
+			[role="button"], [role="button"] *,
+			button, button * {
+				user-select: none;
+				-webkit-user-select: none;
+				-ms-user-select: none;
+			}
+		`;
+		document.head.appendChild(style);
+	}, []);
+
 	if (settings['platform.maintenance_mode']) {
 		const profile = getUserProfile();
 		const isAdmin = !!profile && (profile.appRole === 'admin' || profile.is_superuser);
