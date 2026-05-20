@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { videoApiBase, UserVideo } from '@/services/api/VideoService';
+import { formatVideoDuration } from '@/shared/utils/formatters';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -10,13 +11,6 @@ interface Props {
 	video: UserVideo;
 	disabled?: boolean;
 	onExtract: (videoId: number) => void;
-}
-
-function formatDuration(seconds: number | null): string {
-	if (!seconds || seconds <= 0) return '—';
-	const m = Math.floor(seconds / 60);
-	const s = Math.floor(seconds % 60);
-	return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 /**
@@ -51,7 +45,7 @@ export function StudioVideoTile({ video, disabled, onExtract }: Props) {
 					<Text style={styles.kindBadgeText}>VIDÉO</Text>
 				</View>
 				<View style={styles.durationBadge}>
-					<Text style={styles.durationText}>{formatDuration(video.duration_seconds)}</Text>
+					<Text style={styles.durationText}>{formatVideoDuration(video.duration_seconds)}</Text>
 				</View>
 			</View>
 			<Text style={styles.name} numberOfLines={1}>{video.filename}</Text>

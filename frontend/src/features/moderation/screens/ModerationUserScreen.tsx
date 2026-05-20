@@ -12,6 +12,7 @@ import { videoApiBase } from '@/services/api/VideoService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { BanModal } from '../components/BanModal';
 import { RejectReasonPicker } from '../components/RejectReasonPicker';
+import { formatVideoDuration } from '@/shared/utils/formatters';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -28,13 +29,6 @@ function parseKey(k: string): ModerationItem | null {
 	const id = Number(idStr);
 	if ((kind !== 'image' && kind !== 'video') || !Number.isInteger(id)) return null;
 	return { kind, id };
-}
-
-function fmtDuration(s: number | null): string {
-	if (!s || s <= 0) return '—';
-	const m = Math.floor(s / 60);
-	const sec = Math.floor(s % 60);
-	return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
@@ -272,7 +266,7 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 												<Text style={styles.videoBadgeText}>VIDÉO</Text>
 											</View>
 											<View style={styles.videoDuration}>
-												<Text style={styles.videoDurationText}>{fmtDuration(entry.video.duration_seconds)}</Text>
+												<Text style={styles.videoDurationText}>{formatVideoDuration(entry.video.duration_seconds)}</Text>
 											</View>
 										</View>
 										<Text style={styles.tileName} numberOfLines={1}>{entry.video.filename}</Text>

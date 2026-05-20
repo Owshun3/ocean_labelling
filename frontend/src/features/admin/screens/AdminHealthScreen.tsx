@@ -2,30 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { AdminService, HealthReport } from '@/services/api/AdminService';
 import { toast } from '@/shared/toast/Toast';
+import { formatBytes, formatUptime } from '@/shared/utils/formatters';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
 const AUTO_REFRESH_MS = 15_000;
-
-function fmtBytes(b: number | null): string {
-	if (b === null || !Number.isFinite(b)) return '—';
-	if (b >= 1024 ** 3) return `${(b / 1024 ** 3).toFixed(2)} Go`;
-	if (b >= 1024 ** 2) return `${(b / 1024 ** 2).toFixed(1)} Mo`;
-	if (b >= 1024)      return `${Math.round(b / 1024)} Ko`;
-	return `${b} o`;
-}
-
-function fmtDuration(s: number): string {
-	if (s < 60) return `${s} s`;
-	const m = Math.floor(s / 60);
-	if (m < 60) return `${m} min`;
-	const h = Math.floor(m / 60);
-	const rem = m % 60;
-	if (h < 24) return rem ? `${h} h ${rem} min` : `${h} h`;
-	const d = Math.floor(h / 24);
-	return `${d} j ${h % 24} h`;
-}
 
 function fmtPct(used: number | null, total: number | null): string {
 	if (used === null || total === null || total === 0) return '—';
@@ -115,10 +97,10 @@ export const AdminHealthScreen: React.FC = () => {
 			<View style={styles.row}>
 				<View style={styles.statCard}>
 					<Text style={styles.statTitle}>Process app-api</Text>
-					<Text style={styles.statLine}>Uptime : <Text style={styles.bold}>{fmtDuration(report.process.uptime_seconds)}</Text></Text>
+					<Text style={styles.statLine}>Uptime : <Text style={styles.bold}>{formatUptime(report.process.uptime_seconds)}</Text></Text>
 					<Text style={styles.statLine}>Node : {report.process.node_version}</Text>
-					<Text style={styles.statLine}>RSS : {fmtBytes(report.process.rss_bytes)}</Text>
-					<Text style={styles.statLine}>Heap : {fmtBytes(report.process.heap_used_bytes)}</Text>
+					<Text style={styles.statLine}>RSS : {formatBytes(report.process.rss_bytes)}</Text>
+					<Text style={styles.statLine}>Heap : {formatBytes(report.process.heap_used_bytes)}</Text>
 				</View>
 
 				<View style={styles.statCard}>
@@ -127,7 +109,7 @@ export const AdminHealthScreen: React.FC = () => {
 						const memPctNum = memUsed !== null && report.system.mem_total_bytes ? (memUsed / report.system.mem_total_bytes) * 100 : null;
 						return (
 							<Text style={styles.statLine}>
-								Mémoire : <Text style={styles.bold}>{fmtBytes(memUsed)} / {fmtBytes(report.system.mem_total_bytes)}</Text>{' '}
+								Mémoire : <Text style={styles.bold}>{formatBytes(memUsed)} / {formatBytes(report.system.mem_total_bytes)}</Text>{' '}
 								<Text style={{ color: colorForPct(memPctNum), fontWeight: '700' }}>
 									{fmtPct(memUsed, report.system.mem_total_bytes)}
 								</Text>
@@ -160,7 +142,7 @@ export const AdminHealthScreen: React.FC = () => {
 
 				<View style={styles.statCard}>
 					<Text style={styles.statTitle}>Stockage</Text>
-					<Text style={styles.statLine}>Postgres app-api : <Text style={styles.bold}>{fmtBytes(report.storage.postgres_db_bytes)}</Text></Text>
+					<Text style={styles.statLine}>Postgres app-api : <Text style={styles.bold}>{formatBytes(report.storage.postgres_db_bytes)}</Text></Text>
 					<Text style={styles.statLine}>Sessions actives : <Text style={styles.bold}>{report.sessions.active ?? '—'}</Text></Text>
 				</View>
 			</View>

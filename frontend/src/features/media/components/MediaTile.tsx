@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet, GestureResponderEvent } from 'react-native';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { videoApiBase } from '@/services/api/VideoService';
+import { formatVideoDuration } from '@/shared/utils/formatters';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 
@@ -34,13 +35,6 @@ interface Props {
 	onPlayVideo?: (videoId: number) => void;
 }
 
-function formatDuration(seconds: number | null): string {
-	if (!seconds || seconds <= 0) return '—';
-	const m = Math.floor(seconds / 60);
-	const s = Math.floor(seconds % 60);
-	return `${m}:${String(s).padStart(2, '0')}`;
-}
-
 /**
  * Tuile média générique : rend l'aperçu adapté au kind (photo ou vidéo).
  * Selection visuelle uniforme. Pas de logique métier interne — tout passe par les props.
@@ -71,7 +65,7 @@ export function MediaTile({ item, selected, onPress, onPlayVideo }: Props) {
 						</Pressable>
 					) : null}
 					<View style={styles.durationBadge}>
-						<Text style={styles.durationText}>{formatDuration(item.durationSeconds)}</Text>
+						<Text style={styles.durationText}>{formatVideoDuration(item.durationSeconds)}</Text>
 					</View>
 					<View style={styles.kindBadge}>
 						<Text style={styles.kindBadgeText}>VIDÉO</Text>

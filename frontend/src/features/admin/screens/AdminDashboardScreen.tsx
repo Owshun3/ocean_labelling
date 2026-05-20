@@ -3,17 +3,10 @@ import { View, Text, ScrollView, ActivityIndicator, StyleSheet } from 'react-nat
 import { Href } from 'expo-router';
 import { AdminService, DashboardSummary } from '@/services/api/AdminService';
 import { AdminCard, AdminCardSeverity } from '@/features/admin/components/AdminCard';
+import { formatBytes } from '@/shared/utils/formatters';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
-
-function fmtBytes(b: number | null): string {
-	if (b === null || !Number.isFinite(b)) return '—';
-	if (b >= 1024 * 1024 * 1024) return `${(b / (1024 ** 3)).toFixed(1)} Go`;
-	if (b >= 1024 * 1024)        return `${Math.round(b / (1024 ** 2))} Mo`;
-	if (b >= 1024)               return `${Math.round(b / 1024)} Ko`;
-	return `${b} o`;
-}
 
 export const AdminDashboardScreen: React.FC = () => {
 	const service = useMemo(() => new AdminService(), []);
@@ -83,7 +76,7 @@ export const AdminDashboardScreen: React.FC = () => {
 					title="Paramètres système"
 					href={'/(main)/admin/settings' as Href}
 					icon="settings"
-					description={`Taille max upload : ${fmtBytes(summary?.settings.upload_max_bytes ?? null)}`}
+					description={`Taille max upload : ${formatBytes(summary?.settings.upload_max_bytes ?? null)}`}
 					severity="neutral"
 				/>
 
