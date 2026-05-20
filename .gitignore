@@ -33,3 +33,16 @@ GEMINI.md
 *.pptx
 *.sqlite
 *.sqlite3
+
+# --- Dumps & backups DB (jamais commit, peuvent être volumineux et/ou contenir des secrets utilisateurs) ---
+*.sql
+*.dump
+*.bak
+*.backup
+backup_*
+backup-*
+
+# --- Fichiers temporaires éditeur ---
+*.swp
+*.swo
+*~
