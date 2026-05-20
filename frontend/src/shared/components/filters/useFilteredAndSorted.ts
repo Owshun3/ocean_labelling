@@ -67,6 +67,11 @@ function matchesFilter(field: FilterField, raw: any, itemValue: unknown): boolea
 		case 'chips': {
 			const selected: string[] = Array.isArray(raw) ? raw.filter((v) => typeof v === 'string') : [];
 			if (selected.length === 0) return true;
+			// Si l'item porte une liste de valeurs (ex: tags d'espèce) → match si
+			// au moins une valeur de l'item est dans la sélection (OR / union).
+			if (Array.isArray(itemValue)) {
+				return selected.some((v) => itemValue.includes(v));
+			}
 			return selected.includes(String(itemValue ?? ''));
 		}
 		case 'date-range': {

@@ -1,22 +1,50 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { toast } from '@/shared/toast/Toast';
 import { SpeciesService, Species } from '@/services/api/SpeciesService';
+import { SpeciesTagService, SpeciesTagGroup } from '@/services/api/SpeciesTagService';
+import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
+import type { FilterField, FilterSortState, SortOption, FieldExtractors } from '@/shared/components/filters';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 
-const DEBOUNCE_MS = 250;
-const CATALOG_LIMIT = 100;
+const DEBOUNCE_MS    = 250;
+const CATALOG_LIMIT  = 100;
+
+const CATALOG_SORTS: SortOption[] = [
+	{ key: 'name',        label: 'Nom (A-Z)',                 defaultDirection: 'asc' },
+	{ key: 'usage_count', label: 'Fréquence d\'annotation',   defaultDirection: 'desc' },
+];
+
+const DEFAULT_STATE: FilterSortState = {
+	filters: {},
+	sort: { key: 'name', direction: 'asc' },
+};
+
+// Pas d'extractor pour `query` — la recherche texte est résolue côté serveur,
+// le hook ignore la clé pour ne pas re-filtrer en mémoire.
+const CATALOG_EXTRACTORS: FieldExtractors<Species> = {
+	tags:            (s) => s.tags ?? [],
+	status:          (s) => s.status,
+	has_description: (s) => !!(s.description && s.description.trim().length > 0),
+	name:            (s) => (s.scientific_name || s.usage_name || s.name).toLowerCase(),
+	usage_count:     (s) => s.usage_count ?? 0,
+};
 
 export const CuratorSpeciesCatalogScreen: React.FC = () => {
 	const router = useRouter();
 	const service = useMemo(() => new SpeciesService(), []);
-	const [query, setQuery]     = useState('');
-	const [results, setResults] = useState<Species[]>([]);
-	const [loading, setLoading] = useState(true);
+	const tagService = useMemo(() => new SpeciesTagService(), []);
+
+	const [results, setResults]   = useState<Species[]>([]);
+	const [tagGroups, setTagGroups] = useState<SpeciesTagGroup[]>([]);
+	const [loading, setLoading]   = useState(true);
+	const [filterState, setFilterState] = useState<FilterSortState>(DEFAULT_STATE);
 	const debRef = useRef<any>(null);
+
+	const query = String(filterState.filters?.query ?? '');
 
 	const fetchList = useCallback(async (q: string) => {
 		setLoading(true);
@@ -30,15 +58,41 @@ export const CuratorSpeciesCatalogScreen: React.FC = () => {
 		}
 	}, [service]);
 
-	// Chargement initial : tout (jusqu'à 100 fiches alphabétiquement)
-	useEffect(() => { fetchList(''); }, [fetchList]);
+	useEffect(() => {
+		tagService.list().then(setTagGroups).catch(() => {});
+	}, [tagService]);
 
-	// Recherche live : debounce 250 ms
 	useEffect(() => {
 		if (debRef.current) clearTimeout(debRef.current);
 		debRef.current = setTimeout(() => fetchList(query), DEBOUNCE_MS);
 		return () => { if (debRef.current) clearTimeout(debRef.current); };
 	}, [query, fetchList]);
+
+	// Construit les chips de filtre tags à partir de la taxonomie active.
+	// Multi-select : un chip = une valeur tag. Tous les groupes confondus
+	// (l'utilisateur curator connaît la sémantique).
+	const tagOptions = useMemo(() => {
+		const opts: { value: string; label: string }[] = [];
+		for (const group of tagGroups) {
+			for (const def of group.definitions) {
+				opts.push({ value: def.value, label: `${def.label} · ${group.label}` });
+			}
+		}
+		return opts;
+	}, [tagGroups]);
+
+	const filters = useMemo<FilterField[]>(() => [
+		{ kind: 'text',  key: 'query',  label: 'Rechercher', placeholder: 'Nom scientifique, usage, polynésien ou étiquette…' },
+		{ kind: 'chips', key: 'tags',   label: 'Tags',       multi: true, options: tagOptions },
+		{ kind: 'chips', key: 'status', label: 'Statut',     multi: false, options: [
+			{ value: 'approved', label: 'Validé' },
+			{ value: 'pending',  label: 'En attente' },
+			{ value: 'rejected', label: 'Rejeté' },
+		] },
+		{ kind: 'bool', key: 'has_description', label: 'Description', trueLabel: 'Renseignée', falseLabel: 'Manquante' },
+	], [tagOptions]);
+
+	const filtered = useFilteredAndSorted(results, filters, CATALOG_SORTS, filterState, CATALOG_EXTRACTORS);
 
 	const total = results.length;
 	const reachedCap = total >= CATALOG_LIMIT;
@@ -57,36 +111,35 @@ export const CuratorSpeciesCatalogScreen: React.FC = () => {
 				</View>
 			</View>
 
-			<View style={styles.searchBox}>
-				<TextInput
-					value={query}
-					onChangeText={setQuery}
-					placeholder="Rechercher par nom scientifique, usage, polynésien ou étiquette…"
-					placeholderTextColor={COLORS.text.placeholder}
-					style={styles.searchInput}
-					autoCapitalize="none"
-					autoCorrect={false}
-				/>
-				{loading ? <ActivityIndicator color={COLORS.primary} style={styles.searchSpinner} /> : null}
-			</View>
+			<FilterSortBar
+				filters={filters}
+				sorts={CATALOG_SORTS}
+				value={filterState}
+				onChange={setFilterState}
+				defaultState={DEFAULT_STATE}
+				totalCount={total}
+				resultCount={filtered.length}
+				searchKey="query"
+			/>
 
-			<View style={styles.statsRow}>
-				<Text style={styles.statsText}>
-					{total} fiche{total > 1 ? 's' : ''} {query.trim() ? 'correspondante(s)' : 'au total'}
-					{reachedCap ? ` (limité aux ${CATALOG_LIMIT} premiers — affine la recherche)` : ''}
+			{reachedCap ? (
+				<Text style={styles.capWarning}>
+					Limité aux {CATALOG_LIMIT} premières fiches — affine la recherche texte pour cibler.
 				</Text>
-			</View>
+			) : null}
 
-			{!loading && total === 0 ? (
+			{!loading && filtered.length === 0 ? (
 				<View style={styles.empty}>
 					<Text style={styles.emptyTitle}>Aucune fiche trouvée</Text>
 					<Text style={styles.emptyText}>
-						{query.trim() ? 'Essaie une autre orthographe ou un nom partiel.' : 'Aucune espèce n\'a encore été enregistrée dans le catalogue.'}
+						{query.trim() ? 'Essaie une autre orthographe ou ajuste les filtres.' :
+							total === 0 ? 'Aucune espèce n\'a encore été enregistrée dans le catalogue.' :
+							'Aucune fiche ne correspond aux filtres actifs.'}
 					</Text>
 				</View>
 			) : (
 				<ScrollView contentContainerStyle={styles.grid}>
-					{results.map((s) => (
+					{filtered.map((s) => (
 						<Pressable
 							key={s.id}
 							onPress={() => router.push(`/(main)/species/${s.id}` as Href)}
@@ -142,16 +195,7 @@ const styles = StyleSheet.create({
 	title: { ...TYPOGRAPHY.h1 },
 	subtitle: { ...TYPOGRAPHY.body, color: COLORS.text.secondary, marginTop: 2 },
 
-	searchBox: { position: 'relative' },
-	searchInput: {
-		borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
-		paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2,
-		fontSize: 14, color: COLORS.text.primary, backgroundColor: COLORS.background.card,
-	},
-	searchSpinner: { position: 'absolute', right: SPACING.md, top: '50%', marginTop: -10 },
-
-	statsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-	statsText: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary },
+	capWarning: { ...TYPOGRAPHY.caption, color: COLORS.text.placeholder, fontStyle: 'italic' },
 
 	empty: { padding: SPACING.xl, alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.background.card, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed' as any },
 	emptyTitle: { ...TYPOGRAPHY.h2 },

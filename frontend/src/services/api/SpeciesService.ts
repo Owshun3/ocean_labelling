@@ -31,6 +31,7 @@ export interface Species {
 	status: SpeciesStatus;
 	usage_count: number;
 	proposer?: SpeciesProposer | null;
+	created_at?: string;
 }
 
 export interface WikipediaSummary {

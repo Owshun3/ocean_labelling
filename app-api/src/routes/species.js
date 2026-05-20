@@ -82,7 +82,7 @@ router.get('/', requireAuth, async (req, res) => {
     params.push(limit);
     const { rows } = await pool.query(`
       SELECT id, name, scientific_name, usage_name, polynesian_name, category, tags,
-             description, description_source, status, usage_count, proposed_by
+             description, description_source, status, usage_count, proposed_by, created_at
       FROM species
       ${where}
       ORDER BY LOWER(COALESCE(scientific_name, name)) ASC

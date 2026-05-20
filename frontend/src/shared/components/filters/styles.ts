@@ -26,7 +26,8 @@ export const filterStyles = StyleSheet.create({
 	searchIcon: { fontSize: 14, color: COLORS.text.placeholder, marginRight: 6 },
 	searchInput: {
 		flex: 1, ...TYPOGRAPHY.body, fontSize: 13,
-		paddingVertical: 6, color: COLORS.text.primary,
+		paddingVertical: 6, paddingHorizontal: SPACING.sm,
+		color: COLORS.text.primary,
 	},
 
 	summaryBtn: {
