@@ -154,8 +154,18 @@ router.post('/contest', requireAuth, async (req, res) => {
       eligible.video = rows.map((r) => r.video_id);
     }
 
-    if (eligible.image.length + eligible.video.length === 0) {
-      return res.status(403).json({ error: 'Aucun média éligible à la contestation (tu dois être uploadeur et le média doit être rejeté).' });
+    // Sécurité : on REJETTE la requête si au moins un ID demandé n'est pas
+    // éligible (validé, en attente, supprimé, ou non-propriétaire). Évite
+    // qu'une sélection mixte "rejeté + validé" passe en silence le validé
+    // — l'utilisateur croit alors avoir contesté quelque chose qui n'a jamais
+    // été créé côté admin.
+    const ineligibleImages = imageIds.filter((id) => !eligible.image.includes(id));
+    const ineligibleVideos = videoIds.filter((id) => !eligible.video.includes(id));
+    if (ineligibleImages.length || ineligibleVideos.length) {
+      return res.status(403).json({
+        error: 'Tous les médias sélectionnés doivent être rejetés et t\'appartenir. Vérifie ta sélection.',
+        ineligible: { image: ineligibleImages, video: ineligibleVideos },
+      });
     }
 
     const already = { image: new Set(), video: new Set() };

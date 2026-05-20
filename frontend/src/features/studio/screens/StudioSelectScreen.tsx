@@ -3,9 +3,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { toast } from '@/shared/toast/Toast';
 import { useFocusEffect, useRouter, Href } from 'expo-router';
 import { AnnotationState, FeedTask, StudioFeed, StudioService } from '@/services/api/StudioService';
+import { VideoService, UserVideo } from '@/services/api/VideoService';
 import { StudioFeedTile } from '../components/StudioFeedTile';
+import { StudioVideoTile } from '../components/StudioVideoTile';
 import { ContestModal } from '@/features/media/components/ContestModal';
-import { MyVideosSection } from '@/features/media/components/MyVideosSection';
 import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
 import type { FilterField, FilterSortState, SortOption, FieldExtractors } from '@/shared/components/filters';
 import { COLORS } from '@/shared/theme/colors';
@@ -56,7 +57,9 @@ const SERVER_SORT_KEYS = new Set(['taken_at']);
 export const StudioSelectScreen: React.FC = () => {
 	const router = useRouter();
 	const service = useMemo(() => new StudioService(), []);
+	const videoService = useMemo(() => new VideoService(), []);
 	const [feed, setFeed] = useState<StudioFeed | null>(null);
+	const [videos, setVideos] = useState<UserVideo[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [claiming, setClaiming] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -76,13 +79,18 @@ export const StudioSelectScreen: React.FC = () => {
 			const opts = serverSortKey
 				? { communitySort: serverSortKey as 'taken_at', communityDirection: serverSortDir }
 				: undefined;
-			setFeed(await service.getFeed(opts));
+			const [feedData, videoList] = await Promise.all([
+				service.getFeed(opts),
+				videoService.list().catch(() => [] as UserVideo[]),
+			]);
+			setFeed(feedData);
+			setVideos(videoList);
 		} catch (err: any) {
 			setError(err?.response?.data?.error ?? err.message);
 		} finally {
 			setLoading(false);
 		}
-	}, [service, serverSortKey, serverSortDir]);
+	}, [service, videoService, serverSortKey, serverSortDir]);
 
 	useFocusEffect(useCallback(() => { load().catch(() => {}); }, [load]));
 
@@ -103,6 +111,17 @@ export const StudioSelectScreen: React.FC = () => {
 			setClaiming(false);
 		}
 	};
+
+	const openVideoExtractor = (videoId: number) => {
+		router.push(`/(main)/studio/video/${videoId}` as Href);
+	};
+
+	// Dans le studio annotateur, les vidéos rejetées par la modération sont
+	// exclues (CLAUDE.md: only non-rejected videos can have frames extracted).
+	const annotatorVideos = useMemo(
+		() => videos.filter((v) => v.moderation_status !== 'rejected'),
+		[videos],
+	);
 
 	const handleContestConfirm = async (message: string) => {
 		if (!contestTarget) return;
@@ -163,13 +182,12 @@ export const StudioSelectScreen: React.FC = () => {
 			</View>
 
 			<View style={styles.columns}>
-				<MyVideosSection mode="studio" />
 				<View style={styles.ownCol}>
 					<View style={styles.colHeader}>
 						<View style={[styles.colDot, { backgroundColor: COLORS.primary }]} />
 						<Text style={styles.colTitle}>Mes médias</Text>
 						<View style={styles.colCountWrap}>
-							<Text style={styles.colCount}>{own.length}</Text>
+							<Text style={styles.colCount}>{own.length + annotatorVideos.length}</Text>
 						</View>
 					</View>
 					<View style={[styles.colAccent, { backgroundColor: COLORS.primary }]} />
@@ -178,9 +196,11 @@ export const StudioSelectScreen: React.FC = () => {
 						title="Non annoté"
 						accent={COLORS.text.secondary}
 						items={ownByState.not_annotated}
+						videos={annotatorVideos}
 						claiming={claiming}
-						emptyMsg="Tout est entamé."
+						emptyMsg="Aucun média à annoter."
 						onOpen={openTask}
+						onOpenVideo={openVideoExtractor}
 					/>
 					<SubSection
 						title="Annoté"
@@ -258,23 +278,36 @@ const SubSection: React.FC<{
 	title: string;
 	accent: string;
 	items: FeedTask[];
+	videos?: UserVideo[];
 	claiming: boolean;
 	emptyMsg: string;
 	onOpen: (t: FeedTask) => void;
+	onOpenVideo?: (videoId: number) => void;
 	onContest?: (t: FeedTask) => void;
-}> = ({ title, accent, items, claiming, emptyMsg, onOpen, onContest }) => (
+}> = ({ title, accent, items, videos, claiming, emptyMsg, onOpen, onOpenVideo, onContest }) => {
+	const videoList = videos ?? [];
+	const totalCount = items.length + videoList.length;
+	return (
 	<View style={styles.subSection}>
 		<View style={styles.subHeader}>
 			<View style={[styles.subDot, { backgroundColor: accent }]} />
 			<Text style={styles.subTitle}>{title}</Text>
 			<View style={styles.subCountWrap}>
-				<Text style={styles.subCount}>{items.length}</Text>
+				<Text style={styles.subCount}>{totalCount}</Text>
 			</View>
 		</View>
-		{items.length === 0 ? (
+		{totalCount === 0 ? (
 			<Text style={styles.subEmpty}>{emptyMsg}</Text>
 		) : (
 			<View style={styles.tileGrid}>
+				{videoList.map((v) => (
+					<StudioVideoTile
+						key={`vid-${v.id}`}
+						video={v}
+						disabled={claiming}
+						onExtract={onOpenVideo ?? (() => {})}
+					/>
+				))}
 				{items.map((t) => (
 					<StudioFeedTile
 						key={`own-${t.cvat_task_id}`}
@@ -287,7 +320,8 @@ const SubSection: React.FC<{
 			</View>
 		)}
 	</View>
-);
+	);
+};
 
 const styles = StyleSheet.create({
 	container: { flex: 1 },
