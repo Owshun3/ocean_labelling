@@ -237,6 +237,7 @@ export const StudioSelectScreen: React.FC = () => {
 							sorts={COMMUNITY_SORTS}
 							value={communityFilters}
 							onChange={setCommunityFilters}
+							defaultState={DEFAULT_COMMUNITY_STATE}
 							totalCount={community.length}
 							resultCount={communityFiltered.length}
 							searchKey="name"

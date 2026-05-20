@@ -14,6 +14,12 @@ interface FilterSortBarProps {
 	resultCount?: number;
 	/** Clé du filtre `text` à exposer toujours visible dans la barre principale. */
 	searchKey?: string;
+	/**
+	 * État par défaut (filtres + tri) auquel le bouton « Réinitialiser tout »
+	 * remettra l'écran. Quand `value` diffère de `defaultState`, le bouton
+	 * apparaît dans la barre du haut.
+	 */
+	defaultState?: FilterSortState;
 }
 
 type OpenPanel = 'filters' | 'sort' | null;
@@ -28,9 +34,12 @@ type OpenPanel = 'filters' | 'sort' | null;
  */
 export function FilterSortBar({
 	filters, sorts, value, onChange,
-	totalCount, resultCount, searchKey,
+	totalCount, resultCount, searchKey, defaultState,
 }: FilterSortBarProps) {
 	const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
+
+	const canReset = !!defaultState && !isSameState(value, defaultState);
+	const handleResetAll = () => { if (defaultState) onChange(defaultState); };
 
 	const searchField = useMemo(
 		() => filters.find((f): f is Extract<FilterField, { kind: 'text' }> => f.key === searchKey && f.kind === 'text'),
@@ -43,9 +52,6 @@ export function FilterSortBar({
 
 	const setFilterValue = (key: string, next: any) =>
 		onChange({ ...value, filters: { ...value.filters, [key]: next } });
-
-	const clearAllFilters = () =>
-		onChange({ filters: {}, sort: value.sort });
 
 	const activeFilterCount = countActiveFilters(filters, value.filters);
 	const sortSummary = buildSortSummary(value.sort, sorts);
@@ -79,6 +85,12 @@ export function FilterSortBar({
 					/>
 				) : null}
 
+				{canReset ? (
+					<Pressable onPress={handleResetAll} style={styles.clearBtn}>
+						<Text style={styles.clearBtnText}>↺ Réinitialiser</Text>
+					</Pressable>
+				) : null}
+
 				{resultCount !== undefined && totalCount !== undefined ? (
 					<Text style={styles.countText}>{resultCount} / {totalCount}</Text>
 				) : null}
@@ -89,8 +101,6 @@ export function FilterSortBar({
 					filters={panelFilters}
 					value={value.filters}
 					onChangeField={setFilterValue}
-					activeCount={activeFilterCount}
-					onClearAll={clearAllFilters}
 				/>
 			) : null}
 
@@ -138,12 +148,10 @@ function SortToggle({ summary, open, onToggle }: { summary: string; open: boolea
 	);
 }
 
-function FiltersPanel({ filters, value, onChangeField, activeCount, onClearAll }: {
+function FiltersPanel({ filters, value, onChangeField }: {
 	filters: FilterField[];
 	value: Record<string, any> | undefined;
 	onChangeField: (key: string, v: any) => void;
-	activeCount: number;
-	onClearAll: () => void;
 }) {
 	return (
 		<View style={styles.panel}>
@@ -157,13 +165,6 @@ function FiltersPanel({ filters, value, onChangeField, activeCount, onClearAll }
 					/>
 				))}
 			</View>
-			{activeCount > 0 ? (
-				<View style={styles.panelActions}>
-					<Pressable onPress={onClearAll} style={styles.clearBtn}>
-						<Text style={styles.clearBtnText}>✕ Réinitialiser ({activeCount})</Text>
-					</Pressable>
-				</View>
-			) : null}
 		</View>
 	);
 }
@@ -234,4 +235,22 @@ function buildSortSummary(sort: FilterSortState['sort'], sorts: SortOption[]): s
 	const option = sorts.find((s) => s.key === sort.key);
 	const arrow = sort.direction === 'asc' ? '↑' : '↓';
 	return option ? `${option.label} ${arrow}` : `${sort.key} ${arrow}`;
+}
+
+function isSameState(a: FilterSortState, b: FilterSortState): boolean {
+	if (a.sort?.key !== b.sort?.key || a.sort?.direction !== b.sort?.direction) return false;
+	const aKeys = Object.keys(a.filters || {}).filter((k) => !isEmptyFilterValue(a.filters[k]));
+	const bKeys = Object.keys(b.filters || {}).filter((k) => !isEmptyFilterValue(b.filters[k]));
+	if (aKeys.length !== bKeys.length) return false;
+	for (const k of aKeys) {
+		if (JSON.stringify(a.filters[k]) !== JSON.stringify(b.filters[k])) return false;
+	}
+	return true;
+}
+
+function isEmptyFilterValue(v: any): boolean {
+	if (v === undefined || v === null || v === '') return true;
+	if (Array.isArray(v)) return v.length === 0;
+	if (typeof v === 'object') return Object.keys(v).every((k) => v[k] === undefined);
+	return false;
 }

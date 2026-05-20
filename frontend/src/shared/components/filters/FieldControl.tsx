@@ -136,24 +136,52 @@ function NumberRangeField({ field, value, onChange }: FieldControlProps) {
 		const n = Number(raw);
 		return Number.isFinite(n) ? n : undefined;
 	};
+
+	const errors: string[] = [];
+	if (field.min !== undefined && min !== undefined && min < field.min) {
+		errors.push(`Le minimum doit être ≥ ${field.min}.`);
+	}
+	if (field.max !== undefined && max !== undefined && max > field.max) {
+		errors.push(`Le maximum doit être ≤ ${field.max}.`);
+	}
+	if (min !== undefined && max !== undefined && max < min) {
+		errors.push('Le maximum doit être supérieur ou égal au minimum.');
+	}
+	const minInvalid = field.min !== undefined && min !== undefined && min < field.min;
+	const maxInvalid = (min !== undefined && max !== undefined && max < min)
+		|| (field.max !== undefined && max !== undefined && max > field.max);
+
 	return (
 		<View style={styles.field}>
 			<Text style={styles.fieldLabel}>{field.label}</Text>
 			<View style={styles.dateRow}>
-				<TextInput
-					style={[styles.textInput, { width: 80 }]}
-					value={min !== undefined ? String(min) : ''}
-					onChangeText={(t) => onChange({ min: parse(t), max })}
-					keyboardType="numeric"
-				/>
+				<View>
+					<TextInput
+						style={[styles.textInput, { width: 80 }, minInvalid && styles.textInputError]}
+						value={min !== undefined ? String(min) : ''}
+						onChangeText={(t) => onChange({ min: parse(t), max })}
+						keyboardType="numeric"
+						placeholder={field.min !== undefined ? String(field.min) : ''}
+						placeholderTextColor={COLORS.text.placeholder}
+					/>
+					<Text style={styles.rangeHint}>minimum</Text>
+				</View>
 				<Text style={styles.dateSep}>→</Text>
-				<TextInput
-					style={[styles.textInput, { width: 80 }]}
-					value={max !== undefined ? String(max) : ''}
-					onChangeText={(t) => onChange({ min, max: parse(t) })}
-					keyboardType="numeric"
-				/>
+				<View>
+					<TextInput
+						style={[styles.textInput, { width: 80 }, maxInvalid && styles.textInputError]}
+						value={max !== undefined ? String(max) : ''}
+						onChangeText={(t) => onChange({ min, max: parse(t) })}
+						keyboardType="numeric"
+						placeholder={field.max !== undefined ? String(field.max) : ''}
+						placeholderTextColor={COLORS.text.placeholder}
+					/>
+					<Text style={styles.rangeHint}>maximum</Text>
+				</View>
 			</View>
+			{errors.length > 0 ? (
+				<Text style={styles.errorText}>{errors.join(' ')}</Text>
+			) : null}
 		</View>
 	);
 }

@@ -55,7 +55,6 @@ export const filterStyles = StyleSheet.create({
 		paddingTop: SPACING.sm,
 	},
 	panelFields: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, alignItems: 'flex-start' },
-	panelActions: { flexDirection: 'row', justifyContent: 'flex-end' },
 
 	field: { gap: 4, minWidth: 140 },
 	fieldLabel: { fontSize: 10, color: COLORS.text.secondary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -66,6 +65,9 @@ export const filterStyles = StyleSheet.create({
 		backgroundColor: COLORS.background.main, color: COLORS.text.primary,
 		minWidth: 160,
 	},
+	textInputError: { borderColor: COLORS.danger, borderWidth: 2 },
+	rangeHint: { fontSize: 10, color: COLORS.text.placeholder, textAlign: 'center', marginTop: 2 },
+	errorText: { fontSize: 11, color: COLORS.danger, marginTop: 4 },
 
 	chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
 	chip: {
@@ -105,8 +107,8 @@ export const filterStyles = StyleSheet.create({
 	dirBtnText: { fontSize: 12, color: COLORS.text.primary, fontWeight: '600' },
 	dirBtnTextOn: { color: COLORS.text.inverse },
 
-	clearBtn: { paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 6, backgroundColor: COLORS.background.main, borderWidth: 1, borderColor: COLORS.border },
-	clearBtnText: { fontSize: 11, color: COLORS.text.primary, fontWeight: '600' },
+	clearBtn: { paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: 6, backgroundColor: COLORS.danger, borderWidth: 1, borderColor: COLORS.danger },
+	clearBtnText: { fontSize: 12, color: COLORS.text.inverse, fontWeight: '700' },
 });
 
 export const dateInputStyle = {

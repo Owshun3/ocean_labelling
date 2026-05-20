@@ -79,6 +79,40 @@ async function cvatPut(path, body, token) {
   }
 }
 
+/* Pour une tâche donnée, résout les labels CVAT en noms d'espèces (3 noms)
+ * pour pouvoir filtrer côté front par espèce proposée. Retourne [] si aucune
+ * proposition.
+ *
+ * Coût : 1 cvatGet labels + 1 SELECT species. Acceptable au volume actuel
+ * (< 200 tâches éligibles à un moment donné). À batcher si la liste explose.
+ */
+async function resolveProposedSpecies(taskId, labelIds, token) {
+  if (!labelIds || labelIds.length === 0) return [];
+  try {
+    const labelsResp = await cvatGet(`/labels?task_id=${taskId}&page_size=200`, token);
+    const labels = labelsResp.data?.results ?? [];
+    const labelNames = labels
+      .filter((l) => labelIds.includes(l.id))
+      .map((l) => l.name)
+      .filter((n) => typeof n === 'string' && n.length > 0);
+    if (labelNames.length === 0) return [];
+    const { rows } = await pool.query(
+      `SELECT id, name, scientific_name, usage_name, polynesian_name
+       FROM species WHERE name = ANY($1)`,
+      [labelNames],
+    );
+    // Garde aussi les labels CVAT sans match côté species (legacy) — leur nom
+    // sert au moins de fallback à la recherche.
+    const matched = new Set(rows.map((r) => r.name));
+    const orphans = labelNames.filter((n) => !matched.has(n)).map((n) => ({
+      id: null, name: n, scientific_name: null, usage_name: null, polynesian_name: null,
+    }));
+    return [...rows, ...orphans];
+  } catch {
+    return [];
+  }
+}
+
 /* ── GET /curator/tasks
  * Liste toutes les tâches avec résumé des jobs.
  * Les curators voient toutes les tâches (pas de filtre d'assignation pour l'instant).
@@ -151,14 +185,23 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
           stage: j.stage,
           assignee: j.assignee ? { id: j.assignee.id, username: j.assignee.username } : null,
         }));
-        const shapeCounts = await Promise.all(rawJobs.map(async (j) => {
+        // Collecte shapes + label_ids en un seul passage pour pouvoir résoudre
+        // ensuite les noms d'espèces proposées (utile au filtre catalogue côté front).
+        const perJob = await Promise.all(rawJobs.map(async (j) => {
           try {
             const ann = await cvatGet(`/jobs/${j.id}/annotations`, token);
-            return (ann.data?.shapes ?? []).length;
-          } catch { return 0; }
+            const shapes = ann.data?.shapes ?? [];
+            const labelIds = [...new Set(shapes.map((s) => s.label_id).filter((v) => v != null))];
+            return { shapeCount: shapes.length, labelIds };
+          } catch { return { shapeCount: 0, labelIds: [] }; }
         }));
+        const shapeCounts = perJob.map((p) => p.shapeCount);
         const annotationsCount = shapeCounts.reduce((a, b) => a + b, 0);
         const annotatedJobsCount = shapeCounts.filter((n) => n > 0).length;
+        const allLabelIds = [...new Set(perJob.flatMap((p) => p.labelIds))];
+
+        const proposedSpecies = await resolveProposedSpecies(task.id, allLabelIds, token);
+
         const assignedId = assignedByTask.get(task.id) ?? null;
         return {
           id: task.id,
@@ -171,6 +214,7 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
           completed_count: jobs.filter(j => j.state === 'completed').length,
           annotations_count:      annotationsCount,
           annotated_jobs_count:   annotatedJobsCount,
+          proposed_species:       proposedSpecies,
           assigned_to: assignedId ? { id: assignedId, username: curatorUsernames[assignedId] ?? null } : null,
           is_assigned_to_me: assignedId === me.id,
         };
@@ -179,6 +223,7 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
         return {
           id: task.id, name: task.name, status: task.status,
           jobs: [], jobs_count: 0, completed_count: 0, annotations_count: 0, annotated_jobs_count: 0,
+          proposed_species: [],
           assigned_to: assignedId ? { id: assignedId, username: curatorUsernames[assignedId] ?? null } : null,
           is_assigned_to_me: assignedId === me.id,
         };

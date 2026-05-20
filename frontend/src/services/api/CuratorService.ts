@@ -16,6 +16,14 @@ export interface CuratorJob {
   stop_frame?: number;
 }
 
+export interface ProposedSpecies {
+  id: number | null;
+  name: string;
+  scientific_name: string | null;
+  usage_name: string | null;
+  polynesian_name: string | null;
+}
+
 export interface CuratorTask {
   id: number;
   name: string;
@@ -27,6 +35,7 @@ export interface CuratorTask {
   completed_count: number;
   annotations_count?: number;
   annotated_jobs_count?: number;
+  proposed_species?: ProposedSpecies[];
   assigned_to?: { id: number; username: string | null } | null;
   is_assigned_to_me?: boolean;
 }
