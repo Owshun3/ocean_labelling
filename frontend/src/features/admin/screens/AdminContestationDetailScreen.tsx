@@ -12,6 +12,8 @@ import {
 import { appApiClient } from '@/services/api/AppApiService';
 import { videoApiBase } from '@/services/api/VideoService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
+import { ImageWithBbox } from '@/shared/components/images/ImageWithBbox';
+import { BboxOverlay } from '@/shared/components/images/BboxOverlay';
 import { toast } from '@/shared/toast/Toast';
 import { RankBadge } from '@/shared/components/RankBadge';
 import { COLORS } from '@/shared/theme/colors';
@@ -234,13 +236,16 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 
 														? <AuthenticatedImage url={`${videoApiBase}/${item.video.id}/poster`} style={styles.tileImage} />
 														: <View style={[styles.tileImage, styles.tileImageMissing]}><Text style={styles.tileMissingText}>🎬 Vidéo</Text></View>
 												) : (
-													<TileImageWithBbox
-														taskId={item.cvat_task_id!}
-														bboxPoints={kind === 'annotation' && item.chosen_bbox ? item.chosen_bbox.points : null}
-														initialImgW={item.image_width ?? null}
-														initialImgH={item.image_height ?? null}
-														onDoubleClick={kind === 'annotation' ? () => setLightboxItem(item) : undefined}
-													/>
+													<View style={styles.tileImageWrap}>
+														<ImageWithBbox
+															url={`/moderation/media/${item.cvat_task_id}/preview`}
+															client={appApiClient}
+															bboxPoints={kind === 'annotation' && item.chosen_bbox ? item.chosen_bbox.points : null}
+															initialWidth={item.image_width ?? null}
+															initialHeight={item.image_height ?? null}
+															onDoubleClickWeb={kind === 'annotation' ? () => setLightboxItem(item) : undefined}
+														/>
+													</View>
 												)}
 												<View style={styles.tileFooter}>
 													<Text style={styles.tileName} numberOfLines={1}>
@@ -324,41 +329,6 @@ export const AdminContestationDetailScreen: React.FC<Props> = ({ userId, kind = 
 	);
 };
 
-function TileImageWithBbox({ taskId, bboxPoints, initialImgW, initialImgH, onDoubleClick }: {
-	taskId: number;
-	bboxPoints: number[] | null;
-	initialImgW: number | null;
-	initialImgH: number | null;
-	onDoubleClick?: () => void;
-}) {
-	const [natural, setNatural] = useState<{ w: number; h: number } | null>(
-		initialImgW && initialImgH ? { w: initialImgW, h: initialImgH } : null,
-	);
-	const content = (
-		<>
-			<AuthenticatedImage
-				url={`/moderation/media/${taskId}/preview`}
-				style={styles.tileImage}
-				resizeMode="contain"
-				client={appApiClient}
-				onNaturalSize={natural ? undefined : (w, h) => setNatural({ w, h })}
-			/>
-			{bboxPoints && natural ? (
-				<BboxOverlay points={bboxPoints} imgWidth={natural.w} imgHeight={natural.h} />
-			) : null}
-		</>
-	);
-	if (onDoubleClick && Platform.OS === 'web') {
-		return (
-			// @ts-ignore — onDoubleClick est un handler DOM natif sur RN Web
-			<div onDoubleClick={(e: any) => { e.stopPropagation(); onDoubleClick(); }} style={{ width: '100%', height: 120, position: 'relative', cursor: 'zoom-in' }}>
-				{content}
-			</div>
-		);
-	}
-	return <View style={styles.tileImageWrap}>{content}</View>;
-}
-
 function BboxLightbox({ item, onClose }: { item: ContestationItem | null; onClose: () => void }) {
 	const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 	useEffect(() => {
@@ -384,7 +354,7 @@ function BboxLightbox({ item, onClose }: { item: ContestationItem | null; onClos
 								onNaturalSize={natural ? undefined : (w, h) => setNatural({ w, h })}
 							/>
 							{bbox && natural ? (
-								<BboxOverlay points={bbox} imgWidth={natural.w} imgHeight={natural.h} />
+								<BboxOverlay points={bbox} imageWidth={natural.w} imageHeight={natural.h} />
 							) : null}
 						</View>
 					</View>
@@ -472,34 +442,6 @@ function BboxLightbox({ item, onClose }: { item: ContestationItem | null; onClos
 				</Pressable>
 			</Pressable>
 		</Modal>
-	);
-}
-
-function BboxOverlay({ points, imgWidth, imgHeight }: { points: number[]; imgWidth: number; imgHeight: number }) {
-	if (!points || points.length < 4 || imgWidth <= 0 || imgHeight <= 0) return null;
-	const [x1, y1, x2, y2] = points;
-	const rectX = Math.min(x1, x2);
-	const rectY = Math.min(y1, y2);
-	const rectW = Math.abs(x2 - x1);
-	const rectH = Math.abs(y2 - y1);
-	// Trait scalé pour rester visible quelle que soit la taille rendue.
-	const stroke = Math.max(imgWidth, imgHeight) * 0.004;
-	if (Platform.OS !== 'web') return null;
-	return (
-		// @ts-ignore — éléments SVG natifs sur web
-		<svg
-			viewBox={`0 0 ${imgWidth} ${imgHeight}`}
-			preserveAspectRatio="xMidYMid meet"
-			style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-		>
-			{/* @ts-ignore */}
-			<rect
-				x={rectX} y={rectY} width={rectW} height={rectH}
-				fill="rgba(220, 38, 38, 0.15)"
-				stroke="#dc2626"
-				strokeWidth={stroke}
-			/>
-		</svg>
 	);
 }
 
