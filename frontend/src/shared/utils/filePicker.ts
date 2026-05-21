@@ -67,16 +67,50 @@ export async function pickImages(opts: PickImagesOptions = {}): Promise<PickedFi
 	return result.assets.map(fromExpoImagePickerAsset);
 }
 
+// Pourquoi pickVideos via ImagePicker et pas DocumentPicker :
+// Sur certains setups Windows + Chrome, l'ouverture du dialogue de fichier
+// via DocumentPicker freeze plusieurs secondes (voire infiniment) AVANT meme
+// que l'utilisateur selectionne quoi que ce soit, alors qu'ImagePicker ouvre
+// le meme dialogue OS quasi instantanement avec le meme genre d'`accept`.
+// Cause exacte non identifiee (probablement comportement Chrome lie a la
+// pre-enumeration des miniatures video), mais empiriquement le switch suffit.
+export async function pickVideos(opts: PickImagesOptions = {}): Promise<PickedFile[]> {
+	const result = await ImagePicker.launchImageLibraryAsync({
+		mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+		allowsMultipleSelection: opts.allowsMultiple ?? true,
+		quality: opts.quality ?? 1.0,
+	});
+	if (result.canceled) return [];
+	return result.assets.map(fromExpoImagePickerAsset);
+}
+
 export interface PickFilesOptions {
 	mimeTypes?: string[];
 	allowsMultiple?: boolean;
 }
 
+// Chrome a un codepath lent quand `accept` contient des MIMEs explicites :
+// il pre-filtre chaque fichier du dossier individuellement -> freeze de
+// plusieurs secondes a l'OUVERTURE du picker sur les dossiers contenant
+// beaucoup de fichiers. Avec un wildcard `video/*` ou `image/*` il utilise
+// un codepath optimise. On garde la validation stricte post-selection chez
+// l'appelant — le wildcard ne sert qu'au filtre UI du picker systeme.
+function widenMimePattern(mimes: string[] | undefined): string {
+	if (!mimes || mimes.length === 0) return '*/*';
+	const types = new Set(mimes.map((m) => m.split('/')[0]).filter(Boolean));
+	if (types.size === 1) return `${[...types][0]}/*`;
+	return mimes.join(',');
+}
+
 export async function pickFiles(opts: PickFilesOptions = {}): Promise<PickedFile[]> {
 	const result = await DocumentPicker.getDocumentAsync({
-		type: opts.mimeTypes ?? '*/*',
+		type: widenMimePattern(opts.mimeTypes),
 		multiple: opts.allowsMultiple ?? false,
 		copyToCacheDirectory: true,
+		// base64=true (defaut) declenche un readAsDataURL synchrone qui freeze
+		// le browser plusieurs secondes sur les gros fichiers (videos). On n'a
+		// pas besoin du base64, on utilise le File natif via formPart.
+		base64: false,
 	});
 	if (result.canceled) return [];
 	return result.assets.map(fromExpoDocumentPickerAsset);

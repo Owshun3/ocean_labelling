@@ -9,7 +9,7 @@ import { getUserProfile, saveUserProfile } from '@/services/api/authStorage';
 import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
-import { pickImages, pickFiles, PickedFile } from '@/shared/utils/filePicker';
+import { pickImages, pickVideos, PickedFile } from '@/shared/utils/filePicker';
 
 const DEFAULT_MAX_BATCH_BYTES = 200 * 1024 * 1024;
 const MEGABYTE = 1024 * 1024;
@@ -204,8 +204,8 @@ const VideosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 	const limitMB  = maxBatchBytes / MEGABYTE;
 	const overLimit = totalBytes > maxBatchBytes;
 
-	const pickVideos = async () => {
-		const picked = await pickFiles({ mimeTypes: ACCEPTED_VIDEO_MIMES, allowsMultiple: true });
+	const handlePickVideos = async () => {
+		const picked = await pickVideos({ allowsMultiple: true });
 		const valid = picked.filter((f) => ACCEPTED_VIDEO_MIMES.includes(f.mimeType) || /\.(mp4|webm|mov)$/i.test(f.name));
 		if (picked.length > 0 && valid.length === 0) {
 			toast.error('Aucune vidéo valide. Formats acceptés : MP4, WebM, MOV.');
@@ -240,7 +240,7 @@ const VideosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 			<Text style={styles.limitHint}>
 				Limite par lot : <Text style={styles.limitHintStrong}>{limitMB.toFixed(0)} Mo</Text> · Formats acceptés : MP4, WebM, MOV
 			</Text>
-			<Button title="Sélectionner des vidéos" onPress={pickVideos} />
+			<Button title="Sélectionner des vidéos" onPress={handlePickVideos} />
 			<View style={styles.grid}>
 				{files.map((f, idx) => (
 					<View key={idx} style={styles.videoChip}>

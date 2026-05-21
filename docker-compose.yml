@@ -48,6 +48,12 @@ services:
       - CVAT_ADMIN_USER=${CVAT_ADMIN_USER:-admin}
       - CVAT_ADMIN_PASS=${CVAT_ADMIN_PASS:?Créer un fichier .env avec CVAT_ADMIN_PASS (voir .env.example)}
       - VIDEO_STORAGE_ROOT=/data/videos
+      # Le Dockerfile app-api met NODE_ENV=production en dur. En production
+      # HTTPS, c'est ce qu'on veut (flag Secure sur cookie ocean_session).
+      # En phase de test HTTP (LAN UPF avant le cert Let's Encrypt), il faut
+      # forcer NODE_ENV=development sinon le browser refuse le cookie Secure
+      # cote HTTP et le login fonctionne sans la session.
+      - NODE_ENV=${APP_API_NODE_ENV:-development}
     volumes:
       - ocean_videos:/data/videos
     networks:

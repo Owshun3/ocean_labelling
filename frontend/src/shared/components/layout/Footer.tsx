@@ -28,7 +28,7 @@ export const Footer: React.FC = () => {
 						Plateforme d'annotation collaborative de biodiversité polynésienne.
 					</Text>
 					<Text style={styles.colTextMuted}>
-						© {year} Open Data Polynésie
+						© {year} Ora te Fenua - DRM
 					</Text>
 				</View>
 
