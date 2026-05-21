@@ -3,7 +3,7 @@
 const REGISTRY = [
   // Branding
   {
-    key: 'platform.name', type: 'string', default: 'Ora te Fenua', is_public: true,
+    key: 'platform.name', type: 'string', default: 'Ora te Fenua !', is_public: true,
     group_name: 'branding', label: 'Nom de la plateforme',
     description: 'Affiché dans le header, le titre de l\'onglet, la page de connexion.',
   },

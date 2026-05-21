@@ -36,7 +36,9 @@ app.use((_err, _req, res, _next) => {
 const PORT = process.env.PORT || 3000;
 
 init()
-  .then(() => {
+  .then(async () => {
+    try { await require('./lib/defaultLogoBootstrap').seedDefaultLogo(); }
+    catch (err) { console.warn('[app-api] default logo bootstrap failed:', err.message); }
     app.listen(PORT, () => console.log(`[app-api] listening on :${PORT}`));
     require('./lib/cleanup').startScheduler();
     require('./lib/curationGate').startScheduler();
