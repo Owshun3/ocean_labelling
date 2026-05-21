@@ -23,7 +23,7 @@ export const filterStyles = StyleSheet.create({
 		paddingHorizontal: SPACING.sm,
 		backgroundColor: COLORS.background.main,
 	},
-	searchIcon: { fontSize: 14, color: COLORS.text.placeholder, marginRight: 6 },
+	searchIcon: { marginRight: 8, alignItems: 'center', justifyContent: 'center' },
 	searchInput: {
 		flex: 1, ...TYPOGRAPHY.body, fontSize: 13,
 		paddingVertical: 6, paddingHorizontal: SPACING.sm,

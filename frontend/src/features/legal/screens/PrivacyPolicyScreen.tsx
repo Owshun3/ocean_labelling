@@ -13,16 +13,21 @@ type Block =
 
 type Segment =
 	| { kind: 'text'; text: string }
+	| { kind: 'bold'; text: string }
 	| { kind: 'link'; text: string; href: string };
 
 function parseInline(line: string): Segment[] {
 	const out: Segment[] = [];
-	const re = /\[([^\]]+)\]\(([^)]+)\)/g;
+	const re = /\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g;
 	let last = 0;
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(line)) !== null) {
 		if (m.index > last) out.push({ kind: 'text', text: line.slice(last, m.index) });
-		out.push({ kind: 'link', text: m[1], href: m[2] });
+		if (m[3] !== undefined) {
+			out.push({ kind: 'bold', text: m[3] });
+		} else {
+			out.push({ kind: 'link', text: m[1], href: m[2] });
+		}
 		last = m.index + m[0].length;
 	}
 	if (last < line.length) out.push({ kind: 'text', text: line.slice(last) });
@@ -54,11 +59,11 @@ function parseMarkdown(src: string): Block[] {
 	return blocks;
 }
 
-const renderSegments = (segments: Segment[]) => segments.map((s, i) =>
-	s.kind === 'link'
-		? <Text key={i} style={styles.link} onPress={() => Linking.openURL(s.href).catch(() => {})}>{s.text}</Text>
-		: <Text key={i}>{s.text}</Text>
-);
+const renderSegments = (segments: Segment[]) => segments.map((s, i) => {
+	if (s.kind === 'link') return <Text key={i} style={styles.link} onPress={() => Linking.openURL(s.href).catch(() => {})}>{s.text}</Text>;
+	if (s.kind === 'bold') return <Text key={i} style={styles.bold}>{s.text}</Text>;
+	return <Text key={i}>{s.text}</Text>;
+});
 
 export const PrivacyPolicyScreen: React.FC = () => {
 	const settings = usePublicSettings();
@@ -71,7 +76,7 @@ export const PrivacyPolicyScreen: React.FC = () => {
 	return (
 		<View style={[styles.container, styles.content]}>
 			<View style={styles.header}>
-				<Text style={styles.kicker}>{platformName}</Text>
+				<Text style={styles.platformName}>{platformName}</Text>
 				<Text style={styles.title}>Politique de confidentialité</Text>
 				{contactEmail ? (
 					<Pressable onPress={() => Linking.openURL(`mailto:${contactEmail}`).catch(() => {})}>
@@ -104,8 +109,8 @@ const styles = StyleSheet.create({
 	content: { padding: SPACING.xl, maxWidth: 760, alignSelf: 'center', width: '100%', gap: SPACING.sm },
 
 	header: { gap: SPACING.xs, marginBottom: SPACING.md },
-	kicker: { fontSize: 11, color: COLORS.text.secondary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-	title:  { ...TYPOGRAPHY.title, fontSize: 32, lineHeight: 38 },
+	platformName: { ...TYPOGRAPHY.title, fontSize: 40, lineHeight: 46, color: COLORS.primary },
+	title:  { ...TYPOGRAPHY.h1, fontSize: 22, color: COLORS.text.secondary, fontWeight: '600' },
 	contactLine: { ...TYPOGRAPHY.body, color: COLORS.primary, fontStyle: 'italic' },
 
 	h1: { ...TYPOGRAPHY.h1, fontSize: 22, marginTop: SPACING.lg, marginBottom: SPACING.xs },
@@ -118,6 +123,7 @@ const styles = StyleSheet.create({
 	liText:   { ...TYPOGRAPHY.body, color: COLORS.text.primary, lineHeight: 22, flex: 1 },
 
 	link: { color: COLORS.primary, textDecorationLine: 'underline' },
+	bold: { fontWeight: '700' },
 
 	emptyText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary, fontStyle: 'italic', textAlign: 'center', padding: SPACING.lg },
 });

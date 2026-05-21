@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet, Switch, Modal, Platform } from 'react-native';
 import { confirm } from '@/shared/utils/dialog';
 import { pickSingleFile } from '@/shared/utils/filePicker';
+import { SearchIcon } from '@/shared/components/icons/SearchIcon';
 import { AdminService, SettingItem } from '@/services/api/AdminService';
 import { refreshPublicSettings } from '@/services/api/publicSettings';
 import { getRanks } from '@/shared/ranks';
@@ -157,7 +158,7 @@ export const AdminSettingsScreen: React.FC = () => {
 
 				<View style={styles.searchBar}>
 					<View style={styles.searchWrap}>
-						<Text style={styles.searchIcon}>🔍</Text>
+						<View style={styles.searchIcon}><SearchIcon /></View>
 						<TextInput
 							value={query}
 							onChangeText={setQuery}
@@ -528,7 +529,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: SPACING.sm,
 		backgroundColor: COLORS.background.main,
 	},
-	searchIcon: { fontSize: 14, color: COLORS.text.placeholder, marginRight: 6 },
+	searchIcon: { marginRight: 8, alignItems: 'center', justifyContent: 'center' },
 	searchInput: {
 		flex: 1, ...TYPOGRAPHY.body, fontSize: 13,
 		paddingVertical: 6, paddingHorizontal: SPACING.sm,

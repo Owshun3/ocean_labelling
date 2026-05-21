@@ -4,6 +4,7 @@ import type { FilterField, FilterSortState, SortOption } from './types';
 import { FieldControl } from './FieldControl';
 import { filterStyles as styles } from './styles';
 import { COLORS } from '@/shared/theme/colors';
+import { SearchIcon } from '@/shared/components/icons/SearchIcon';
 
 interface FilterSortBarProps {
 	filters: FilterField[];
@@ -100,7 +101,7 @@ export function FilterSortBar({
 function SearchInput({ value, placeholder, onChange }: { value: string; placeholder?: string; onChange: (t: string) => void }) {
 	return (
 		<View style={styles.searchWrap}>
-			<Text style={styles.searchIcon}>🔍</Text>
+			<View style={styles.searchIcon}><SearchIcon /></View>
 			<TextInput
 				style={styles.searchInput}
 				value={value}
