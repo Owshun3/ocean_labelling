@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href } from 'expo-router';
 import { ModerationService, ModerationMediaDetail } from '@/services/api/ModerationService';
@@ -55,11 +55,6 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 		}
 	};
 
-	const proposeBanAfterReject = (): boolean => {
-		if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
-		return window.confirm('Média rejeté. Veux-tu aussi sanctionner cet utilisateur (bannissement) ?');
-	};
-
 	const handleReject = async () => {
 		if (submitting) return;
 		if (!rejectComment.trim()) {
@@ -70,14 +65,10 @@ export const ModerationMediaScreen: React.FC<Props> = ({ userId, taskId }) => {
 		try {
 			await service.rejectMedia([{ kind: 'image', id: taskId }], rejectComment.trim());
 			toast.success('Média rejeté.');
-			if (proposeBanAfterReject()) {
-				setSubmitting(false);
-				setBanModalOpen(true);
-				return;
-			}
 			goBackToUser();
 		} catch (err: any) {
 			toast.error(err?.response?.data?.error || err?.message || 'Rejet impossible.');
+		} finally {
 			setSubmitting(false);
 		}
 	};

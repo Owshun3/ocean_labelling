@@ -19,6 +19,11 @@ interface BanState {
 	expires_at: string | null;
 }
 
+type AccountStatus =
+	| { kind: 'ok' }
+	| { kind: 'banned'; reason: string | null; expires_at: string | null; banned_at: string | null }
+	| { kind: 'deactivated' };
+
 export const LoginScreen: React.FC = () => {
 	const [username, setUsername] = useState('');
 	const [password, setPassword] = useState('');
@@ -27,6 +32,7 @@ export const LoginScreen: React.FC = () => {
 	const [showPassword, setShowPassword] = useState(false);
 	const [rememberMe, setRememberMe] = useState(false);
 	const [ban, setBan] = useState<BanState | null>(null);
+	const [deactivated, setDeactivated] = useState(false);
 	const [sessionExpired, setSessionExpired] = useState<SessionExpiredInfo | null>(null);
 	const [, forceRerender] = useState(0);
 	const router = useRouter();
@@ -48,17 +54,20 @@ export const LoginScreen: React.FC = () => {
 		return () => clearInterval(id);
 	}, [ban]);
 
-	const checkBanForUsername = async (uname: string): Promise<BanSessionInfo | null> => {
+	const checkAccountStatus = async (uname: string): Promise<AccountStatus> => {
 		try {
-			const resp = await axios.get<{ banned: boolean; reason: string | null; expires_at: string | null; banned_at: string | null }>(
+			const resp = await axios.get<{ banned: boolean; deactivated?: boolean; reason: string | null; expires_at: string | null; banned_at: string | null }>(
 				`${APP_API_BASE}/moderation/bans/check`,
 				{ params: { username: uname } }
 			);
 			if (resp.data.banned) {
-				return { reason: resp.data.reason, expires_at: resp.data.expires_at, banned_at: resp.data.banned_at };
+				return { kind: 'banned', reason: resp.data.reason, expires_at: resp.data.expires_at, banned_at: resp.data.banned_at };
+			}
+			if (resp.data.deactivated) {
+				return { kind: 'deactivated' };
 			}
 		} catch {}
-		return null;
+		return { kind: 'ok' };
 	};
 
 	const handleLogin = async () => {
@@ -70,15 +79,18 @@ export const LoginScreen: React.FC = () => {
 		setIsLoading(true);
 		setError(null);
 		setBan(null);
+		setDeactivated(false);
 
 		try {
 			const authService = new CvatAuthService();
 			await authService.login(username, password, rememberMe);
 			router.replace('/(main)' as Href);
 		} catch (err) {
-			const banInfo = await checkBanForUsername(username);
-			if (banInfo) {
-				setBan({ username, reason: banInfo.reason, expires_at: banInfo.expires_at });
+			const status = await checkAccountStatus(username);
+			if (status.kind === 'banned') {
+				setBan({ username, reason: status.reason, expires_at: status.expires_at });
+			} else if (status.kind === 'deactivated') {
+				setDeactivated(true);
 			} else {
 				setError(err instanceof Error ? err.message : "Échec de la connexion.");
 			}
@@ -102,6 +114,15 @@ export const LoginScreen: React.FC = () => {
 								: 'Bannissement permanent'}
 						</Text>
 						{ban.reason ? <Text style={styles.banReason}>Motif : {ban.reason}</Text> : null}
+					</View>
+				) : null}
+
+				{deactivated ? (
+					<View style={styles.deactivatedBox}>
+						<Text style={styles.deactivatedTitle}>Compte désactivé</Text>
+						<Text style={styles.deactivatedLine}>
+							Cet identifiant existe mais a été désactivé par un administrateur. Contacte l'équipe pour en discuter.
+						</Text>
 					</View>
 				) : null}
 
@@ -199,6 +220,16 @@ const styles = StyleSheet.create({
 	},
 	sessionExpiredTitle: { ...TYPOGRAPHY.body, fontWeight: 'bold', color: COLORS.warning, marginBottom: SPACING.xs },
 	sessionExpiredLine: { ...TYPOGRAPHY.body, color: COLORS.text.primary },
+	deactivatedBox: {
+		backgroundColor: COLORS.background.main,
+		borderWidth: 1,
+		borderColor: COLORS.text.secondary,
+		borderRadius: 6,
+		padding: SPACING.md,
+		marginBottom: SPACING.md,
+	},
+	deactivatedTitle: { ...TYPOGRAPHY.body, fontWeight: 'bold', color: COLORS.text.secondary, marginBottom: SPACING.xs },
+	deactivatedLine: { ...TYPOGRAPHY.body, color: COLORS.text.primary, lineHeight: 20 },
 	inputGroup: { marginBottom: SPACING.md },
 	label: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.xs, fontWeight: '600' },
 	input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 4, padding: SPACING.md, ...TYPOGRAPHY.body },

@@ -1,9 +1,10 @@
 const express = require('express');
 const axios = require('axios');
 const { pool } = require('../db');
-const { requireAdmin, requireAuth } = require('../middleware/auth');
+const { requireAdmin, requireAuth, fetchAppRole } = require('../middleware/auth');
 const { recordAction } = require('../lib/auditLog');
 const { fetchActionsTotals } = require('../lib/userStats');
+const { assertCanSanction } = require('../lib/permissions');
 
 const router = express.Router();
 const CVAT_API = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -386,12 +387,41 @@ router.get('/', requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * Vérifie qu'un acteur peut sanctionner (ban/désactivation) une cible.
+ * Voir lib/permissions.js pour les règles.
+ */
+async function assertSanctionAllowed(actorCvatUser, targetUserId, actionLabel) {
+  const actorRole  = actorCvatUser.is_superuser ? 'admin' : await fetchAppRole(actorCvatUser.id);
+  const targetCvat = await cvatGetUser(targetUserId);
+  const targetRole = (targetCvat?.is_superuser || targetCvat?.is_staff)
+    ? 'admin'
+    : await fetchAppRole(targetUserId);
+
+  assertCanSanction(
+    { id: actorCvatUser.id, role: actorRole, is_superuser: !!actorCvatUser.is_superuser, is_staff: !!actorCvatUser.is_staff },
+    { id: targetUserId, role: targetRole, is_superuser: !!targetCvat?.is_superuser, is_staff: !!targetCvat?.is_staff },
+    actionLabel,
+  );
+}
+
 router.patch('/:id/active', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid user id' });
   const { is_active } = req.body || {};
   if (typeof is_active !== 'boolean') {
     return res.status(400).json({ error: 'is_active must be a boolean' });
+  }
+
+  // Garde de sanction sur DÉSACTIVATION uniquement (l'activation/déban est
+  // l'inverse, on la laisse passer pour permettre la révocation d'un ban).
+  if (is_active === false) {
+    try {
+      await assertSanctionAllowed(req.cvatUser, id, 'désactiver');
+    } catch (err) {
+      if (err.status) return res.status(err.status).json({ error: err.message });
+      return res.status(500).json({ error: err.message });
+    }
   }
 
   try {

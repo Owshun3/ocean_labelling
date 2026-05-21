@@ -6,6 +6,8 @@ const { pool } = require('../db');
 const { requireAuth, requireModeratorOrAbove } = require('../middleware/auth');
 const { recordAction } = require('../lib/auditLog');
 const { fetchActionsTotals } = require('../lib/userStats');
+const { fetchAppRole } = require('../middleware/auth');
+const { assertCanSanction } = require('../lib/permissions');
 
 const router = express.Router();
 const CVAT   = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -120,9 +122,17 @@ router.get('/bans/check', async (req, res) => {
       } catch (err) {
         console.warn(`[moderation] lazy reactivate ${user.id} failed:`, err.response?.data ?? err.message);
       }
+      // Lazy reactivation faite : on retourne « non banni, non désactivé ».
+      return res.json({ banned: false, deactivated: false });
     }
 
-    res.json({ banned: false });
+    // Pas de ban actif, pas de ban expiré récupérable : si le compte est
+    // toujours inactif côté CVAT, c'est une désactivation admin volontaire.
+    if (!user.is_active) {
+      return res.json({ banned: false, deactivated: true });
+    }
+
+    res.json({ banned: false, deactivated: false });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
@@ -371,6 +381,8 @@ router.get('/users/:id/media', requireModeratorOrAbove, async (req, res) => {
       email: userResp.data.email,
       role: rolesById[userId] || 'annotator',
       is_active: userResp.data.is_active,
+      is_superuser: !!userResp.data.is_superuser,
+      is_staff:     !!userResp.data.is_staff,
       date_joined: userResp.data.date_joined,
       actions_validated_total: actionsTotals[userId] ?? 0,
     };
@@ -571,9 +583,37 @@ router.post('/media/reject', requireModeratorOrAbove, async (req, res) => {
   res.json({ updated });
 });
 
+/**
+ * Vérifie qu'un acteur a le droit de sanctionner (ban/désactivation) une cible.
+ * Fetch les rôles + flags CVAT puis délègue à assertCanSanction.
+ * Lève une erreur avec `.status` HTTP si interdit.
+ */
+async function assertSanctionAllowed(actorCvatUser, targetUserId, actionLabel) {
+  const actorRole  = actorCvatUser.is_superuser ? 'admin' : await fetchAppRole(actorCvatUser.id);
+  const targetCvat = await cvatGet(`/users/${targetUserId}`, await getAdminToken());
+  const targetRole = (targetCvat.data?.is_superuser || targetCvat.data?.is_staff)
+    ? 'admin'
+    : await fetchAppRole(targetUserId);
+
+  assertCanSanction(
+    { id: actorCvatUser.id, role: actorRole, is_superuser: !!actorCvatUser.is_superuser, is_staff: !!actorCvatUser.is_staff },
+    { id: targetUserId, role: targetRole, is_superuser: !!targetCvat.data?.is_superuser, is_staff: !!targetCvat.data?.is_staff },
+    actionLabel,
+  );
+}
+
 router.post('/users/:id/ban', requireModeratorOrAbove, async (req, res) => {
   const userId = Number(req.params.id);
   if (!Number.isFinite(userId)) return res.status(400).json({ error: 'invalid user id' });
+
+  // Garde de sanction : self-ban interdit, admin/superuser intouchable,
+  // hiérarchie stricte (moderator ne peut bannir au-dessus de annotator/guest).
+  try {
+    await assertSanctionAllowed(req.cvatUser, userId, 'bannir');
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
+  }
 
   const durationDays = req.body?.duration_days;
   let expiresAt = null;

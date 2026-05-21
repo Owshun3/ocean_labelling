@@ -13,6 +13,8 @@ import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImag
 import { BanModal } from '../components/BanModal';
 import { RejectReasonPicker } from '../components/RejectReasonPicker';
 import { formatVideoDuration } from '@/shared/utils/formatters';
+import { canSanction } from '@/shared/utils/permissions';
+import { getUserProfile } from '@/services/api/authStorage';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
@@ -129,12 +131,6 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 		}
 	};
 
-	const proposeBanAfterReject = (count: number): boolean => {
-		if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
-		const label = count === 1 ? '1 média rejeté' : `${count} médias rejetés`;
-		return window.confirm(`${label}. Veux-tu aussi sanctionner cet utilisateur (bannissement) ?`);
-	};
-
 	const handleReject = async () => {
 		if (selectedItems.length === 0 || submitting) return;
 		if (!rejectComment.trim()) {
@@ -153,10 +149,9 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 			}
 			setRejectComment('');
 			await load();
-			setSubmitting(false);
-			if (proposeBanAfterReject(count)) setBanModalOpen(true);
 		} catch (err: any) {
 			toast.error(err?.response?.data?.error || err?.message || 'Rejet impossible.');
+		} finally {
 			setSubmitting(false);
 		}
 	};
@@ -307,13 +302,27 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 						<Text style={styles.cascadeHint}>
 							Tous les médias en attente de cet utilisateur seront automatiquement rejetés.
 						</Text>
-						<Pressable
-							onPress={() => setBanModalOpen(true)}
-							disabled={submitting}
-							style={[styles.actionBtn, styles.banBtn, submitting && styles.btnDisabled]}
-						>
-							<Text style={styles.actionBtnText}>Bannir l'utilisateur</Text>
-						</Pressable>
+						{(() => {
+							const profile = getUserProfile();
+							const actor = profile ? { id: profile.id, role: profile.appRole ?? 'annotator', is_superuser: !!profile.is_superuser } : null;
+							const target = { id: user.id, role: user.role, is_superuser: user.is_superuser, is_staff: user.is_staff };
+							const check = actor ? canSanction(actor, target, 'bannir') : { allowed: false, reason: 'Session invalide.' };
+							const blocked = !check.allowed;
+							return (
+								<>
+									<Pressable
+										onPress={() => setBanModalOpen(true)}
+										disabled={submitting || blocked}
+										style={[styles.actionBtn, styles.banBtn, (submitting || blocked) && styles.btnDisabled]}
+									>
+										<Text style={styles.actionBtnText}>Bannir l'utilisateur</Text>
+									</Pressable>
+									{blocked && check.reason ? (
+										<Text style={styles.blockedReason}>🔒 {check.reason}</Text>
+									) : null}
+								</>
+							);
+						})()}
 					</View>
 				</View>
 			</View>
@@ -429,4 +438,5 @@ const styles = StyleSheet.create({
 
 	fieldLabel: { fontSize: 12, color: COLORS.text.secondary, marginTop: SPACING.md, marginBottom: SPACING.xs, fontWeight: '600' },
 	cascadeHint: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontStyle: 'italic', marginBottom: SPACING.xs },
+	blockedReason: { fontSize: 11, color: COLORS.text.secondary, fontStyle: 'italic', marginTop: 6, lineHeight: 15 },
 });

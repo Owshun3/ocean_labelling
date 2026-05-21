@@ -17,6 +17,7 @@ import { toast } from '@/shared/toast/Toast';
 import { RankBadge } from '@/shared/components/RankBadge';
 import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
 import type { FilterField, FilterSortState, SortOption, FieldExtractors } from '@/shared/components/filters';
+import { canSanction } from '@/shared/utils/permissions';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -84,9 +85,13 @@ interface StateSelectProps {
 	user: UserWithRole;
 	onSetActive: (isActive: boolean) => Promise<void>;
 	onRequestBan: () => void;
+	/** Désactive le passage à « Désactivé » (sanction). Vide = autorisé. */
+	deactivateLockedReason?: string | null;
+	/** Désactive le passage à « Banni ». Vide = autorisé. */
+	banLockedReason?: string | null;
 }
 
-function StateSelect({ user, onSetActive, onRequestBan }: StateSelectProps) {
+function StateSelect({ user, onSetActive, onRequestBan, deactivateLockedReason, banLockedReason }: StateSelectProps) {
 	const [saving, setSaving] = useState(false);
 
 	if (Platform.OS !== 'web') return <Text style={{ color: COLORS.text.secondary }}>Web only</Text>;
@@ -100,7 +105,12 @@ function StateSelect({ user, onSetActive, onRequestBan }: StateSelectProps) {
 					const next = e.target.value as AccountState;
 					if (next === user.state) return;
 					if (next === 'banned') {
+						if (banLockedReason) { toast.error(banLockedReason); return; }
 						onRequestBan();
+						return;
+					}
+					if (next === 'disabled' && deactivateLockedReason) {
+						toast.error(deactivateLockedReason);
 						return;
 					}
 					setSaving(true);
@@ -113,6 +123,7 @@ function StateSelect({ user, onSetActive, onRequestBan }: StateSelectProps) {
 						setSaving(false);
 					}
 				}}
+				title={banLockedReason || deactivateLockedReason || undefined}
 				style={{
 					padding: '4px 8px',
 					borderRadius: 4,
@@ -123,9 +134,16 @@ function StateSelect({ user, onSetActive, onRequestBan }: StateSelectProps) {
 					cursor: saving ? 'wait' : 'pointer',
 				} as any}
 			>
-				{STATES.map((s) => (
-					<option key={s} value={s}>{STATE_LABELS[s]}</option>
-				))}
+				{STATES.map((s) => {
+					const locked = s === 'banned' ? banLockedReason
+						: s === 'disabled' ? deactivateLockedReason
+						: null;
+					return (
+						<option key={s} value={s} disabled={!!locked} title={locked || undefined}>
+							{STATE_LABELS[s]}{locked ? '  🔒' : ''}
+						</option>
+					);
+				})}
 			</select>
 			{user.state === 'banned' && user.ban ? (
 				<Text style={styles.banSubLine}>
@@ -357,31 +375,44 @@ export const AdminScreen: React.FC = () => {
 				ListEmptyComponent={
 					<View style={styles.empty}><Text style={styles.emptyText}>Aucun compte ne correspond aux filtres.</Text></View>
 				}
-				renderItem={({ item }) => (
-					<View style={[
-						styles.row,
-						item.id === currentProfile?.id && styles.rowSelf,
-					]}>
-						<View style={styles.colUsername}>
-							<Text style={styles.username}>{item.username}</Text>
-							{item.is_superuser && (
-								<Text style={styles.superuserBadge}>superuser</Text>
-							)}
-							<RankBadge actions={item.actions_validated_total ?? 0} size="sm" withCount />
+				renderItem={({ item }) => {
+					const actor = currentProfile ? {
+						id:           currentProfile.id,
+						role:         currentProfile.appRole ?? 'annotator',
+						is_superuser: !!currentProfile.is_superuser,
+					} : null;
+					const target = { id: item.id, role: item.role, is_superuser: item.is_superuser };
+					const banCheck        = actor ? canSanction(actor, target, 'bannir')      : { allowed: false, reason: null };
+					const deactivateCheck = actor ? canSanction(actor, target, 'désactiver') : { allowed: false, reason: null };
+
+					return (
+						<View style={[
+							styles.row,
+							item.id === currentProfile?.id && styles.rowSelf,
+						]}>
+							<View style={styles.colUsername}>
+								<Text style={styles.username}>{item.username}</Text>
+								{item.is_superuser && (
+									<Text style={styles.superuserBadge}>superuser</Text>
+								)}
+								<RankBadge actions={item.actions_validated_total ?? 0} size="sm" withCount />
+							</View>
+							<Text style={[styles.colEmail, styles.cell]}>{item.email || '—'}</Text>
+							<SessionCell user={item} />
+							<RoleSelect
+								user={item}
+								onSave={(role) => handleRoleChange(item.id, role)}
+							/>
+							<StateSelect
+								user={item}
+								onSetActive={(isActive) => handleSetActive(item.id, isActive)}
+								onRequestBan={() => setBanTarget(item)}
+								banLockedReason={banCheck.allowed ? null : banCheck.reason}
+								deactivateLockedReason={deactivateCheck.allowed ? null : deactivateCheck.reason}
+							/>
 						</View>
-						<Text style={[styles.colEmail, styles.cell]}>{item.email || '—'}</Text>
-						<SessionCell user={item} />
-						<RoleSelect
-							user={item}
-							onSave={(role) => handleRoleChange(item.id, role)}
-						/>
-						<StateSelect
-							user={item}
-							onSetActive={(isActive) => handleSetActive(item.id, isActive)}
-							onRequestBan={() => setBanTarget(item)}
-						/>
-					</View>
-				)}
+					);
+				}}
 				ItemSeparatorComponent={() => <View style={styles.separator} />}
 			/>
 

@@ -25,6 +25,8 @@ export interface ModerationUploader {
   email: string;
   role: string;
   is_active: boolean;
+  is_superuser?: boolean;
+  is_staff?: boolean;
   date_joined: string | null;
   actions_validated_total: number;
 }
