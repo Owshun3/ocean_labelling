@@ -228,6 +228,8 @@ router.get('/my-statuses', requireAuth, async (req, res) => {
       SELECT media_kind, cvat_task_id, video_id, status, review_comment, reviewed_at
       FROM media_moderation
       WHERE uploader_id = $1
+      ORDER BY created_at DESC
+      LIMIT 500
     `, [req.cvatUser.id]);
     res.json({ results: rows });
   } catch (err) {

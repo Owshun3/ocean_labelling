@@ -2,6 +2,10 @@ const { Pool } = require('pg');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX) || 50,
+  min: Number(process.env.PG_POOL_MIN) || 10,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
 });
 
 async function init(retries = 10, delayMs = 2000) {
@@ -80,6 +84,9 @@ async function _createSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_media_moderation_status   ON media_moderation(status);
     CREATE INDEX IF NOT EXISTS idx_media_moderation_uploader ON media_moderation(uploader_id);
+    CREATE INDEX IF NOT EXISTS idx_media_moderation_created_at ON media_moderation(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_media_moderation_curator_validated
+      ON media_moderation(curator_validated_at) WHERE curator_validated_at IS NOT NULL;
     ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS curator_validated_at TIMESTAMPTZ;
     ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS curator_validated_by INTEGER;
     ALTER TABLE media_moderation ADD COLUMN IF NOT EXISTS binaries_deleted_at  TIMESTAMPTZ;
