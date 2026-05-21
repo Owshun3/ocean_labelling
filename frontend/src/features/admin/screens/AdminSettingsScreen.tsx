@@ -31,6 +31,7 @@ export const AdminSettingsScreen: React.FC = () => {
 	const [drafts, setDrafts] = useState<Record<string, string | number | boolean>>({});
 	const [saving, setSaving] = useState<Record<string, boolean>>({});
 	const [confirmMaintenance, setConfirmMaintenance] = useState(false);
+	const [query, setQuery] = useState('');
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -61,6 +62,18 @@ export const AdminSettingsScreen: React.FC = () => {
 		});
 		return Array.from(map.entries());
 	}, [items]);
+
+	const filteredGrouped = useMemo(() => {
+		const q = query.trim().toLowerCase();
+		if (!q) return grouped;
+		const match = (it: SettingItem) => [it.label, it.description, it.key, it.group_label]
+			.some((s) => String(s ?? '').toLowerCase().includes(q));
+		return grouped
+			.map(([key, g]) => [key, { label: g.label, items: g.items.filter(match) }] as const)
+			.filter(([, g]) => g.items.length > 0);
+	}, [grouped, query]);
+
+	const visibleCount = filteredGrouped.reduce((sum, [, g]) => sum + g.items.length, 0);
 
 	const isDirty = (it: SettingItem): boolean => {
 		const unit = DISPLAY_UNITS[it.key];
@@ -140,10 +153,38 @@ export const AdminSettingsScreen: React.FC = () => {
 			<ScrollView style={styles.container} contentContainerStyle={styles.content}>
 				<Text style={styles.title}>Paramètres système</Text>
 				<Text style={styles.subtitle}>
-					{items.length} paramètre(s) — modifications appliquées immédiatement.
+					{query.trim()
+						? `${visibleCount} / ${items.length} paramètre(s) correspondant(s).`
+						: `${items.length} paramètre(s) — modifications appliquées immédiatement.`}
 				</Text>
 
-				{grouped.map(([groupKey, { label, items: groupItems }]) => (
+				<View style={styles.searchBar}>
+					<View style={styles.searchWrap}>
+						<Text style={styles.searchIcon}>🔍</Text>
+						<TextInput
+							value={query}
+							onChangeText={setQuery}
+							placeholder="Rechercher un paramètre…"
+							placeholderTextColor={COLORS.text.placeholder}
+							style={styles.searchInput}
+							autoCorrect={false}
+							autoCapitalize="none"
+						/>
+						{query.length > 0 ? (
+							<Pressable onPress={() => setQuery('')} style={styles.searchClear} hitSlop={8}>
+								<Text style={styles.searchClearText}>✕</Text>
+							</Pressable>
+						) : null}
+					</View>
+				</View>
+
+				{filteredGrouped.length === 0 ? (
+					<View style={styles.emptyBox}>
+						<Text style={styles.emptyText}>Aucun paramètre ne correspond à « {query} ».</Text>
+					</View>
+				) : null}
+
+				{filteredGrouped.map(([groupKey, { label, items: groupItems }]) => (
 					<View key={groupKey} style={styles.group}>
 						<Text style={styles.groupLabel}>{label}</Text>
 						{groupKey === 'ranks' ? <RankPreview drafts={drafts} /> : null}
@@ -475,7 +516,35 @@ const styles = StyleSheet.create({
 	center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
 	title: { ...TYPOGRAPHY.h1 },
-	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.lg },
+	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.md },
+
+	// Carte qui démarque la barre de recherche du reste du contenu (même
+	// traitement visuel que la FilterSortBar : fond carte, bord, élévation).
+	searchBar: {
+		backgroundColor: COLORS.background.card,
+		borderRadius: 8,
+		borderWidth: 1,
+		borderColor: COLORS.border,
+		padding: SPACING.sm,
+		marginBottom: SPACING.lg,
+	},
+	searchWrap: {
+		flexDirection: 'row', alignItems: 'center',
+		borderWidth: 1, borderColor: COLORS.border, borderRadius: 6,
+		paddingHorizontal: SPACING.sm,
+		backgroundColor: COLORS.background.main,
+	},
+	searchIcon: { fontSize: 14, color: COLORS.text.placeholder, marginRight: 6 },
+	searchInput: {
+		flex: 1, ...TYPOGRAPHY.body, fontSize: 13,
+		paddingVertical: 6, paddingHorizontal: SPACING.sm,
+		color: COLORS.text.primary,
+	},
+	searchClear: { paddingHorizontal: SPACING.sm, paddingVertical: 4 },
+	searchClearText: { fontSize: 14, color: COLORS.text.secondary },
+
+	emptyBox: { padding: SPACING.lg, alignItems: 'center', backgroundColor: COLORS.background.card, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg },
+	emptyText: { fontSize: 13, color: COLORS.text.secondary, fontStyle: 'italic' },
 
 	group: { marginBottom: SPACING.lg },
 	groupLabel: { fontSize: 12, color: COLORS.text.secondary, fontWeight: '700', textTransform: 'uppercase', marginBottom: SPACING.xs },
