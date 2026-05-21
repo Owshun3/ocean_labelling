@@ -12,6 +12,17 @@ interface AuthenticatedImageProps {
 	onNaturalSize?: (width: number, height: number) => void;
 }
 
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+	const bytes = new Uint8Array(buf);
+	let binary = '';
+	const chunkSize = 0x8000;
+	for (let i = 0; i < bytes.length; i += chunkSize) {
+		const slice = bytes.subarray(i, i + chunkSize);
+		binary += String.fromCharCode.apply(null, Array.from(slice) as unknown as number[]);
+	}
+	return globalThis.btoa(binary);
+}
+
 export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({ url, style, resizeMode = 'cover', client, onNaturalSize }) => {
 	const fetcher = client ?? apiClient;
 	const [isLoading, setIsLoading] = useState(true);
@@ -31,35 +42,31 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({ url, sty
 
 		const fetchImage = async () => {
 			try {
-				const response = await fetcher.get(url, { responseType: 'blob' });
-
-				const reader = new FileReader();
-				reader.onloadend = () => {
-					if (!isMounted) return;
-					const dataUri = reader.result as string;
-					setImageDataUri(dataUri);
-					setIsLoading(false);
-					if (onNaturalSize) {
-						// Image.getSize sur RN Web peut être capricieux avec les data-URIs.
-						// Sur web on passe par un HTMLImageElement natif (toujours fiable).
-						if (Platform.OS === 'web' && typeof window !== 'undefined') {
-							const probe = new window.Image();
-							probe.onload = () => {
-								if (isMounted && probe.naturalWidth > 0 && probe.naturalHeight > 0) {
-									onNaturalSize(probe.naturalWidth, probe.naturalHeight);
-								}
-							};
-							probe.src = dataUri;
-						} else {
-							Image.getSize(
-								dataUri,
-								(w, h) => { if (isMounted && w > 0 && h > 0) onNaturalSize(w, h); },
-								() => {},
-							);
-						}
+				const response = await fetcher.get(url, { responseType: 'arraybuffer' });
+				if (!isMounted) return;
+				const mime = (response.headers?.['content-type'] as string | undefined) || 'image/jpeg';
+				const dataUri = `data:${mime};base64,${arrayBufferToBase64(response.data as ArrayBuffer)}`;
+				setImageDataUri(dataUri);
+				setIsLoading(false);
+				if (onNaturalSize) {
+					// Image.getSize sur RN Web peut être capricieux avec les data-URIs.
+					// Sur web on passe par un HTMLImageElement natif (toujours fiable).
+					if (Platform.OS === 'web' && typeof window !== 'undefined') {
+						const probe = new window.Image();
+						probe.onload = () => {
+							if (isMounted && probe.naturalWidth > 0 && probe.naturalHeight > 0) {
+								onNaturalSize(probe.naturalWidth, probe.naturalHeight);
+							}
+						};
+						probe.src = dataUri;
+					} else {
+						Image.getSize(
+							dataUri,
+							(w, h) => { if (isMounted && w > 0 && h > 0) onNaturalSize(w, h); },
+							() => {},
+						);
 					}
-				};
-				reader.readAsDataURL(response.data);
+				}
 			} catch (err) {
 				if (isMounted) {
 					console.error("Failed to load authenticated image", err);

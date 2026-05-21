@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, StyleSheet, Switch, Modal, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, StyleSheet, Switch, Modal, Platform } from 'react-native';
+import { confirm } from '@/shared/utils/dialog';
+import { pickSingleFile } from '@/shared/utils/filePicker';
 import { AdminService, SettingItem } from '@/services/api/AdminService';
 import { refreshPublicSettings } from '@/services/api/publicSettings';
 import { getRanks } from '@/shared/ranks';
@@ -250,45 +252,29 @@ const HelpVideoSection: React.FC<{ filename: string; service: AdminService; onCh
 	const [deleting, setDeleting] = useState(false);
 	const hasVideo = !!filename;
 
-	const pickAndUpload = () => {
-		if (Platform.OS !== 'web') {
-			toast.error('Upload disponible sur web uniquement.');
+	const pickAndUpload = async () => {
+		const file = await pickSingleFile({ mimeTypes: ACCEPTED_HELP_VIDEO_MIMES });
+		if (!file) return;
+		if (!ACCEPTED_HELP_VIDEO_MIMES.includes(file.mimeType) && !/\.(mp4|webm|mov)$/i.test(file.name)) {
+			toast.error('Format non supporté. Utilise MP4, WebM ou MOV.');
 			return;
 		}
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = ACCEPTED_HELP_VIDEO_MIMES.join(',');
-		input.style.display = 'none';
-		input.addEventListener('change', async () => {
-			const file = input.files?.[0];
-			if (!file) return;
-			if (!ACCEPTED_HELP_VIDEO_MIMES.includes(file.type) && !/\.(mp4|webm|mov)$/i.test(file.name)) {
-				toast.error('Format non supporté. Utilise MP4, WebM ou MOV.');
-				return;
-			}
-			setUploading(true);
-			setProgress(0);
-			try {
-				await service.uploadHelpVideo(file, setProgress);
-				toast.success('Vidéo d\'aide mise à jour.');
-				onChanged();
-			} catch (err: any) {
-				toast.error(err?.response?.data?.error || err?.message || 'Upload impossible.');
-			} finally {
-				setUploading(false);
-				input.parentNode?.removeChild(input);
-			}
-		}, { once: true });
-		document.body.appendChild(input);
-		input.click();
+		setUploading(true);
+		setProgress(0);
+		try {
+			await service.uploadHelpVideo(file, setProgress);
+			toast.success('Vidéo d\'aide mise à jour.');
+			onChanged();
+		} catch (err: any) {
+			toast.error(err?.response?.data?.error || err?.message || 'Upload impossible.');
+		} finally {
+			setUploading(false);
+		}
 	};
 
 	const handleDelete = async () => {
 		const m = 'Supprimer la vidéo d\'aide actuelle ? La page « Besoin d\'aide ? » n\'affichera plus de vidéo tant qu\'une nouvelle ne sera pas téléversée.';
-		const proceed = Platform.OS === 'web' ? window.confirm(m) : await new Promise<boolean>((res) => Alert.alert('Confirmer', m, [
-			{ text: 'Annuler', style: 'cancel', onPress: () => res(false) },
-			{ text: 'Supprimer', style: 'destructive', onPress: () => res(true) },
-		]));
+		const proceed = await confirm(m, { confirmLabel: 'Supprimer', destructive: true });
 		if (!proceed) return;
 		setDeleting(true);
 		try {
@@ -352,45 +338,29 @@ const LogoSection: React.FC<{ filename: string; service: AdminService; onChanged
 	const [deleting, setDeleting] = useState(false);
 	const hasLogo = !!filename;
 
-	const pickAndUpload = () => {
-		if (Platform.OS !== 'web') {
-			toast.error('Upload disponible sur web uniquement.');
+	const pickAndUpload = async () => {
+		const file = await pickSingleFile({ mimeTypes: ACCEPTED_LOGO_MIMES });
+		if (!file) return;
+		if (!ACCEPTED_LOGO_MIMES.includes(file.mimeType) && !/\.(png|jpe?g|webp|svg)$/i.test(file.name)) {
+			toast.error('Format non supporté. Utilise PNG, JPEG, WebP ou SVG.');
 			return;
 		}
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = ACCEPTED_LOGO_MIMES.join(',');
-		input.style.display = 'none';
-		input.addEventListener('change', async () => {
-			const file = input.files?.[0];
-			if (!file) return;
-			if (!ACCEPTED_LOGO_MIMES.includes(file.type) && !/\.(png|jpe?g|webp|svg)$/i.test(file.name)) {
-				toast.error('Format non supporté. Utilise PNG, JPEG, WebP ou SVG.');
-				return;
-			}
-			setUploading(true);
-			setProgress(0);
-			try {
-				await service.uploadLogo(file, setProgress);
-				toast.success('Logo mis à jour.');
-				onChanged();
-			} catch (err: any) {
-				toast.error(err?.response?.data?.error || err?.message || 'Upload impossible.');
-			} finally {
-				setUploading(false);
-				input.parentNode?.removeChild(input);
-			}
-		}, { once: true });
-		document.body.appendChild(input);
-		input.click();
+		setUploading(true);
+		setProgress(0);
+		try {
+			await service.uploadLogo(file, setProgress);
+			toast.success('Logo mis à jour.');
+			onChanged();
+		} catch (err: any) {
+			toast.error(err?.response?.data?.error || err?.message || 'Upload impossible.');
+		} finally {
+			setUploading(false);
+		}
 	};
 
 	const handleDelete = async () => {
 		const m = 'Supprimer le logo actuel ? Le nom de la plateforme s\'affichera seul dans le header jusqu\'à ce qu\'un nouveau logo soit téléversé.';
-		const proceed = Platform.OS === 'web' ? window.confirm(m) : await new Promise<boolean>((res) => Alert.alert('Confirmer', m, [
-			{ text: 'Annuler', style: 'cancel', onPress: () => res(false) },
-			{ text: 'Supprimer', style: 'destructive', onPress: () => res(true) },
-		]));
+		const proceed = await confirm(m, { confirmLabel: 'Supprimer', destructive: true });
 		if (!proceed) return;
 		setDeleting(true);
 		try {

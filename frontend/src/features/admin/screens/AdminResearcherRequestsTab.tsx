@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator } from 'react-native';
+import { confirm } from '@/shared/utils/dialog';
 import { toast } from '@/shared/toast/Toast';
 import { AdminService, ChercheurExportRequestAdminView } from '@/services/api/AdminService';
 import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
@@ -82,10 +83,7 @@ export const AdminResearcherRequestsTab: React.FC<Props> = ({ onChanged }) => {
 			return;
 		}
 		const m = 'Confirmer le rejet de cette demande ?';
-		const proceed = Platform.OS === 'web' ? window.confirm(m) : await new Promise<boolean>((res) => Alert.alert('Confirmer', m, [
-			{ text: 'Annuler', style: 'cancel', onPress: () => res(false) },
-			{ text: 'Rejeter', style: 'destructive', onPress: () => res(true) },
-		]));
+		const proceed = await confirm(m, { confirmLabel: 'Rejeter', destructive: true });
 		if (!proceed) return;
 		setSubmitting(true);
 		try {

@@ -1,71 +1,10 @@
 import { useState } from 'react';
-import { Platform } from 'react-native';
-// Import explicite du build ESM browser : évite que Metro tente de résoudre
-// les fallbacks Node (`fs`, `zlib`) de la version UMD et warn au reload.
-import * as exifr from 'exifr/dist/full.esm.js';
 import { CvatMediaService } from '@/services/api/CvatMediaService';
 import { AppApiService } from '@/services/api/AppApiService';
 import { MediaMetadataService } from '@/services/api/MediaMetadataService';
 import { toast } from '@/shared/toast/Toast';
-
-async function extractExif(asset: any): Promise<{
-	gps_latitude?: number; gps_longitude?: number;
-	taken_at?: string; camera_make?: string; camera_model?: string;
-	image_width?: number; image_height?: number;
-	raw?: Record<string, unknown>;
-} | null> {
-	if (Platform.OS !== 'web') return null;
-	const file: File | null = asset?.file instanceof File ? asset.file : null;
-	if (!file) return null;
-	try {
-		const data: any = await exifr.parse(file, true);
-		if (!data) return null;
-		return {
-			gps_latitude:  typeof data.latitude  === 'number' ? data.latitude  : undefined,
-			gps_longitude: typeof data.longitude === 'number' ? data.longitude : undefined,
-			taken_at:      data.DateTimeOriginal instanceof Date ? data.DateTimeOriginal.toISOString() : undefined,
-			camera_make:   typeof data.Make  === 'string' ? data.Make  : undefined,
-			camera_model:  typeof data.Model === 'string' ? data.Model : undefined,
-			image_width:   typeof data.ImageWidth  === 'number' ? data.ImageWidth  : (typeof data.ExifImageWidth  === 'number' ? data.ExifImageWidth  : undefined),
-			image_height:  typeof data.ImageHeight === 'number' ? data.ImageHeight : (typeof data.ExifImageHeight === 'number' ? data.ExifImageHeight : undefined),
-			raw: data as Record<string, unknown>,
-		};
-	} catch {
-		return null;
-	}
-}
-
-// EXIF strip: re-encode via canvas. Removes ALL metadata (GPS, camera, etc.).
-// Only runs on web with a File asset. Returns the original asset unchanged on failure.
-async function stripExifFromAsset(asset: any): Promise<any> {
-	if (Platform.OS !== 'web') return asset;
-	const file: File | null = asset?.file instanceof File ? asset.file : null;
-	if (!file || !/^image\//.test(file.type)) return asset;
-
-	try {
-		const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-			const url = URL.createObjectURL(file);
-			const im = new Image();
-			im.onload  = () => { URL.revokeObjectURL(url); resolve(im); };
-			im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
-			im.src = url;
-		});
-		const c = document.createElement('canvas');
-		c.width  = img.naturalWidth;
-		c.height = img.naturalHeight;
-		const ctx = c.getContext('2d');
-		if (!ctx) return asset;
-		ctx.drawImage(img, 0, 0);
-		const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.92));
-		if (!blob) return asset;
-		const newName = (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg';
-		const stripped = new File([blob], newName, { type: 'image/jpeg' });
-		return { ...asset, file: stripped, fileSize: stripped.size, mimeType: 'image/jpeg' };
-	} catch (err) {
-		console.warn('[upload] EXIF strip failed, sending original', err);
-		return asset;
-	}
-}
+import { PickedFile } from '@/shared/utils/filePicker';
+import { readExif, stripExif } from '@/shared/utils/imageProcessing';
 
 export interface UploadProgress {
 	current: number;
@@ -76,7 +15,7 @@ export const useMediaUpload = () => {
 	const [isUploading, setIsUploading] = useState(false);
 	const [progress, setProgress] = useState<UploadProgress>({ current: 0, total: 0 });
 
-	const upload = async (files: any[]): Promise<number[]> => {
+	const upload = async (files: PickedFile[]): Promise<number[]> => {
 		if (files.length === 0) return [];
 
 		setIsUploading(true);
@@ -94,12 +33,12 @@ export const useMediaUpload = () => {
 
 			for (let i = 0; i < files.length; i++) {
 				const original = files[i];
-				const exifPromise = extractExif(original);
-				const strippedAsset = await stripExifFromAsset(original);
+				const exifPromise = readExif(original);
+				const stripped = await stripExif(original);
 
 				const uploadNum = await cvat.getNextUploadNumber();
 				const baseName = `${self.username}_${date}_${String(uploadNum).padStart(4, '0')}`;
-				const taskId = await cvat.uploadMedia(baseName, [strippedAsset]);
+				const taskId = await cvat.uploadMedia(baseName, [stripped]);
 				await cvat.waitForTaskData(taskId);
 				try {
 					await app.recordUpload(taskId, baseName, 1);

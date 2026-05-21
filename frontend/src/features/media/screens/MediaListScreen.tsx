@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { confirm } from '@/shared/utils/dialog';
 import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -175,33 +176,25 @@ export const MediaListScreen: React.FC = () => {
 		setLastClicked(key);
 	};
 
-	const handleDeleteSelected = () => {
+	const handleDeleteSelected = async () => {
 		if (selectionCount === 0 || submitting) return;
 		const keys = Array.from(selected);
 		const confirmMsg = `Supprimer ${keys.length} média${keys.length > 1 ? 's' : ''} ? Cette action est irréversible.`;
-		const doDelete = async () => {
-			setSubmitting(true);
-			try {
-				await Promise.all(keys.map((key) => {
-					const { kind, id } = parseKey(key);
-					return kind === 'image' ? cvatService.deleteTask(id) : videoService.delete(id);
-				}));
-				toast.success(keys.length === 1 ? 'Média supprimé.' : `${keys.length} médias supprimés.`);
-				setSelected(new Set());
-				await loadMedia();
-			} catch {
-				toast.error('Impossible de supprimer la sélection.');
-			} finally {
-				setSubmitting(false);
-			}
-		};
-		if (Platform.OS === 'web') {
-			if (window.confirm(confirmMsg)) doDelete();
-		} else {
-			Alert.alert('Supprimer la sélection', confirmMsg, [
-				{ text: 'Annuler', style: 'cancel' },
-				{ text: 'Supprimer', style: 'destructive', onPress: doDelete },
-			]);
+		const proceed = await confirm(confirmMsg, { title: 'Supprimer la sélection', confirmLabel: 'Supprimer', destructive: true });
+		if (!proceed) return;
+		setSubmitting(true);
+		try {
+			await Promise.all(keys.map((key) => {
+				const { kind, id } = parseKey(key);
+				return kind === 'image' ? cvatService.deleteTask(id) : videoService.delete(id);
+			}));
+			toast.success(keys.length === 1 ? 'Média supprimé.' : `${keys.length} médias supprimés.`);
+			setSelected(new Set());
+			await loadMedia();
+		} catch {
+			toast.error('Impossible de supprimer la sélection.');
+		} finally {
+			setSubmitting(false);
 		}
 	};
 

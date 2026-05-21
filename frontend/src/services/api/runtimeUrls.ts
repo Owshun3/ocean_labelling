@@ -1,36 +1,40 @@
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+
 /**
- * URLs API derivees au runtime depuis window.location.
+ * URLs API derivees au runtime.
  *
- * Permet a un seul bundle de fonctionner en dev local (Metro sur 8081, gateway
- * sur 8888) ET en prod HTTPS (otf.upf.pf sur 443) sans rebuild.
+ * Sur web : on lit window.location pour qu'un seul bundle fonctionne en dev
+ * local (Metro 8081, gateway 8888) ET en prod HTTPS (otf.upf.pf:443) sans rebuild.
  *
- * Regle :
- *   - Si on accede via Metro (port 8081) -> l'API est sur le port 8888 du meme host
- *   - Sinon (gateway HTTP 8888 ou gateway HTTPS 443) -> meme origine
- *
- * Override possible via EXPO_PUBLIC_APP_API_URL (inline au bundling Metro)
- * pour les cas particuliers (tunneling, dev distribue, etc.).
+ * Sur mobile : on lit EXPO_PUBLIC_APP_API_URL (env injecté au bundling). Si non
+ * défini, on tente l'IP LAN derivee de Expo Metro (hostUri) pour le dev. Pour la
+ * prod, EXPO_PUBLIC_APP_API_URL doit pointer sur l'URL stable du serveur.
  */
 
 function computeAppApiBase(): string {
 	const override = process.env.EXPO_PUBLIC_APP_API_URL;
 	if (override) return override;
 
-	if (typeof window === 'undefined') {
-		// SSR / build statique : fallback raisonnable, sera remplace au mount.
-		return 'http://localhost:8888/app-api';
+	if (Platform.OS === 'web') {
+		if (typeof window === 'undefined') return 'http://localhost:8888/app-api';
+		const { protocol, hostname, port } = window.location;
+		if (port === '8081') return `${protocol}//${hostname}:8888/app-api`;
+		const portSuffix = port ? `:${port}` : '';
+		return `${protocol}//${hostname}${portSuffix}/app-api`;
 	}
 
-	const { protocol, hostname, port } = window.location;
-
-	// Acces via Expo Metro -> API gateway sur 8888 du meme host
-	if (port === '8081') {
-		return `${protocol}//${hostname}:8888/app-api`;
+	// Mobile: try Expo Metro hostUri (ex: "192.168.1.42:8081") for dev hot reload.
+	const hostUri = (Constants.expoConfig as any)?.hostUri
+		?? (Constants as any)?.expoGoConfig?.debuggerHost
+		?? null;
+	if (typeof hostUri === 'string' && hostUri.includes(':')) {
+		const host = hostUri.split(':')[0];
+		return `http://${host}:8888/app-api`;
 	}
 
-	// Acces via gateway (8888 en HTTP, 443 en HTTPS, etc.) -> meme origine
-	const portSuffix = port ? `:${port}` : '';
-	return `${protocol}//${hostname}${portSuffix}/app-api`;
+	// Fallback: localhost (won't reach a physical device, but keeps the bundle compiling).
+	return 'http://localhost:8888/app-api';
 }
 
 export const APP_API_BASE = computeAppApiBase();

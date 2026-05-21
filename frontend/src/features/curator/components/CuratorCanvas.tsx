@@ -1,7 +1,8 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
-import { Stage, Layer, Image as KonvaImage, Rect, Group, Transformer } from 'react-konva';
-import type Konva from 'konva';
+import Svg, { G, Image as SvgImage, Rect as SvgRect } from 'react-native-svg';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { useStudioFrame } from '@/features/studio/hooks/useStudioFrame';
@@ -37,10 +38,23 @@ interface Props {
 	onHover:         (h: HoveredProposal | null) => void;
 }
 
-const ZOOM_STEP = 1.25;
-const ZOOM_MIN  = 0.2;
-const ZOOM_MAX  = 8;
-const MIN_RECT  = 4;
+type DragMode =
+	| { kind: 'draw'; startImg: { x: number; y: number } }
+	| { kind: 'pan';  startPos: { x: number; y: number } }
+	| { kind: 'move'; startShape: { x: number; y: number }; startImg: { x: number; y: number } }
+	| { kind: 'resize'; handle: ResizeHandle; startShape: CuratorBbox; startImg: { x: number; y: number } }
+	| null;
+
+// 4 coins + 4 milieux de côté. Les milieux contraignent le resize à une seule
+// dimension (utile pour ajuster précisément hauteur OU largeur d'une bbox).
+type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br' | 't' | 'r' | 'b' | 'l';
+const RESIZE_HANDLES: ResizeHandle[] = ['tl', 'tr', 'bl', 'br', 't', 'r', 'b', 'l'];
+
+const ZOOM_STEP   = 1.25;
+const ZOOM_MIN    = 0.2;
+const ZOOM_MAX    = 8;
+const MIN_RECT    = 4;
+const HANDLE_SIZE = 10;
 
 function computeFit(stageW: number, stageH: number, imgW: number, imgH: number) {
 	if (stageW <= 0 || stageH <= 0 || imgW <= 0 || imgH <= 0) return { scale: 1, offsetX: 0, offsetY: 0 };
@@ -48,164 +62,255 @@ function computeFit(stageW: number, stageH: number, imgW: number, imgH: number) 
 	return { scale, offsetX: (stageW - imgW * scale) / 2, offsetY: (stageH - imgH * scale) / 2 };
 }
 
-function normalize(a: { x: number; y: number }, b: { x: number; y: number }) {
+function normalize(a: { x: number; y: number }, b: { x: number; y: number }): CuratorBbox {
 	return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) };
 }
 
-function clamp(r: { x: number; y: number; width: number; height: number }, imgW: number, imgH: number) {
+function clamp(r: CuratorBbox, imgW: number, imgH: number): CuratorBbox {
 	const x = Math.max(0, Math.min(r.x, imgW));
 	const y = Math.max(0, Math.min(r.y, imgH));
 	return { x, y, width: Math.max(2, Math.min(r.width, imgW - x)), height: Math.max(2, Math.min(r.height, imgH - y)) };
+}
+
+function pointInRect(p: { x: number; y: number }, r: CuratorBbox): boolean {
+	return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
+}
+
+function handleCenter(box: CuratorBbox, handle: ResizeHandle): { x: number; y: number } {
+	const midX = box.x + box.width  / 2;
+	const midY = box.y + box.height / 2;
+	const rx = box.x + box.width;
+	const by = box.y + box.height;
+	switch (handle) {
+		case 'tl': return { x: box.x, y: box.y };
+		case 'tr': return { x: rx,    y: box.y };
+		case 'bl': return { x: box.x, y: by };
+		case 'br': return { x: rx,    y: by };
+		case 't':  return { x: midX,  y: box.y };
+		case 'b':  return { x: midX,  y: by };
+		case 'l':  return { x: box.x, y: midY };
+		case 'r':  return { x: rx,    y: midY };
+	}
+}
+
+function resizeFromHandle(start: CuratorBbox, handle: ResizeHandle, dx: number, dy: number): CuratorBbox {
+	const movesLeft   = handle === 'tl' || handle === 'bl' || handle === 'l';
+	const movesRight  = handle === 'tr' || handle === 'br' || handle === 'r';
+	const movesTop    = handle === 'tl' || handle === 'tr' || handle === 't';
+	const movesBottom = handle === 'bl' || handle === 'br' || handle === 'b';
+
+	let x = start.x;
+	let y = start.y;
+	let w = start.width;
+	let h = start.height;
+	if (movesLeft)   { x += dx; w -= dx; }
+	if (movesRight)  { w += dx; }
+	if (movesTop)    { y += dy; h -= dy; }
+	if (movesBottom) { h += dy; }
+
+	if (w < 4) { if (movesLeft) x = start.x + start.width  - 4; w = 4; }
+	if (h < 4) { if (movesTop)  y = start.y + start.height - 4; h = 4; }
+	return { x, y, width: w, height: h };
+}
+
+function hitTestHandle(imgPt: { x: number; y: number }, b: CuratorBbox, screenScale: number): ResizeHandle | null {
+	const tol = HANDLE_SIZE / screenScale;
+	for (const h of RESIZE_HANDLES) {
+		const c = handleCenter(b, h);
+		if (Math.abs(imgPt.x - c.x) <= tol && Math.abs(imgPt.y - c.y) <= tol) return h;
+	}
+	return null;
 }
 
 export const CuratorCanvas = forwardRef<CuratorCanvasHandle, Props>(({
 	jobId, mode, tool, proposals, selectedIds, annotatorColor, opacity, curatorBbox,
 	onToggleSelect, onSetCuratorBbox, onHover,
 }, ref) => {
-	const { image, loading, error } = useStudioFrame(jobId, 0, {
+	const frameSpec = useMemo(() => ({
 		client: curatorClient,
 		path:   `/jobs/${jobId}/frame`,
 		params: { number: 0, quality: 'compressed' },
-	});
+	}), [jobId]);
+	const { image, loading, error } = useStudioFrame(jobId, 0, frameSpec);
 	const [size, setSize] = useState({ width: 0, height: 0 });
 	const [stageScale, setStageScale] = useState(1);
 	const [stagePos,   setStagePos]   = useState({ x: 0, y: 0 });
-	const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
-	const [drawEnd,   setDrawEnd]   = useState<{ x: number; y: number } | null>(null);
-	const panLastRef = useRef<{ x: number; y: number } | null>(null);
-
-	const stageRef       = useRef<Konva.Stage | null>(null);
-	const layerRef       = useRef<Konva.Layer | null>(null);
-	const groupRef       = useRef<Konva.Group | null>(null);
-	const transformerRef = useRef<Konva.Transformer | null>(null);
+	const [ghost, setGhost] = useState<CuratorBbox | null>(null);
+	const dragRef = useRef<DragMode>(null);
+	const pinchStartRef = useRef<{ scale: number; pos: { x: number; y: number }; focal: { x: number; y: number } } | null>(null);
 
 	const fit = useMemo(
 		() => computeFit(size.width, size.height, image?.width ?? 0, image?.height ?? 0),
 		[size, image],
 	);
 
-	const zoomTo = (newScale: number, focus: { x: number; y: number }) => {
+	const screenToImage = useCallback((sx: number, sy: number): { x: number; y: number } | null => {
+		if (!image || fit.scale === 0) return null;
+		const groupX = (sx - stagePos.x) / stageScale;
+		const groupY = (sy - stagePos.y) / stageScale;
+		const imgX = (groupX - fit.offsetX) / fit.scale;
+		const imgY = (groupY - fit.offsetY) / fit.scale;
+		return { x: imgX, y: imgY };
+	}, [fit, image, stagePos, stageScale]);
+
+	const zoomTo = useCallback((newScale: number, focus: { x: number; y: number }) => {
 		const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newScale));
-		const pointTo = {
-			x: (focus.x - stagePos.x) / stageScale,
-			y: (focus.y - stagePos.y) / stageScale,
-		};
+		setStagePos((prev) => {
+			const pointX = (focus.x - prev.x) / stageScale;
+			const pointY = (focus.y - prev.y) / stageScale;
+			return { x: focus.x - pointX * clamped, y: focus.y - pointY * clamped };
+		});
 		setStageScale(clamped);
-		setStagePos({ x: focus.x - pointTo.x * clamped, y: focus.y - pointTo.y * clamped });
-	};
+	}, [stageScale]);
 
 	useImperativeHandle(ref, () => ({
 		zoomIn:    () => zoomTo(stageScale * ZOOM_STEP, { x: size.width / 2, y: size.height / 2 }),
 		zoomOut:   () => zoomTo(stageScale / ZOOM_STEP, { x: size.width / 2, y: size.height / 2 }),
 		resetZoom: () => { setStageScale(1); setStagePos({ x: 0, y: 0 }); },
-	}), [stageScale, stagePos, size]);
+	}), [stageScale, size, zoomTo]);
 
 	useEffect(() => {
-		if (mode === 'review') { setDrawStart(null); setDrawEnd(null); }
+		if (mode === 'review') { setGhost(null); }
+		dragRef.current = null;
 	}, [mode]);
 
-	useEffect(() => {
-		if (!transformerRef.current || !layerRef.current) return;
-		if (mode === 'drawing' && curatorBbox) {
-			const node = layerRef.current.findOne('#curator-bbox');
-			transformerRef.current.nodes(node ? [node] : []);
-		} else {
-			transformerRef.current.nodes([]);
-		}
-		transformerRef.current.getLayer()?.batchDraw();
-	}, [mode, curatorBbox]);
-
-	const getImagePos = (): { x: number; y: number } | null => {
-		const group = groupRef.current;
-		if (!group || !image) return null;
-		const pos = group.getRelativePointerPosition();
-		if (!pos) return null;
-		if (pos.x < 0 || pos.y < 0 || pos.x > image.width || pos.y > image.height) return null;
-		return pos;
-	};
-
-	const handleMouseDown = () => {
-		if (tool === 'pan') {
-			const ptr = stageRef.current?.getPointerPosition();
-			if (ptr) panLastRef.current = ptr;
-			return;
-		}
-		if (mode === 'drawing' && tool === 'rectangle' && image && !curatorBbox) {
-			const pos = getImagePos();
-			if (!pos) return;
-			setDrawStart(pos);
-			setDrawEnd(pos);
-		}
-	};
-
-	const handleMouseMove = () => {
-		if (tool === 'pan' && panLastRef.current) {
-			const ptr = stageRef.current?.getPointerPosition();
-			if (!ptr) return;
-			const dx = ptr.x - panLastRef.current.x;
-			const dy = ptr.y - panLastRef.current.y;
-			panLastRef.current = ptr;
-			setStagePos((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-			return;
-		}
-		if (mode === 'drawing' && tool === 'rectangle' && drawStart) {
-			const pos = getImagePos();
-			if (pos) setDrawEnd(pos);
-		}
-	};
-
-	const handleMouseUp = () => {
-		if (tool === 'pan') { panLastRef.current = null; return; }
-		if (mode === 'drawing' && drawStart && drawEnd && image) {
-			const r = normalize(drawStart, drawEnd);
-			if (r.width >= MIN_RECT && r.height >= MIN_RECT) {
-				onSetCuratorBbox(clamp(r, image.width, image.height));
-			}
-			setDrawStart(null);
-			setDrawEnd(null);
-		}
-	};
-
-	const handleWheel = (e: any) => {
-		if (typeof e.evt?.preventDefault === 'function') e.evt.preventDefault();
-		const ptr = stageRef.current?.getPointerPosition();
-		if (!ptr) return;
-		const direction = e.evt.deltaY > 0 ? -1 : 1;
-		const target = direction > 0 ? stageScale * 1.1 : stageScale / 1.1;
-		zoomTo(target, ptr);
-	};
-
-	const handleCuratorDragEnd = (node: Konva.Node) => {
-		if (!image || !curatorBbox) return;
-		const c = clamp({ x: node.x(), y: node.y(), width: curatorBbox.width, height: curatorBbox.height }, image.width, image.height);
-		onSetCuratorBbox(c);
-	};
-
-	const handleCuratorTransformEnd = (node: Konva.Node) => {
+	const handleBeginAt = useCallback((sx: number, sy: number) => {
 		if (!image) return;
-		const sx = node.scaleX();
-		const sy = node.scaleY();
-		const newW = (node as any).width() * sx;
-		const newH = (node as any).height() * sy;
-		node.scaleX(1);
-		node.scaleY(1);
-		onSetCuratorBbox(clamp({ x: node.x(), y: node.y(), width: newW, height: newH }, image.width, image.height));
-	};
+		if (tool === 'pan') {
+			dragRef.current = { kind: 'pan', startPos: { x: stagePos.x - sx, y: stagePos.y - sy } };
+			return;
+		}
+		const imgPt = screenToImage(sx, sy);
+		if (!imgPt) return;
 
-	if (Platform.OS !== 'web') {
-		return <View style={styles.fallback}><Text>Studio curator web uniquement.</Text></View>;
-	}
+		if (mode === 'drawing') {
+			if (curatorBbox) {
+				const handleHit = hitTestHandle(imgPt, curatorBbox, fit.scale * stageScale);
+				if (handleHit && tool === 'select') {
+					dragRef.current = { kind: 'resize', handle: handleHit, startShape: { ...curatorBbox }, startImg: imgPt };
+					return;
+				}
+				if (tool === 'select' && pointInRect(imgPt, curatorBbox)) {
+					dragRef.current = { kind: 'move', startShape: { x: curatorBbox.x, y: curatorBbox.y }, startImg: imgPt };
+					return;
+				}
+				// Already a curator bbox + rectangle tool: ignore (must clear first)
+				return;
+			}
+			if (tool === 'rectangle') {
+				dragRef.current = { kind: 'draw', startImg: imgPt };
+				setGhost({ x: imgPt.x, y: imgPt.y, width: 0, height: 0 });
+			}
+			return;
+		}
 
-	const ghost = drawStart && drawEnd ? normalize(drawStart, drawEnd) : null;
-	const stageCursor =
-		tool === 'pan' ? (panLastRef.current ? 'grabbing' : 'grab')
-		: (mode === 'drawing' && tool === 'rectangle' && image && !curatorBbox) ? 'crosshair'
-		: 'default';
+		// Review mode: click proposal to select
+		const ordered = proposals.map((p) => p.cvat_shape_id);
+		const hit = [...proposals].reverse().find((p) => pointInRect(imgPt, p as any));
+		if (hit) {
+			onToggleSelect(hit.cvat_shape_id, 'single', ordered);
+		}
+	}, [image, tool, mode, screenToImage, stagePos, curatorBbox, fit.scale, stageScale, proposals, onToggleSelect]);
 
-	const strokeUnit = ANNOTATOR_STROKE_WIDTH / (fit.scale * stageScale);
-	const dashUnit  = 6 / (fit.scale * stageScale);
-	const curatorStrokeUnit = CURATOR_STROKE_WIDTH / (fit.scale * stageScale);
-	const ordered = proposals.map((p) => p.cvat_shape_id);
+	const handleUpdateAt = useCallback((sx: number, sy: number) => {
+		const drag = dragRef.current;
+		if (!drag || !image) return;
+		if (drag.kind === 'pan') {
+			setStagePos({ x: drag.startPos.x + sx, y: drag.startPos.y + sy });
+			return;
+		}
+		const imgPt = screenToImage(sx, sy);
+		if (!imgPt) return;
+		if (drag.kind === 'draw') {
+			setGhost(normalize(drag.startImg, imgPt));
+			return;
+		}
+		if (drag.kind === 'move' && curatorBbox) {
+			const dx = imgPt.x - drag.startImg.x;
+			const dy = imgPt.y - drag.startImg.y;
+			onSetCuratorBbox(clamp({ x: drag.startShape.x + dx, y: drag.startShape.y + dy, width: curatorBbox.width, height: curatorBbox.height }, image.width, image.height));
+			return;
+		}
+		if (drag.kind === 'resize') {
+			const dx = imgPt.x - drag.startImg.x;
+			const dy = imgPt.y - drag.startImg.y;
+			onSetCuratorBbox(clamp(resizeFromHandle(drag.startShape, drag.handle, dx, dy), image.width, image.height));
+		}
+	}, [image, screenToImage, curatorBbox, onSetCuratorBbox]);
+
+	const handleEnd = useCallback(() => {
+		const drag = dragRef.current;
+		if (drag?.kind === 'draw' && ghost && image) {
+			if (ghost.width >= MIN_RECT && ghost.height >= MIN_RECT) {
+				onSetCuratorBbox(clamp(ghost, image.width, image.height));
+			}
+		}
+		dragRef.current = null;
+		setGhost(null);
+	}, [ghost, image, onSetCuratorBbox]);
+
+	const handlePinchBegin = useCallback((focalX: number, focalY: number) => {
+		pinchStartRef.current = { scale: stageScale, pos: { ...stagePos }, focal: { x: focalX, y: focalY } };
+	}, [stageScale, stagePos]);
+
+	const handlePinchUpdate = useCallback((delta: number, focalX: number, focalY: number) => {
+		const start = pinchStartRef.current;
+		if (!start) return;
+		const newScale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, start.scale * delta));
+		const pointX = (start.focal.x - start.pos.x) / start.scale;
+		const pointY = (start.focal.y - start.pos.y) / start.scale;
+		setStageScale(newScale);
+		setStagePos({ x: focalX - pointX * newScale, y: focalY - pointY * newScale });
+	}, []);
+
+	const handlePinchEnd = useCallback(() => { pinchStartRef.current = null; }, []);
+
+	const panGesture = useMemo(() => Gesture.Pan()
+		.minDistance(0)
+		.onBegin((e) => { runOnJS(handleBeginAt)(e.x, e.y); })
+		.onUpdate((e) => { runOnJS(handleUpdateAt)(e.x, e.y); })
+		.onEnd(() => { runOnJS(handleEnd)(); })
+		.onFinalize(() => { runOnJS(handleEnd)(); })
+	, [handleBeginAt, handleUpdateAt, handleEnd]);
+
+	const pinchGesture = useMemo(() => Gesture.Pinch()
+		.onBegin((e) => { runOnJS(handlePinchBegin)(e.focalX, e.focalY); })
+		.onUpdate((e) => { runOnJS(handlePinchUpdate)(e.scale, e.focalX, e.focalY); })
+		.onEnd(() => { runOnJS(handlePinchEnd)(); })
+	, [handlePinchBegin, handlePinchUpdate, handlePinchEnd]);
+
+	const composedGesture = useMemo(() => Gesture.Simultaneous(pinchGesture, panGesture), [pinchGesture, panGesture]);
+
+	const onWheelWeb = Platform.OS === 'web'
+		? (e: any) => {
+			e?.preventDefault?.();
+			const rect = (e?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect?.();
+			const localX = rect ? e.clientX - rect.left : size.width / 2;
+			const localY = rect ? e.clientY - rect.top  : size.height / 2;
+			const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+			zoomTo(stageScale * factor, { x: localX, y: localY });
+		}
+		: undefined;
+
+	const onPointerMoveWeb = Platform.OS === 'web'
+		? (e: any) => {
+			if (!image) return;
+			const rect = (e?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect?.();
+			if (!rect) return;
+			const sx = e.clientX - rect.left;
+			const sy = e.clientY - rect.top;
+			const imgPt = screenToImage(sx, sy);
+			if (!imgPt) { onHover(null); return; }
+			const hit = [...proposals].reverse().find((p) => pointInRect(imgPt, p as any));
+			if (hit) onHover({ proposal: hit, x: sx, y: sy }); else onHover(null);
+		}
+		: undefined;
+
+	const annotatorStrokeWidth = ANNOTATOR_STROKE_WIDTH / (fit.scale * stageScale);
+	const curatorStrokeWidth   = CURATOR_STROKE_WIDTH   / (fit.scale * stageScale);
+	const dashUnit = 6 / (fit.scale * stageScale);
+	const handleW  = HANDLE_SIZE / (fit.scale * stageScale);
+	const opFloat  = opacityToFloat(opacity);
 
 	return (
 		<View
@@ -214,109 +319,85 @@ export const CuratorCanvas = forwardRef<CuratorCanvasHandle, Props>(({
 				const { width, height } = e.nativeEvent.layout;
 				setSize({ width, height });
 			}}
+			{...(Platform.OS === 'web' ? { onWheel: onWheelWeb, onPointerMove: onPointerMoveWeb, onPointerLeave: () => onHover(null) } as any : {})}
 		>
 			{loading && <View style={styles.overlay} pointerEvents="none"><ActivityIndicator size="large" color={COLORS.primary} /></View>}
 			{error && <View style={styles.overlay} pointerEvents="none"><Text style={styles.errorText}>Erreur : {error}</Text></View>}
 
-			{size.width > 0 && size.height > 0 && (
-				<Stage
-					ref={stageRef as any}
-					width={size.width}
-					height={size.height}
-					scaleX={stageScale}
-					scaleY={stageScale}
-					x={stagePos.x}
-					y={stagePos.y}
-					onMouseDown={handleMouseDown}
-					onMouseMove={handleMouseMove}
-					onMouseUp={handleMouseUp}
-					onMouseLeave={handleMouseUp}
-					onWheel={handleWheel}
-					style={{ cursor: stageCursor }}
-				>
-					<Layer ref={layerRef as any}>
-						<Group ref={groupRef as any} x={fit.offsetX} y={fit.offsetY} scaleX={fit.scale} scaleY={fit.scale}>
-							{image && <KonvaImage image={image} listening />}
-							{proposals.map((p) => {
-								const isSelected = selectedIds.has(p.cvat_shape_id);
-								const op = isSelected ? 1 : opacityToFloat(opacity);
-								return (
-									<Rect
-										key={p.cvat_shape_id}
-										id={`proposal-${p.cvat_shape_id}`}
-										x={p.x} y={p.y}
-										width={p.width} height={p.height}
-										stroke={annotatorColor}
-										strokeWidth={strokeUnit}
-										strokeScaleEnabled={false}
-										fill={`${annotatorColor}22`}
-										opacity={op}
-										listening={op > 0 && tool !== 'pan'}
-										onClick={(e) => {
-											if (tool === 'pan') return;
-											const native = e.evt as MouseEvent;
-											const kind: 'single' | 'toggle' | 'range' =
-												native.shiftKey ? 'range'
-												: (native.ctrlKey || native.metaKey) ? 'toggle'
-												: 'single';
-											onToggleSelect(p.cvat_shape_id, kind, ordered);
-											e.cancelBubble = true;
-										}}
-										onMouseEnter={(e) => {
-											if (op === 0) return;
-											const stage = e.target.getStage();
-											const ptr = stage?.getPointerPosition();
-											if (ptr) onHover({ proposal: p, x: ptr.x, y: ptr.y });
-										}}
-										onMouseMove={(e) => {
-											if (op === 0) return;
-											const stage = e.target.getStage();
-											const ptr = stage?.getPointerPosition();
-											if (ptr) onHover({ proposal: p, x: ptr.x, y: ptr.y });
-										}}
-										onMouseLeave={() => onHover(null)}
-									/>
-								);
-							})}
-							{curatorBbox && (
-								<Rect
-									id="curator-bbox"
-									x={curatorBbox.x} y={curatorBbox.y}
-									width={curatorBbox.width} height={curatorBbox.height}
-									stroke={CURATOR_COLOR}
-									strokeWidth={curatorStrokeUnit}
-									strokeScaleEnabled={false}
-									fill={`${CURATOR_COLOR}33`}
-									draggable={mode === 'drawing' && tool === 'select'}
-									onDragEnd={(e) => handleCuratorDragEnd(e.target)}
-									onTransformEnd={(e) => handleCuratorTransformEnd(e.target)}
-								/>
-							)}
-							{ghost && (
-								<Rect
-									x={ghost.x} y={ghost.y}
-									width={ghost.width} height={ghost.height}
-									stroke={CURATOR_COLOR}
-									strokeWidth={strokeUnit}
-									strokeScaleEnabled={false}
-									dash={[dashUnit * 1.5, dashUnit]}
-									listening={false}
-								/>
-							)}
-						</Group>
-						<Transformer
-							ref={transformerRef as any}
-							rotateEnabled={false}
-							flipEnabled={false}
-							ignoreStroke
-							anchorSize={8}
-							borderStroke={CURATOR_COLOR}
-							anchorStroke={CURATOR_COLOR}
-							anchorFill={COLORS.background.card}
-							boundBoxFunc={(_old, next) => (next.width < 4 || next.height < 4) ? _old : next}
-						/>
-					</Layer>
-				</Stage>
+			{size.width > 0 && size.height > 0 && image && (
+				<GestureDetector gesture={composedGesture}>
+					<View style={StyleSheet.absoluteFill}>
+						<Svg width={size.width} height={size.height}>
+							<G transform={`translate(${stagePos.x}, ${stagePos.y}) scale(${stageScale})`}>
+								<G transform={`translate(${fit.offsetX}, ${fit.offsetY}) scale(${fit.scale})`}>
+									<SvgImage href={image.uri} width={image.width} height={image.height} preserveAspectRatio="none" />
+									{proposals.map((p) => {
+										const isSelected = selectedIds.has(p.cvat_shape_id);
+										const op = isSelected ? 1 : opFloat;
+										if (op === 0) return null;
+										return (
+											<SvgRect
+												key={p.cvat_shape_id}
+												x={p.x}
+												y={p.y}
+												width={p.width}
+												height={p.height}
+												stroke={annotatorColor}
+												strokeWidth={annotatorStrokeWidth}
+												fill={`${annotatorColor}22`}
+												opacity={op}
+											/>
+										);
+									})}
+									{curatorBbox && (
+										<>
+											<SvgRect
+												x={curatorBbox.x}
+												y={curatorBbox.y}
+												width={curatorBbox.width}
+												height={curatorBbox.height}
+												stroke={CURATOR_COLOR}
+												strokeWidth={curatorStrokeWidth}
+												fill={`${CURATOR_COLOR}33`}
+											/>
+											{mode === 'drawing' && tool === 'select' ? (
+												<>
+													{RESIZE_HANDLES.map((handle) => {
+														const c = handleCenter(curatorBbox, handle);
+														return (
+															<SvgRect
+																key={handle}
+																x={c.x - handleW / 2}
+																y={c.y - handleW / 2}
+																width={handleW}
+																height={handleW}
+																fill={COLORS.background.card}
+																stroke={CURATOR_COLOR}
+																strokeWidth={annotatorStrokeWidth}
+															/>
+														);
+													})}
+												</>
+											) : null}
+										</>
+									)}
+									{ghost && (
+										<SvgRect
+											x={ghost.x}
+											y={ghost.y}
+											width={ghost.width}
+											height={ghost.height}
+											stroke={CURATOR_COLOR}
+											strokeWidth={annotatorStrokeWidth}
+											strokeDasharray={`${dashUnit * 1.5},${dashUnit}`}
+											fill="transparent"
+										/>
+									)}
+								</G>
+							</G>
+						</Svg>
+					</View>
+				</GestureDetector>
 			)}
 		</View>
 	);
@@ -328,5 +409,4 @@ const styles = StyleSheet.create({
 	container: { flex: 1, position: 'relative', backgroundColor: COLORS.background.imagePlaceholder, overflow: 'hidden' },
 	overlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
 	errorText: { ...TYPOGRAPHY.body, color: COLORS.danger },
-	fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
 });

@@ -9,6 +9,7 @@ import { MediaMetadataService } from '@/services/api/MediaMetadataService';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
+import { blobToPickedFile } from '@/shared/utils/imageProcessing';
 
 const FRAME_STEP_SECONDS = 1 / 30;
 const SEEK_SETTLE_MS = 60;
@@ -207,8 +208,7 @@ export const VideoExtractorScreen: React.FC<Props> = ({ videoId }) => {
 				const num = await cvat.getNextUploadNumber();
 				const baseName = `${self.username}_${date}_${String(num).padStart(4, '0')}_frame`;
 				const fileName = `${baseName}.jpg`;
-				const file = new File([f.blob], fileName, { type: 'image/jpeg' });
-				const asset = { file, uri: '', fileSize: file.size, mimeType: 'image/jpeg' };
+				const asset = blobToPickedFile(f.blob, fileName, 'image/jpeg');
 
 				const taskId = await cvat.uploadMedia(baseName, [asset]);
 				await cvat.waitForTaskData(taskId);

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Platform, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { confirm } from '@/shared/utils/dialog';
 import { toast } from '@/shared/toast/Toast';
 import { AdminService, SpeciesEditHistoryEntry } from '@/services/api/AdminService';
 import { COLORS } from '@/shared/theme/colors';
@@ -33,10 +34,7 @@ export const AdminSpeciesHistoryScreen: React.FC = () => {
 
 	const handleRevert = async (entry: SpeciesEditHistoryEntry) => {
 		const m = `Annuler cette modification ? L'espèce reviendra à son état précédent et un nouvel événement sera enregistré dans l'historique pour traçabilité.`;
-		const proceed = Platform.OS === 'web' ? window.confirm(m) : await new Promise<boolean>((res) => Alert.alert('Annuler la modification', m, [
-			{ text: 'Non', style: 'cancel', onPress: () => res(false) },
-			{ text: 'Annuler', style: 'destructive', onPress: () => res(true) },
-		]));
+		const proceed = await confirm(m, { title: 'Annuler la modification', confirmLabel: 'Annuler', cancelLabel: 'Non', destructive: true });
 		if (!proceed) return;
 		setSubmitting(true);
 		try {

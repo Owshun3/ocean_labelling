@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { attachBanInterceptor } from './banInterceptor';
+import { appendToFormData, PickedFile } from '@/shared/utils/filePicker';
 
 import { APP_API_BASE } from './runtimeUrls';
 
@@ -358,9 +359,9 @@ export class AdminService {
 		return resp.data;
 	}
 
-	async uploadHelpVideo(file: File, onProgress?: (pct: number) => void): Promise<{ filename: string; size_bytes: number; content_type: string }> {
+	async uploadHelpVideo(file: PickedFile, onProgress?: (pct: number) => void): Promise<{ filename: string; size_bytes: number; content_type: string }> {
 		const fd = new FormData();
-		fd.append('video', file, file.name);
+		appendToFormData(fd, 'video', file);
 		const resp = await adminClient.post('/help-video', fd, {
 			onUploadProgress: (e) => {
 				if (e.total && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
@@ -373,9 +374,9 @@ export class AdminService {
 		await adminClient.delete('/help-video');
 	}
 
-	async uploadLogo(file: File, onProgress?: (pct: number) => void): Promise<{ filename: string; size_bytes: number; content_type: string }> {
+	async uploadLogo(file: PickedFile, onProgress?: (pct: number) => void): Promise<{ filename: string; size_bytes: number; content_type: string }> {
 		const fd = new FormData();
-		fd.append('logo', file, file.name);
+		appendToFormData(fd, 'logo', file);
 		const resp = await adminClient.post('/logo', fd, {
 			onUploadProgress: (e) => {
 				if (e.total && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
@@ -398,12 +399,12 @@ export class AdminService {
 		return resp.data;
 	}
 
-	async runExport(filters: ExportFilters): Promise<{ filename: string; blob: Blob }> {
-		const resp = await adminClient.post('/export/run', filters, { responseType: 'blob' });
+	async runExport(filters: ExportFilters): Promise<{ filename: string; data: ArrayBuffer }> {
+		const resp = await adminClient.post('/export/run', filters, { responseType: 'arraybuffer' });
 		const disposition = (resp.headers['content-disposition'] as string | undefined) || '';
 		const match = /filename="([^"]+)"/.exec(disposition);
 		const filename = match?.[1] || `ocean-export-${new Date().toISOString().slice(0, 10)}.zip`;
-		return { filename, blob: resp.data as Blob };
+		return { filename, data: resp.data as ArrayBuffer };
 	}
 }
 

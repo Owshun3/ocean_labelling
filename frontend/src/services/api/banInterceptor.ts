@@ -1,6 +1,7 @@
 import { AxiosInstance } from 'axios';
 import { Platform } from 'react-native';
 import { clearSessionAlive, clearUserProfile, isSessionAlive } from './authStorage';
+import { getRouterRef } from './routerRef';
 
 const BAN_SESSION_KEY      = 'ocean_ban_info';
 const SESSION_EXPIRED_KEY  = 'ocean_session_expired';
@@ -17,6 +18,25 @@ export type SessionExpiredReason = 'token_invalid' | 'cvat_unreachable';
 export interface SessionExpiredInfo {
 	reason: SessionExpiredReason;
 	detail: string | null;
+}
+
+// In-memory fallback for environments without sessionStorage (mobile).
+// On web we mirror to sessionStorage so a hard refresh still surfaces the message.
+let banInfoMem: BanSessionInfo | null = null;
+let sessionExpiredMem: SessionExpiredInfo | null = null;
+
+function storeBan(info: BanSessionInfo): void {
+	banInfoMem = info;
+	if (Platform.OS === 'web' && typeof window !== 'undefined') {
+		try { window.sessionStorage.setItem(BAN_SESSION_KEY, JSON.stringify(info)); } catch {}
+	}
+}
+
+function storeSessionExpired(info: SessionExpiredInfo): void {
+	sessionExpiredMem = info;
+	if (Platform.OS === 'web' && typeof window !== 'undefined') {
+		try { window.sessionStorage.setItem(SESSION_EXPIRED_KEY, JSON.stringify(info)); } catch {}
+	}
 }
 
 function isBanResponse(status: number, data: any): boolean {
@@ -37,12 +57,18 @@ function detectSessionExpired(status: number, data: any): SessionExpiredInfo | n
 }
 
 async function clearAndRedirect(): Promise<boolean> {
-	if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
 	clearSessionAlive();
 	clearUserProfile();
-	if (window.location.pathname !== LOGIN_PATH) {
-		window.location.href = LOGIN_PATH;
-		return true;
+	if (Platform.OS === 'web' && typeof window !== 'undefined') {
+		if (window.location.pathname !== LOGIN_PATH) {
+			window.location.href = LOGIN_PATH;
+			return true;
+		}
+		return false;
+	}
+	const router = getRouterRef();
+	if (router) {
+		try { router.replace('/(auth)/login' as any); return true; } catch {}
 	}
 	return false;
 }
@@ -57,13 +83,11 @@ export function attachBanInterceptor(client: AxiosInstance): void {
 			const data   = error?.response?.data;
 
 			if (isBanResponse(status, data)) {
-				try {
-					sessionStorage.setItem(BAN_SESSION_KEY, JSON.stringify({
-						reason:     data.reason     ?? null,
-						expires_at: data.expires_at ?? null,
-						banned_at:  data.banned_at  ?? null,
-					}));
-				} catch {}
+				storeBan({
+					reason:     data.reason     ?? null,
+					expires_at: data.expires_at ?? null,
+					banned_at:  data.banned_at  ?? null,
+				});
 				const redirected = await clearAndRedirect();
 				if (redirected) return NEVER_RESOLVING;
 				return Promise.reject(error);
@@ -73,9 +97,7 @@ export function attachBanInterceptor(client: AxiosInstance): void {
 			if (expired) {
 				const hadSession = isSessionAlive();
 				if (hadSession) {
-					try {
-						sessionStorage.setItem(SESSION_EXPIRED_KEY, JSON.stringify(expired));
-					} catch {}
+					storeSessionExpired(expired);
 					const redirected = await clearAndRedirect();
 					if (redirected) return NEVER_RESOLVING;
 				}
@@ -87,27 +109,47 @@ export function attachBanInterceptor(client: AxiosInstance): void {
 }
 
 export function consumeBanInfo(): BanSessionInfo | null {
-	if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
-	try {
-		const raw = sessionStorage.getItem(BAN_SESSION_KEY);
-		if (!raw) return null;
-		sessionStorage.removeItem(BAN_SESSION_KEY);
-		return JSON.parse(raw) as BanSessionInfo;
-	} catch {
-		return null;
+	if (banInfoMem) {
+		const info = banInfoMem;
+		banInfoMem = null;
+		if (Platform.OS === 'web' && typeof window !== 'undefined') {
+			try { window.sessionStorage.removeItem(BAN_SESSION_KEY); } catch {}
+		}
+		return info;
 	}
+	if (Platform.OS === 'web' && typeof window !== 'undefined') {
+		try {
+			const raw = window.sessionStorage.getItem(BAN_SESSION_KEY);
+			if (!raw) return null;
+			window.sessionStorage.removeItem(BAN_SESSION_KEY);
+			return JSON.parse(raw) as BanSessionInfo;
+		} catch {
+			return null;
+		}
+	}
+	return null;
 }
 
 export function consumeSessionExpired(): SessionExpiredInfo | null {
-	if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
-	try {
-		const raw = sessionStorage.getItem(SESSION_EXPIRED_KEY);
-		if (!raw) return null;
-		sessionStorage.removeItem(SESSION_EXPIRED_KEY);
-		return JSON.parse(raw) as SessionExpiredInfo;
-	} catch {
-		return null;
+	if (sessionExpiredMem) {
+		const info = sessionExpiredMem;
+		sessionExpiredMem = null;
+		if (Platform.OS === 'web' && typeof window !== 'undefined') {
+			try { window.sessionStorage.removeItem(SESSION_EXPIRED_KEY); } catch {}
+		}
+		return info;
 	}
+	if (Platform.OS === 'web' && typeof window !== 'undefined') {
+		try {
+			const raw = window.sessionStorage.getItem(SESSION_EXPIRED_KEY);
+			if (!raw) return null;
+			window.sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+			return JSON.parse(raw) as SessionExpiredInfo;
+		} catch {
+			return null;
+		}
+	}
+	return null;
 }
 
 export function formatRemaining(expiresAt: string | null): string {

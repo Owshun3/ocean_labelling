@@ -1,7 +1,10 @@
+import 'react-native-gesture-handler';
 import { Slot, useSegments, useRouter, Redirect, Href } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { isSessionAlive, getUserProfile } from '@/services/api/authStorage';
+import { setRouterRef } from '@/services/api/routerRef';
 import { usePublicSettings } from '@/shared/hooks/usePublicSettings';
 import { MaintenanceScreen } from '@/features/maintenance/MaintenanceScreen';
 import { ToastHost } from '@/shared/toast/Toast';
@@ -33,6 +36,11 @@ export default function RootLayout() {
 	const router = useRouter();
 	const settings = usePublicSettings();
 	const target = decide(segments);
+
+	useEffect(() => {
+		setRouterRef(router);
+		return () => setRouterRef(null);
+	}, [router]);
 
 	useEffect(() => {
 		if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -86,10 +94,10 @@ export default function RootLayout() {
 		// Admin authentifié : accès complet (le middleware backend bypass maintenance pour lui).
 		if (!(inAuthGroup || isAdmin)) {
 			return (
-				<>
+				<GestureHandlerRootView style={{ flex: 1 }}>
 					<MaintenanceScreen />
 					<ToastHost />
-				</>
+				</GestureHandlerRootView>
 			);
 		}
 	}
@@ -99,9 +107,9 @@ export default function RootLayout() {
 	}
 
 	return (
-		<>
+		<GestureHandlerRootView style={{ flex: 1 }}>
 			<Slot />
 			<ToastHost />
-		</>
+		</GestureHandlerRootView>
 	);
 }

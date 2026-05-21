@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { apiClient } from './axiosClient';
+import { appendToFormData, PickedFile } from '@/shared/utils/filePicker';
 
 const CONSENSUS_REPLICAS_MAX = 50;
 const CONSENSUS_REPLICAS = Math.min(2, CONSENSUS_REPLICAS_MAX);
@@ -21,7 +22,7 @@ export class CvatMediaService {
 		return current + 1;
 	}
 
-	async uploadMedia(baseName: string, files: any[]): Promise<number> {
+	async uploadMedia(baseName: string, files: PickedFile[]): Promise<number> {
 		const taskResponse = await apiClient.post('/tasks', {
 			name: baseName,
 			labels: [{ name: 'item' }],
@@ -35,27 +36,9 @@ export class CvatMediaService {
 
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
-			const originalName = file.fileName || file.name || 'image.jpg';
-			const ext = originalName.match(/\.[^.]+$/)?.[0] ?? '.jpg';
+			const ext = file.name.match(/\.[^.]+$/)?.[0] ?? '.jpg';
 			const fileName = `${baseName}_${String(i + 1).padStart(2, '0')}${ext}`;
-			const key = `client_files[${i}]`;
-
-			if (Platform.OS === 'web') {
-				if (file.file instanceof File) {
-					formData.append(key, file.file, fileName);
-				} else {
-					const response = await fetch(file.uri);
-					const blob = await response.blob();
-					const mimeType = file.mimeType || 'image/jpeg';
-					formData.append(key, new File([blob], fileName, { type: mimeType }), fileName);
-				}
-			} else {
-				formData.append(key, {
-					uri: file.uri,
-					name: fileName,
-					type: file.mimeType || file.type || 'image/jpeg',
-				} as any);
-			}
+			appendToFormData(formData, `client_files[${i}]`, file, fileName);
 		}
 
 		await apiClient.post(`/tasks/${taskId}/data`, formData);

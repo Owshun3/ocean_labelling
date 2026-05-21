@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { attachBanInterceptor } from './banInterceptor';
+import { appendToFormData, PickedFile } from '@/shared/utils/filePicker';
 
 import { APP_API_BASE } from './runtimeUrls';
 
@@ -27,8 +28,8 @@ export interface UserVideo {
 }
 
 export interface UploadVideoOptions {
-	file: File;
-	poster?: Blob | null;
+	file: PickedFile;
+	poster?: PickedFile | null;
 	durationSeconds?: number | null;
 	width?: number | null;
 	height?: number | null;
@@ -63,8 +64,8 @@ export class VideoService {
 
 	async upload(opts: UploadVideoOptions): Promise<UploadedVideo> {
 		const fd = new FormData();
-		fd.append('video', opts.file, opts.file.name);
-		if (opts.poster) fd.append('poster', opts.poster, 'poster.jpg');
+		appendToFormData(fd, 'video', opts.file);
+		if (opts.poster) appendToFormData(fd, 'poster', opts.poster, 'poster.jpg');
 		fd.append('metadata', JSON.stringify({
 			duration_seconds: opts.durationSeconds ?? null,
 			width:  opts.width  ?? null,

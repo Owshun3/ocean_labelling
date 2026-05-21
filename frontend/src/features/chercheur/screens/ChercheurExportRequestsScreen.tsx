@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native';
+import { confirm } from '@/shared/utils/dialog';
+import { saveBinaryToDevice } from '@/shared/utils/fileDownload';
 import { toast } from '@/shared/toast/Toast';
 import { ChercheurService, ChercheurExportRequest, ExportRequestStatus } from '@/services/api/ChercheurService';
 import type { ExportFilters, ExportPreview, ExportSourceType } from '@/services/api/AdminService';
@@ -138,31 +140,22 @@ export const ChercheurExportRequestsScreen: React.FC = () => {
 
 	const handleDownload = async (req: ChercheurExportRequest) => {
 		try {
-			const { filename, blob } = await svc.download(req.id);
-			if (Platform.OS === 'web') {
-				const url = URL.createObjectURL(blob);
-				const a = document.createElement('a');
-				a.href = url; a.download = filename;
-				document.body.appendChild(a); a.click(); a.remove();
-				setTimeout(() => URL.revokeObjectURL(url), 1000);
-				toast.success('Export téléchargé.');
-			}
+			const { filename, data } = await svc.download(req.id);
+			const ok = await saveBinaryToDevice(data, filename, 'application/zip');
+			toast[ok ? 'success' : 'error'](ok ? 'Export téléchargé.' : 'Téléchargement impossible.');
 		} catch (err: any) {
-			const data = err?.response?.data;
+			const payload = err?.response?.data;
 			let msg = err?.message || 'Téléchargement impossible.';
-			if (data instanceof Blob) {
-				try { msg = JSON.parse(await data.text())?.error || msg; } catch {}
-			} else if (data?.error) msg = data.error;
+			if (payload instanceof ArrayBuffer) {
+				try { msg = JSON.parse(new TextDecoder().decode(payload))?.error || msg; } catch {}
+			} else if (payload?.error) msg = payload.error;
 			toast.error(msg);
 		}
 	};
 
 	const handleWithdraw = async (req: ChercheurExportRequest) => {
 		const m = 'Annuler cette demande en attente ?';
-		const proceed = Platform.OS === 'web' ? window.confirm(m) : await new Promise<boolean>((res) => Alert.alert('Annuler', m, [
-			{ text: 'Non', style: 'cancel', onPress: () => res(false) },
-			{ text: 'Oui',  style: 'destructive', onPress: () => res(true) },
-		]));
+		const proceed = await confirm(m, { title: 'Annuler', confirmLabel: 'Oui', cancelLabel: 'Non', destructive: true });
 		if (!proceed) return;
 		try {
 			await svc.withdraw(req.id);

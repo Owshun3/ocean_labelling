@@ -48,10 +48,10 @@ export class ChercheurService {
 		await client.delete(`/export-requests/${id}`);
 	}
 
-	async download(id: number): Promise<{ filename: string; blob: Blob }> {
-		const resp = await client.post(`/export-requests/${id}/download`, {}, { responseType: 'blob' });
+	async download(id: number): Promise<{ filename: string; data: ArrayBuffer }> {
+		const resp = await client.post(`/export-requests/${id}/download`, {}, { responseType: 'arraybuffer' });
 		const disposition = (resp.headers['content-disposition'] as string | undefined) || '';
 		const match = /filename="([^"]+)"/.exec(disposition);
-		return { filename: match?.[1] || `export-${id}.zip`, blob: resp.data as Blob };
+		return { filename: match?.[1] || `export-${id}.zip`, data: resp.data as ArrayBuffer };
 	}
 }

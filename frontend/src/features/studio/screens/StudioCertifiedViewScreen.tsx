@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, StyleSheet, Pressable, Platform } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
 import { useRouter, Href } from 'expo-router';
-import { Stage, Layer, Image as KonvaImage, Rect, Group } from 'react-konva';
+import Svg, { G, Image as SvgImage, Rect as SvgRect } from 'react-native-svg';
 import { StudioService, CertifiedView } from '@/services/api/StudioService';
 import { useStudioFrame } from '@/features/studio/hooks/useStudioFrame';
 import { BackButton } from '@/shared/components/BackButton';
@@ -21,7 +21,6 @@ export const StudioCertifiedViewScreen: React.FC<Props> = ({ taskId }) => {
 	const service = useMemo(() => new StudioService(), []);
 	const [data, setData] = useState<CertifiedView | null>(null);
 	const [loading, setLoading] = useState(true);
-	const containerRef = useRef<View>(null);
 
 	useEffect(() => {
 		service.getCertified(taskId)
@@ -67,27 +66,25 @@ export const StudioCertifiedViewScreen: React.FC<Props> = ({ taskId }) => {
 			</View>
 
 			<View style={styles.row}>
-				<View ref={containerRef as any} style={styles.canvasWrap}>
-					{Platform.OS === 'web' && img ? (
-						<Stage width={CANVAS_W} height={CANVAS_H} style={{ backgroundColor: '#000' }}>
-							<Layer>
-								<Group x={offsetX} y={offsetY} scaleX={scale} scaleY={scale}>
-									<KonvaImage image={img} width={img.width} height={img.height} />
-									{bbox && bbox.length === 4 ? (
-										<Rect
-											x={Math.min(bbox[0], bbox[2])}
-											y={Math.min(bbox[1], bbox[3])}
-											width={Math.abs(bbox[2] - bbox[0])}
-											height={Math.abs(bbox[3] - bbox[1])}
-											stroke="#06b6d4"
-											strokeWidth={3 / scale}
-											fill="rgba(6, 182, 212, 0.18)"
-											listening={false}
-										/>
-									) : null}
-								</Group>
-							</Layer>
-						</Stage>
+				<View style={styles.canvasWrap}>
+					{img ? (
+						<Svg width={CANVAS_W} height={CANVAS_H}>
+							<SvgRect x={0} y={0} width={CANVAS_W} height={CANVAS_H} fill="#000" />
+							<G transform={`translate(${offsetX}, ${offsetY}) scale(${scale})`}>
+								<SvgImage href={img.uri} width={img.width} height={img.height} preserveAspectRatio="none" />
+								{bbox && bbox.length === 4 ? (
+									<SvgRect
+										x={Math.min(bbox[0], bbox[2])}
+										y={Math.min(bbox[1], bbox[3])}
+										width={Math.abs(bbox[2] - bbox[0])}
+										height={Math.abs(bbox[3] - bbox[1])}
+										stroke="#06b6d4"
+										strokeWidth={3 / scale}
+										fill="rgba(6, 182, 212, 0.18)"
+									/>
+								) : null}
+							</G>
+						</Svg>
 					) : (
 						<View style={styles.canvasFallback}>
 							{frame.error ? <Text style={styles.canvasFallbackText}>{frame.error}</Text>
@@ -151,7 +148,7 @@ const styles = StyleSheet.create({
 	fichBtn: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, backgroundColor: COLORS.primary },
 	fichBtnText: { color: COLORS.text.inverse, fontWeight: '600', fontSize: 13 },
 
-	row: { flexDirection: 'row', gap: SPACING.md, alignItems: 'flex-start' },
+	row: { flexDirection: 'row', gap: SPACING.md, alignItems: 'flex-start', flexWrap: 'wrap' },
 	canvasWrap: { width: CANVAS_W, height: CANVAS_H, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#000' },
 	canvasFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background.main },
 	canvasFallbackText: { ...TYPOGRAPHY.body, color: COLORS.danger },

@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
+import { Image as RNImage } from 'react-native';
 import type { AxiosInstance } from 'axios';
 import { apiClient } from '@/services/api/axiosClient';
 
+export interface StudioImage {
+	uri: string;
+	width: number;
+	height: number;
+}
+
 interface State {
-	image: HTMLImageElement | null;
+	image: StudioImage | null;
 	loading: boolean;
 	error: string | null;
 }
@@ -14,14 +21,24 @@ interface FetchSpec {
 	params?: Record<string, any>;
 }
 
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+	const bytes = new Uint8Array(buf);
+	let binary = '';
+	const chunkSize = 0x8000;
+	for (let i = 0; i < bytes.length; i += chunkSize) {
+		const slice = bytes.subarray(i, i + chunkSize);
+		binary += String.fromCharCode.apply(null, Array.from(slice) as unknown as number[]);
+	}
+	return globalThis.btoa(binary);
+}
+
 export function useStudioFrame(jobId: number, frameNumber: number, custom?: FetchSpec): State {
-	const [image, setImage] = useState<HTMLImageElement | null>(null);
+	const [image, setImage] = useState<StudioImage | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
-		let objectUrl: string | null = null;
 		setLoading(true);
 		setError(null);
 		setImage(null);
@@ -38,22 +55,25 @@ export function useStudioFrame(jobId: number, frameNumber: number, custom?: Fetc
 		const params = custom?.params ?? { type: 'frame', number: frameNumber, quality: 'compressed' };
 
 		client
-			.get(path, { params, responseType: 'blob' })
+			.get(path, { params, responseType: 'arraybuffer' })
 			.then((resp) => {
 				if (cancelled) return;
-				objectUrl = URL.createObjectURL(resp.data);
-				const img = new Image();
-				img.onload = () => {
-					if (cancelled) return;
-					setImage(img);
-					setLoading(false);
-				};
-				img.onerror = () => {
-					if (cancelled) return;
-					setError('Image illisible');
-					setLoading(false);
-				};
-				img.src = objectUrl;
+				const mime = (resp.headers?.['content-type'] as string | undefined) || 'image/jpeg';
+				const b64 = arrayBufferToBase64(resp.data as ArrayBuffer);
+				const uri = `data:${mime};base64,${b64}`;
+				RNImage.getSize(
+					uri,
+					(width, height) => {
+						if (cancelled) return;
+						setImage({ uri, width, height });
+						setLoading(false);
+					},
+					() => {
+						if (cancelled) return;
+						setError('Image illisible');
+						setLoading(false);
+					},
+				);
 			})
 			.catch((err) => {
 				if (cancelled) return;
@@ -61,11 +81,8 @@ export function useStudioFrame(jobId: number, frameNumber: number, custom?: Fetc
 				setLoading(false);
 			});
 
-		return () => {
-			cancelled = true;
-			if (objectUrl) URL.revokeObjectURL(objectUrl);
-		};
-	}, [jobId, frameNumber]);
+		return () => { cancelled = true; };
+	}, [jobId, frameNumber, custom?.client, custom?.path, JSON.stringify(custom?.params)]);
 
 	return { image, loading, error };
 }

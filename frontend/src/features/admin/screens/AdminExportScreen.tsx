@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { toast } from '@/shared/toast/Toast';
+import { saveBinaryToDevice } from '@/shared/utils/fileDownload';
 import {
 	AdminService, ExportFacets, ExportFilters, ExportPreview, ExportSourceType,
 } from '@/services/api/AdminService';
@@ -164,27 +165,16 @@ export const AdminExportScreen: React.FC = () => {
 		}
 		setRunning(true);
 		try {
-			const { filename, blob } = await service.runExport(filters);
-			if (Platform.OS === 'web') {
-				const url = URL.createObjectURL(blob);
-				const a = document.createElement('a');
-				a.href = url;
-				a.download = filename;
-				document.body.appendChild(a);
-				a.click();
-				a.remove();
-				setTimeout(() => URL.revokeObjectURL(url), 1000);
-				toast.success(`Export terminé (${filename}).`);
-			} else {
-				toast.error('Téléchargement disponible sur web uniquement.');
-			}
+			const { filename, data } = await service.runExport(filters);
+			const ok = await saveBinaryToDevice(data, filename, 'application/zip');
+			toast[ok ? 'success' : 'error'](ok ? `Export terminé (${filename}).` : 'Téléchargement impossible.');
 		} catch (err: any) {
-			const data = err?.response?.data;
+			const payload = err?.response?.data;
 			let message = err?.message || 'Export impossible.';
-			if (data instanceof Blob) {
-				try { message = JSON.parse(await data.text())?.error || message; } catch {}
-			} else if (data?.error) {
-				message = data.error;
+			if (payload instanceof ArrayBuffer) {
+				try { message = JSON.parse(new TextDecoder().decode(payload))?.error || message; } catch {}
+			} else if (payload?.error) {
+				message = payload.error;
 			}
 			toast.error(message);
 		} finally {

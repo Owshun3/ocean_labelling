@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native';
+import { confirm } from '@/shared/utils/dialog';
 import { toast } from '@/shared/toast/Toast';
 import { SpeciesTagService, SpeciesTagGroup, SpeciesTagDefinition } from '@/services/api/SpeciesTagService';
 import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
@@ -135,10 +136,7 @@ export const AdminSpeciesTagsScreen: React.FC = () => {
 
 	const handleDeleteCategory = async (g: SpeciesTagGroup) => {
 		const msg = `Supprimer la catégorie « ${g.label} » et ses ${g.definitions.length} étiquette(s) ?\n\nLes espèces qui les utilisent garderont les étiquettes orphelines jusqu'à leur prochaine édition.\n\nSi tu veux juste les cacher temporairement, préfère « Archiver » étiquette par étiquette.`;
-		const proceed = Platform.OS === 'web' ? window.confirm(msg) : await new Promise<boolean>((res) => Alert.alert('Confirmer', msg, [
-			{ text: 'Annuler', style: 'cancel', onPress: () => res(false) },
-			{ text: 'Supprimer', style: 'destructive', onPress: () => res(true) },
-		]));
+		const proceed = await confirm(msg, { confirmLabel: 'Supprimer', destructive: true });
 		if (!proceed) return;
 		setSubmitting(true);
 		try {
@@ -190,10 +188,7 @@ export const AdminSpeciesTagsScreen: React.FC = () => {
 
 	const handleDeleteLabel = async (d: SpeciesTagDefinition) => {
 		const msg = `Supprimer définitivement l'étiquette « ${d.label} » ?\n\nÀ utiliser uniquement si aucune espèce ne l'utilise. Sinon préfère « Archiver » : l'étiquette reste lisible mais n'apparaît plus dans les nouveaux choix.`;
-		const proceed = Platform.OS === 'web' ? window.confirm(msg) : await new Promise<boolean>((res) => Alert.alert('Confirmer', msg, [
-			{ text: 'Annuler', style: 'cancel', onPress: () => res(false) },
-			{ text: 'Supprimer', style: 'destructive', onPress: () => res(true) },
-		]));
+		const proceed = await confirm(msg, { confirmLabel: 'Supprimer', destructive: true });
 		if (!proceed) return;
 		setSubmitting(true);
 		try {

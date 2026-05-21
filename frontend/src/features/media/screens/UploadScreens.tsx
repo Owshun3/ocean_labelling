@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Button, Image, Pressable, ScrollView, StyleSheet, Animated, Easing, Platform } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { View, Text, Button, Image, Pressable, ScrollView, StyleSheet, Animated, Easing } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { useVideoUpload } from '../hooks/useVideoUpload';
@@ -8,18 +7,12 @@ import { AppApiService } from '@/services/api/AppApiService';
 import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
+import { pickImages, pickFiles, PickedFile } from '@/shared/utils/filePicker';
 
 const DEFAULT_MAX_BATCH_BYTES = 200 * 1024 * 1024;
 const MEGABYTE = 1024 * 1024;
 
 const ACCEPTED_VIDEO_MIMES = ['video/mp4', 'video/webm', 'video/quicktime'];
-
-const fileSize = (img: any): number => {
-	if (typeof img?.fileSize === 'number') return img.fileSize;
-	if (img?.file && typeof img.file.size === 'number') return img.file.size;
-	if (img instanceof File) return img.size;
-	return 0;
-};
 
 type Mode = 'photos' | 'videos';
 
@@ -63,11 +56,11 @@ export const UploadScreen: React.FC = () => {
 };
 
 const PhotosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBatchBytes, router }) => {
-	const [selectedImages, setSelectedImages] = useState<any[]>([]);
+	const [selectedImages, setSelectedImages] = useState<PickedFile[]>([]);
 	const { upload, isUploading, progress } = useMediaUpload();
 
 	const totalBytes = useMemo(
-		() => selectedImages.reduce((sum, img) => sum + fileSize(img), 0),
+		() => selectedImages.reduce((sum, img) => sum + (img.size || 0), 0),
 		[selectedImages]
 	);
 	const totalMB  = totalBytes / MEGABYTE;
@@ -90,12 +83,8 @@ const PhotosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 	const animatedWidth = animatedFill.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
 
 	const pickImage = async () => {
-		const result = await ImagePicker.launchImageLibraryAsync({
-			mediaTypes: ImagePicker.MediaTypeOptions.Images,
-			allowsMultipleSelection: true,
-			quality: 0.8,
-		});
-		if (!result.canceled) setSelectedImages(result.assets);
+		const picked = await pickImages({ allowsMultiple: true, quality: 0.8 });
+		if (picked.length > 0) setSelectedImages(picked);
 	};
 	const removeImage = (index: number) => setSelectedImages((prev) => prev.filter((_, i) => i !== index));
 
@@ -174,36 +163,22 @@ const PhotosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 };
 
 const VideosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBatchBytes, router }) => {
-	const [files, setFiles] = useState<File[]>([]);
+	const [files, setFiles] = useState<PickedFile[]>([]);
 	const { upload, isUploading, progress } = useVideoUpload();
 
-	const totalBytes = files.reduce((s, f) => s + f.size, 0);
+	const totalBytes = files.reduce((s, f) => s + (f.size || 0), 0);
 	const totalMB  = totalBytes / MEGABYTE;
 	const limitMB  = maxBatchBytes / MEGABYTE;
 	const overLimit = totalBytes > maxBatchBytes;
 
 	const pickVideos = async () => {
-		if (Platform.OS !== 'web') {
-			toast.error('Upload vidéo : web uniquement pour l\'instant.');
+		const picked = await pickFiles({ mimeTypes: ACCEPTED_VIDEO_MIMES, allowsMultiple: true });
+		const valid = picked.filter((f) => ACCEPTED_VIDEO_MIMES.includes(f.mimeType) || /\.(mp4|webm|mov)$/i.test(f.name));
+		if (picked.length > 0 && valid.length === 0) {
+			toast.error('Aucune vidéo valide. Formats acceptés : MP4, WebM, MOV.');
 			return;
 		}
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = ACCEPTED_VIDEO_MIMES.join(',');
-		input.multiple = true;
-		input.style.display = 'none';
-		input.addEventListener('change', () => {
-			const list = Array.from(input.files || []);
-			const valid = list.filter((f) => ACCEPTED_VIDEO_MIMES.includes(f.type) || /\.(mp4|webm|mov)$/i.test(f.name));
-			if (valid.length === 0) {
-				toast.error('Aucune vidéo valide. Formats acceptés : MP4, WebM, MOV.');
-				return;
-			}
-			setFiles(valid);
-		}, { once: true });
-		document.body.appendChild(input);
-		input.click();
-		setTimeout(() => { input.parentNode?.removeChild(input); }, 0);
+		if (valid.length > 0) setFiles(valid);
 	};
 
 	const removeFile = (idx: number) => setFiles((prev) => prev.filter((_, i) => i !== idx));
@@ -237,7 +212,7 @@ const VideosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 				{files.map((f, idx) => (
 					<View key={idx} style={styles.videoChip}>
 						<Text numberOfLines={1} style={styles.videoChipName}>{f.name}</Text>
-						<Text style={styles.videoChipMeta}>{(f.size / MEGABYTE).toFixed(1)} MB · {f.type || 'video'}</Text>
+						<Text style={styles.videoChipMeta}>{(f.size / MEGABYTE).toFixed(1)} MB · {f.mimeType || 'video'}</Text>
 						<Pressable onPress={() => removeFile(idx)} style={styles.removeBtn} hitSlop={8} disabled={isUploading}>
 							<Text style={styles.removeBtnText}>✕</Text>
 						</Pressable>
