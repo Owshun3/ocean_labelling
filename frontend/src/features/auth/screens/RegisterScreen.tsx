@@ -81,7 +81,7 @@ export const RegisterScreen: React.FC = () => {
 
 				<View style={styles.inputGroup}>
 					<Text style={styles.label}>Adresse email</Text>
-					<TextInput style={[styles.input, { fontStyle: email === '' ? 'italic' : 'normal' }]} placeholder="ex: jean@upf.pf" placeholderTextColor={COLORS.text.placeholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+					<TextInput style={[styles.input, { fontStyle: email === '' ? 'italic' : 'normal' }]} placeholder="ex: prenom.nom@exemple.com" placeholderTextColor={COLORS.text.placeholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
 				</View>
 				
 				<View style={styles.inputGroup}>

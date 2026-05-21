@@ -9,64 +9,60 @@ Projet développé par **SHAN YAN Océan** dans le cadre du **stage de Licence 3
 - **Tuteur de stage** : Sébastien CHABRIER
 - **Encadrement** : Bryan DALLEST
 - **Partenaires** :
-  - **DRM** — Direction des Ressources Marines (Polynésie française)
-  - **UPF** — Université de la Polynésie Française
-  - **GePaSud** — laboratoire de recherche de l'UPF
+  - **DRM** : Direction des Ressources Marines (Polynésie française)
+  - **UPF** : Université de la Polynésie Française
+  - **GePaSud** : laboratoire de recherche de l'UPF
 
 La plateforme outille la collecte et l'annotation collaborative de données photo/vidéo sur les espèces marines et terrestres polynésiennes. Elle vise à constituer des jeux de données scientifiques exportables (format Datumaro) pour la recherche et la conservation.
 
 ## Architecture
 
 ```
-   ┌──────────────┐
-   │  Expo Web    │     React Native + react-native-web (TS strict)
-   │  port 8081   │     Stack cross-platform (web + iOS + Android)
-   └──────┬───────┘
-          │
-   ┌──────▼───────┐     reverse proxy + CORS + bloqueur d'URL CVAT
-   │ NGINX Gateway│     stratégie : seul point d'entrée HTTP/HTTPS
-   │  port 8888   │
-   └──────┬───────┘
-   ┌──────┴──────┬──────────────┐
-   │             │              │
-   ▼             ▼              ▼
- ┌─────────┐ ┌─────────┐  ┌─────────────────┐
- │ app-api │ │  CVAT   │  │ /app-api/static │
- │ Node    │ │ Django  │  │  bundle Expo    │
- │ Express │ │ Postgres│  │  (mode prod)    │
- │ + pg    │ │ + Redis │  └─────────────────┘
- │ port 3K │ │ ↔ pg int│
- └────┬────┘ └─────────┘
-      │
- ┌────▼────────┐
- │ PostgreSQL  │   tables app-api : user_roles, app_sessions, media_moderation,
- │ pg_data vol │   user_videos, species, curator_certifications, app_settings,
- └─────────────┘   admin_actions, user_bans, etc.
+                       ┌────────────────┐
+                       │   Expo Web     │   React Native + react-native-web
+                       │   port 8081    │   stack cross-platform (web/iOS/Android)
+                       └───────┬────────┘
+                               │
+                       ┌───────▼────────┐   reverse proxy + CORS
+                       │ NGINX Gateway  │   seul point d'entrée HTTP/HTTPS
+                       │   port 8888    │   bloque l'UI native CVAT
+                       └───────┬────────┘
+                               │
+            ┌──────────────────┼──────────────────┐
+            │                  │                  │
+            ▼                  ▼                  ▼
+     ┌────────────┐     ┌────────────┐     ┌──────────────┐
+     │  app-api   │     │    CVAT    │     │ Bundle Expo  │
+     │  Node      │     │   Django   │     │  statique    │
+     │  Express   │     │  Postgres  │     │  (mode prod) │
+     │  port 3000 │     │  + Redis   │     └──────────────┘
+     └─────┬──────┘     └────────────┘
+           │
+     ┌─────▼──────────┐
+     │  PostgreSQL    │   tables app-api :
+     │  pg_data vol   │   user_roles, app_sessions, media_moderation, user_videos,
+     └────────────────┘   species, curator_certifications, app_settings,
+                          admin_actions, user_bans, etc.
 ```
 
-Détails techniques étendus : [CLAUDE.md](CLAUDE.md). Procédures de déploiement : [PRODUCTION.md](PRODUCTION.md).
+Procédures de déploiement complètes : [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Workflow utilisateur
 
 ```
-                                  curator
-                                   (3+)
- annotateur                         │
-   (1+)                            ▼
-    │      modérateur          curation   admin
-    │       (4+)                   │      export
-    ▼          │                   ▼        ▼
- ┌──────┐  ┌───────────┐    ┌────────────┐  ┌────────────┐
- │upload│─▶│modération │───▶│ annotation │─▶│ certification │
- └──────┘  │valide/rej │    │ N jobs/    │  │ curator       │
-           └───────────┘    │ replicas   │  └──────┬────────┘
-                            └────────────┘         │
-                                                   ▼
-                                            ┌───────────────┐
-                                            │ Export        │
-                                            │ Datumaro      │
-                                            │ (chercheur)   │
-                                            └───────────────┘
+   annotateur (1+)         modérateur (4+)        curator (3+)         admin
+       │                         │                    │                  │
+       ▼                         ▼                    ▼                  ▼
+   ┌───────┐              ┌─────────────┐      ┌──────────────┐    ┌──────────┐
+   │upload │─────────────▶│ modération  │─────▶│  annotation  │───▶│  export  │
+   └───────┘              │ valide/rej  │      │  N replicas  │    │ Datumaro │
+                          └─────────────┘      └──────┬───────┘    └──────────┘
+                                                      │                  ▲
+                                                      ▼                  │
+                                              ┌───────────────┐          │
+                                              │ certification │──────────┘
+                                              │   curator     │
+                                              └───────────────┘
 ```
 
 Rôles (du moins privilégié au plus) :
@@ -187,7 +183,7 @@ Tous éditables sans redéploiement via `/admin/settings`. Search bar disponible
 | `platform.name` | « Ora te Fenua ! » | Nom affiché dans header + onglet navigateur. |
 | `platform.logo_filename` | `logo.png` (DRM + UPF bundlé) | Téléverser un logo personnalisé via le widget « Logo » du group Branding. |
 | `platform.welcome_message` | « Bienvenue… » | Affiché à la première connexion d'un nouvel utilisateur. |
-| `platform.privacy_policy` | Politique RGPD bundlée | Adapter au contexte juridique réel (DRM/UPF). Markdown léger : `##` titres, `-` listes, `[texte](url)`, `**gras**`. |
+| `platform.privacy_policy` | Politique RGPD bundlée | Adapter au contexte juridique réel. Markdown léger : `##` titres, `-` listes, `[texte](url)`, `**gras**`. |
 | `platform.contact_email` | vide | Email RGPD/support affiché au pied de page. |
 | `platform.contact_phone/hours/address` | vides | Optionnels, complètent le pied de page. |
 | `upload_max_bytes` | 200 Mo | Taille max d'un upload (photo ou vidéo unitaire). |
@@ -205,72 +201,29 @@ Tous éditables sans redéploiement via `/admin/settings`. Search bar disponible
 
 ### Logo par défaut bundlé
 
-Le logo DRM + UPF est livré dans `app-api/assets/default-logo.png`. Au premier démarrage de `app-api` sur un volume `ocean_videos` vide, il est automatiquement copié dans `/data/videos/.logo/logo.png` et le setting `platform.logo_filename` est seedé (voir [defaultLogoBootstrap.js](app-api/src/lib/defaultLogoBootstrap.js)). Pour remplacer le logo, utiliser le widget admin (l'asset bundlé n'est jamais re-écrasé après le premier boot).
+Le logo DRM + UPF est livré dans `app-api/assets/default-logo.png`. Au premier démarrage de `app-api` sur un volume `ocean_videos` vide, il est automatiquement copié dans `/data/videos/.logo/logo.png` et le setting `platform.logo_filename` est seedé (voir [defaultLogoBootstrap.js](app-api/src/lib/defaultLogoBootstrap.js)). Pour remplacer le logo, utiliser le widget admin (l'asset bundlé n'est jamais ré-écrasé après le premier boot).
 
 ---
 
-## Mise en production (déploiement réel HTTPS)
+## Mise en production (HTTPS)
 
-Procédure complète et détaillée : **[PRODUCTION.md](PRODUCTION.md)**.
+Procédure complète et détaillée : **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
-Synthèse des étapes principales :
+Résumé des étapes :
 
-### 1. Pré-requis externes
-
-- **VM Linux** avec Docker installé.
-- **Sous-domaine** pointant vers l'IP de la VM (ex. `otf.upf.pf` → A record côté DSI).
-- **Ports ouverts** côté firewall :
-  - `443` (HTTPS prod)
-  - `80` (challenge ACME Let's Encrypt)
-  - `8888` (optionnel, fallback HTTP)
-- **NE PAS exposer** : `8080` (Traefik CVAT interne), `5432` (postgres).
-
-### 2. Bundler le frontend en statique
-
-```bash
-cd frontend
-npx expo export -p web -o dist/
-```
-
-### 3. Émettre le certificat Let's Encrypt
-
-```bash
-docker compose stop gateway
-sudo docker run --rm -p 80:80 \
-  -v /etc/letsencrypt:/etc/letsencrypt \
-  certbot/certbot certonly --standalone \
-  -d otf.upf.pf --agree-tos -m <email> --non-interactive
-```
-
-### 4. Configurer NGINX HTTPS
-
-- Monter `dist/` + certs dans le service `gateway` (`docker-compose.yml`).
-- Activer la config `nginx/nginx-https.conf` (terminaison TLS + redirect HTTP→HTTPS).
-- Activer le rate-limiting sur `/auth/login`.
-
-### 5. Activer les flags `Secure` côté CVAT + app-api
-
-- `.env` racine : `CSRF_TRUSTED_ORIGINS=https://otf.upf.pf`
-- `cvat-extras/ocean.py` : `SESSION_COOKIE_SECURE = True`, `CSRF_COOKIE_SECURE = True`, `SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')`
-- `docker-compose.yml` : `app-api → NODE_ENV=production` (active `Secure` sur le cookie session)
-
-### 6. Sauvegardes automatisées
-
-À mettre en place avant la mise en ligne publique :
-
-- **Postgres** : cron quotidien `pg_dump` du volume `pg_data`, rotation 30 jours, stockage hors VM.
-- **Vidéos** : cron quotidien `tar czf` du volume `ocean_videos`.
-- **Renouvellement certbot** : cron hebdomadaire (cf. PRODUCTION.md).
-
-### 7. Tests pré-ouverture
-
-Liste de vérification dans PRODUCTION.md : login, upload photo (test critique HTTPS — secure context obligatoire), studio annotation, modération, contestation, vidéo extractor, EXIF strip, etc.
+1. **Pré-requis** : VM Linux avec Docker, nom de domaine pointant vers la VM (A record), ports 80 et 443 ouverts, port 8080 (Traefik CVAT) jamais exposé.
+2. **Bundler le frontend en statique** : `npx expo export -p web -o dist/` → suppression de la dépendance au port 8081.
+3. **Émettre le certificat Let's Encrypt** : mode standalone ou DNS-01 (voir DEPLOYMENT.md pour les variantes).
+4. **Configurer NGINX HTTPS** : remplacer `YOUR_DOMAIN.TLD` par votre domaine dans `nginx/nginx-https.conf`, monter `dist/` + certificats dans le service `gateway`, activer le rate-limiting sur `/auth/login`.
+5. **Activer les flags `Secure`** : `NODE_ENV=production` côté app-api, `SESSION_COOKIE_SECURE / CSRF_COOKIE_SECURE / SECURE_PROXY_SSL_HEADER` côté Django.
+6. **Sauvegardes automatisées** : cron quotidien `pg_dump` du volume `pg_data`, cron quotidien `tar` du volume `ocean_videos`, cron hebdo `certbot renew`. Stockage hors VM impératif.
+7. **Tests pré-ouverture** : login, upload photo (test critique HTTPS — secure context obligatoire), studio annotation, modération, contestation, vidéo extractor, EXIF strip, etc.
 
 ---
 
 ## Mise à jour après `git pull`
 
-Procédure stricte (voir PRODUCTION.md pour le détail) :
+Procédure stricte :
 
 ```bash
 git pull
@@ -295,6 +248,8 @@ cd frontend && npx expo start -c --web
 # OU si tu utilises systemd : systemctl --user restart expo
 ```
 
+Détails et cas particuliers : [DEPLOYMENT.md](DEPLOYMENT.md#7-mise-à-jour-après-git-pull).
+
 ---
 
 ## Stack technique
@@ -310,18 +265,19 @@ cd frontend && npx expo start -c --web
 | **Stockage médias** | Volume Docker `ocean_videos` | Local-first, à externaliser vers S3/B2 à terme |
 | **Reverse proxy** | NGINX | Bloque accès direct UI CVAT, gère HTTPS, cache statique |
 | **Export scientifique** | Format Datumaro 1.0 | Standard CV/ML, supporté nativement par CVAT et la plupart des frameworks |
-| **Auth** | Session cookie HttpOnly UUID | Pas de JWT côté client (XSS-safe), CVAT token caché côté serveur (cf. ADR-012) |
+| **Auth** | Session cookie HttpOnly UUID | Pas de JWT côté client (XSS-safe), CVAT token caché côté serveur |
 
 ---
 
-## Documentation interne
+## Documentation
 
-- **[CLAUDE.md](CLAUDE.md)** — décisions architecturales détaillées, gotchas CVAT API, conventions de code.
-- **[PRODUCTION.md](PRODUCTION.md)** — procédures de déploiement, rotation de secrets, HTTPS, sauvegardes.
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — procédures de déploiement complètes (HTTPS, sauvegardes, systemd, rotation des secrets, dépannage).
+- **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** — conventions de code et workflow contributeur.
+- **[docs/ADR/](docs/ADR/)** — Architecture Decision Records (choix techniques majeurs et leurs justifications).
 
 ---
 
 ## Contact
 
-- Pour les questions de stage : Sébastien CHABRIER (tuteur UPF) ou Bryan DALLEST (encadrement).
-- Pour les questions RGPD côté plateforme : email configurable dans `/admin/settings` → `platform.contact_email`, affiché dans le pied de page et la page « Politique de confidentialité ».
+- Pour les questions liées au projet (stage L3) : Sébastien CHABRIER (tuteur UPF) ou Bryan DALLEST.
+- Pour les questions RGPD côté plateforme déployée : email configurable dans `/admin/settings` → `platform.contact_email`, affiché dans le pied de page et la page « Politique de confidentialité ».

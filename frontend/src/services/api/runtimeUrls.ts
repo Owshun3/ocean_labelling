@@ -5,7 +5,8 @@ import Constants from 'expo-constants';
  * URLs API derivees au runtime.
  *
  * Sur web : on lit window.location pour qu'un seul bundle fonctionne en dev
- * local (Metro 8081, gateway 8888) ET en prod HTTPS (otf.upf.pf:443) sans rebuild.
+ * local (Metro 8081, gateway 8888) ET en prod HTTPS (n'importe quel domaine)
+ * sans rebuild.
  *
  * Sur mobile : on lit EXPO_PUBLIC_APP_API_URL (env injecté au bundling). Si non
  * défini, on tente l'IP LAN derivee de Expo Metro (hostUri) pour le dev. Pour la

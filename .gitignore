@@ -29,6 +29,14 @@ cvat-core/
 .claude/
 GEMINI.md
 
+# --- Documentation privée (notes internes, infrastructures, infos sensibles VM) ---
+# Ne JAMAIS commit ces fichiers. Ils contiennent : IPs, emails, procédures DSI,
+# chemins absolus avec usernames, secrets de déploiement, etc.
+# Pour les contributeurs externes : voir DEPLOYMENT.md (générique, public).
+CLAUDE.md
+PRODUCTION.md
+*.private.md
+
 # --- Fichiers générés localement ---
 *.pptx
 *.sqlite
