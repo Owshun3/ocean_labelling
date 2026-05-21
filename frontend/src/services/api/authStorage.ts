@@ -8,6 +8,7 @@ export interface StoredUserProfile {
 	is_staff: boolean;
 	appRole: string;
 	hasSeenWelcome: boolean;
+	hasAcceptedUploadTerms: boolean;
 }
 
 const USER_PROFILE_KEY = 'cvat_user_profile';

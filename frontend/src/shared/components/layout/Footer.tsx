@@ -73,6 +73,9 @@ export const Footer: React.FC = () => {
 				<Text style={styles.bottomText}>
 					{platformName} · v1 · construit avec CVAT et Expo Web
 				</Text>
+				<Pressable onPress={() => router.push('/(main)/privacy' as Href)} hitSlop={8}>
+					<Text style={styles.bottomLink}>Politique de confidentialité</Text>
+				</Pressable>
 			</View>
 		</View>
 	);
@@ -133,10 +136,17 @@ const styles = StyleSheet.create({
 		borderTopColor: COLORS.border,
 		paddingVertical: SPACING.sm,
 		alignItems: 'center',
+		gap: 4,
 	},
 	bottomText: {
 		...TYPOGRAPHY.caption,
 		color: COLORS.text.placeholder,
 		fontSize: 11,
+	},
+	bottomLink: {
+		...TYPOGRAPHY.caption,
+		color: COLORS.text.secondary,
+		fontSize: 11,
+		textDecorationLine: 'underline',
 	},
 });

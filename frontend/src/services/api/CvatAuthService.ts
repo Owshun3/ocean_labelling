@@ -57,6 +57,7 @@ export class CvatAuthService {
 				is_staff: resp.data.is_staff ?? false,
 				appRole: resp.data.role ?? 'annotator',
 				hasSeenWelcome: resp.data.has_seen_welcome ?? false,
+				hasAcceptedUploadTerms: resp.data.has_accepted_upload_terms ?? false,
 			});
 			markSessionAlive();
 		} catch (error: any) {

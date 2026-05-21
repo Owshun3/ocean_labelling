@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { Slot } from 'expo-router';
 import { Header } from '@/shared/components/layout/Header';
 import { Breadcrumb } from '@/shared/components/layout/Breadcrumb';
@@ -12,10 +12,12 @@ export default function MainLayout() {
 		<View style={styles.layout}>
 			<Header />
 			<Breadcrumb />
-			<View style={styles.content}>
-				<Slot />
-			</View>
-			<Footer />
+			<ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+				<View style={styles.content}>
+					<Slot />
+				</View>
+				<Footer />
+			</ScrollView>
 		</View>
 	);
 }
@@ -25,11 +27,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 		backgroundColor: COLORS.background.main,
 	},
-	content: {
-		flex: 1,
-		// 'auto' n'est pas supporté côté RN natif mais RN-Web le passe en CSS overflow:auto
-		// → scrollbar quand le contenu dépasse, sinon comportement normal.
-		overflow: 'auto' as any,
-		paddingHorizontal: SPACING.lg,
-	}
+	scroll: { flex: 1 },
+	scrollContent: { flexGrow: 1, minHeight: '100%' },
+	content: { flex: 1, paddingHorizontal: SPACING.lg },
 });

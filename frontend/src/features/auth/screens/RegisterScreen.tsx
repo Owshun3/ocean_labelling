@@ -18,11 +18,16 @@ export const RegisterScreen: React.FC = () => {
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [showPassword, setShowPassword] = useState(false);
+	const [acceptedPolicy, setAcceptedPolicy] = useState(false);
 	const router = useRouter();
 
 	const handleRegister = async () => {
 		if (!username || !email || !password || !confirmPassword) {
 			setError("Les champs principaux sont obligatoires.");
+			return;
+		}
+		if (!acceptedPolicy) {
+			setError("Tu dois accepter la politique de confidentialité pour créer un compte.");
 			return;
 		}
 		if (username.length < 5) {
@@ -99,6 +104,22 @@ export const RegisterScreen: React.FC = () => {
 					</View>
 				</View>
 				
+				<Pressable onPress={() => setAcceptedPolicy((v) => !v)} style={styles.policyRow}>
+					<View style={[styles.checkbox, acceptedPolicy && styles.checkboxChecked]}>
+						{acceptedPolicy ? <Ionicons name="checkmark" size={14} color={COLORS.text.inverse} /> : null}
+					</View>
+					<Text style={styles.policyText}>
+						J'ai lu et j'accepte la{' '}
+						<Text
+							style={styles.policyLink}
+							onPress={(e: any) => { e?.stopPropagation?.(); router.push('/(main)/privacy' as Href); }}
+						>
+							politique de confidentialité
+						</Text>
+						.
+					</Text>
+				</Pressable>
+
 				{isLoading ? (
 					<ActivityIndicator size="large" color={COLORS.primary} />
 				) : (
@@ -129,5 +150,14 @@ const styles = StyleSheet.create({
 	eyeButton: { borderWidth: 1, borderColor: COLORS.border, borderLeftWidth: 0, borderTopRightRadius: 4, borderBottomRightRadius: 4, paddingHorizontal: SPACING.sm, justifyContent: 'center', alignSelf: 'stretch' },
 	switchContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.xl, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
 	switchText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },
-	link: { ...TYPOGRAPHY.body, color: COLORS.primary, fontWeight: 'bold' }
+	link: { ...TYPOGRAPHY.body, color: COLORS.primary, fontWeight: 'bold' },
+
+	policyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, marginBottom: SPACING.md },
+	checkbox: {
+		width: 18, height: 18, borderRadius: 3, borderWidth: 1, borderColor: COLORS.border,
+		backgroundColor: COLORS.background.main, alignItems: 'center', justifyContent: 'center', marginTop: 2,
+	},
+	checkboxChecked: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+	policyText: { ...TYPOGRAPHY.body, color: COLORS.text.primary, fontSize: 13, flex: 1, lineHeight: 18 },
+	policyLink: { color: COLORS.primary, textDecorationLine: 'underline', fontWeight: '600' },
 });

@@ -98,7 +98,7 @@ router.post('/logout', async (req, res) => {
 router.get('/me', requireAuth, async (req, res) => {
   const me = req.cvatUser;
   const roleRow = (await pool.query(
-    'SELECT role, has_seen_welcome FROM user_roles WHERE cvat_user_id = $1',
+    'SELECT role, has_seen_welcome, has_accepted_upload_terms FROM user_roles WHERE cvat_user_id = $1',
     [me.id],
   )).rows[0];
   const role = me.is_superuser ? 'admin' : (roleRow?.role ?? 'annotator');
@@ -109,6 +109,7 @@ router.get('/me', requireAuth, async (req, res) => {
     is_staff: me.is_staff,
     role,
     has_seen_welcome: roleRow?.has_seen_welcome ?? false,
+    has_accepted_upload_terms: roleRow?.has_accepted_upload_terms ?? false,
   });
 });
 
@@ -119,6 +120,19 @@ router.post('/welcome-seen', requireAuth, async (req, res) => {
     VALUES ($1, TRUE, NOW())
     ON CONFLICT (cvat_user_id) DO UPDATE
       SET has_seen_welcome = TRUE, updated_at = NOW()
+  `, [me.id]);
+  res.json({ ok: true });
+});
+
+router.post('/upload-terms-accepted', requireAuth, async (req, res) => {
+  const me = req.cvatUser;
+  await pool.query(`
+    INSERT INTO user_roles (cvat_user_id, has_accepted_upload_terms, accepted_upload_terms_at, updated_at)
+    VALUES ($1, TRUE, NOW(), NOW())
+    ON CONFLICT (cvat_user_id) DO UPDATE
+      SET has_accepted_upload_terms = TRUE,
+          accepted_upload_terms_at = COALESCE(user_roles.accepted_upload_terms_at, NOW()),
+          updated_at = NOW()
   `, [me.id]);
   res.json({ ok: true });
 });

@@ -16,6 +16,7 @@ export interface PublicSettings {
 	'platform.maintenance_mode': boolean;
 	'platform.maintenance_message': string;
 	'platform.public_registration': boolean;
+	'platform.privacy_policy': string;
 	'rank.debutant.label': string; 'rank.debutant.color': string;
 	'rank.bronze.label':   string; 'rank.bronze.color':   string;
 	'rank.argent.label':   string; 'rank.argent.color':   string;
@@ -35,6 +36,7 @@ const DEFAULTS: PublicSettings = {
 	'platform.maintenance_mode':        false,
 	'platform.maintenance_message':     'Maintenance en cours, merci de revenir plus tard.',
 	'platform.public_registration':     true,
+	'platform.privacy_policy':          '',
 	'rank.debutant.label': 'Débutant', 'rank.debutant.color': '#9ca3af',
 	'rank.bronze.label':   'Bronze',   'rank.bronze.color':   '#cd7f32',
 	'rank.argent.label':   'Argent',   'rank.argent.color':   '#c0c0c0',

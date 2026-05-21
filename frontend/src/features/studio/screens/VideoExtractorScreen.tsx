@@ -67,6 +67,7 @@ export const VideoExtractorScreen: React.FC<Props> = ({ videoId }) => {
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [lastClicked, setLastClicked] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
+	const [saveProgress, setSaveProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 	const [batchExtracting, setBatchExtracting] = useState(false);
 	const videoElRef = useRef<HTMLVideoElement | null>(null);
 
@@ -114,7 +115,7 @@ export const VideoExtractorScreen: React.FC<Props> = ({ videoId }) => {
 
 	const addBookmark = useCallback(() => {
 		const v = videoElRef.current;
-		if (!v) return;
+		if (!v) { toast.error('Lecteur vidéo non prêt.'); return; }
 		const timeMs = Math.round(v.currentTime * 1000);
 		const id = `b_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 		setBookmarks((prev) => {
@@ -199,6 +200,7 @@ export const VideoExtractorScreen: React.FC<Props> = ({ videoId }) => {
 		if (selected.size === 0 || submitting || !video) return;
 		const toSave = frames.filter((f) => selected.has(f.clientId));
 		setSubmitting(true);
+		setSaveProgress({ current: 0, total: toSave.length });
 		try {
 			const self = await cvat.getSelf();
 			const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -227,6 +229,7 @@ export const VideoExtractorScreen: React.FC<Props> = ({ videoId }) => {
 					});
 				} catch (err) { console.warn('[extract] metadata failed', err); }
 				saved += 1;
+				setSaveProgress({ current: saved, total: toSave.length });
 			}
 
 			toast.success(saved === 1
@@ -238,6 +241,7 @@ export const VideoExtractorScreen: React.FC<Props> = ({ videoId }) => {
 			toast.error(err?.response?.data?.error || err?.message || 'Sauvegarde échouée.');
 		} finally {
 			setSubmitting(false);
+			setSaveProgress({ current: 0, total: 0 });
 		}
 	};
 
@@ -302,7 +306,9 @@ export const VideoExtractorScreen: React.FC<Props> = ({ videoId }) => {
 						controls
 						crossOrigin="use-credentials"
 						controlsList="nodownload"
+						tabIndex={-1}
 						onContextMenu={(e: any) => e.preventDefault()}
+						onFocus={(e: any) => e.currentTarget.blur()}
 						onPause={() => setPaused(true)}
 						onPlay={() => setPaused(false)}
 						onLoadedMetadata={(e: any) => setDurationMs(Math.round((e.target?.duration || 0) * 1000))}
@@ -395,6 +401,17 @@ export const VideoExtractorScreen: React.FC<Props> = ({ videoId }) => {
 							<Text style={styles.actionBtnText}>{submitting ? 'Envoi…' : `Sauvegarder (${selected.size})`}</Text>
 						</Pressable>
 					</View>
+					{submitting && saveProgress.total > 0 ? (
+						<View style={styles.progressBox}>
+							<View style={styles.progressHeader}>
+								<Text style={styles.progressLabel}>Envoi en cours · {saveProgress.current} / {saveProgress.total}</Text>
+								<Text style={styles.progressPct}>{Math.round((saveProgress.current / saveProgress.total) * 100)}%</Text>
+							</View>
+							<View style={styles.progressTrack}>
+								<View style={[styles.progressFill, { width: `${(saveProgress.current / saveProgress.total) * 100}%` }]} />
+							</View>
+						</View>
+					) : null}
 					<ScrollView contentContainerStyle={styles.stripGrid}>
 						{frames.length === 0 ? (
 							<Text style={styles.emptyText}>Aucune frame extraite pour l'instant.</Text>
@@ -524,6 +541,13 @@ const styles = StyleSheet.create({
 	saveBtn: { backgroundColor: COLORS.success },
 	btnDisabled: { opacity: 0.4 },
 	actionBtnText: { color: COLORS.text.inverse, fontWeight: '600', fontSize: 12 },
+
+	progressBox: { backgroundColor: COLORS.background.card, borderRadius: 6, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.sm, gap: 6, marginBottom: SPACING.sm },
+	progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+	progressLabel: { ...TYPOGRAPHY.caption, color: COLORS.text.primary },
+	progressPct: { ...TYPOGRAPHY.caption, color: COLORS.primary, fontWeight: '700', fontVariant: ['tabular-nums'] },
+	progressTrack: { height: 6, backgroundColor: COLORS.background.main, borderRadius: 3, overflow: 'hidden' },
+	progressFill: { height: '100%', backgroundColor: COLORS.primary },
 
 	stripGrid: { gap: SPACING.sm },
 	emptyText: { ...TYPOGRAPHY.caption, color: COLORS.text.placeholder, fontStyle: 'italic', textAlign: 'center', padding: SPACING.lg },

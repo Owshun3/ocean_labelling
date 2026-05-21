@@ -3,7 +3,9 @@ import { View, Text, Button, Image, Pressable, ScrollView, StyleSheet, Animated,
 import { useRouter } from 'expo-router';
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { useVideoUpload } from '../hooks/useVideoUpload';
-import { AppApiService } from '@/services/api/AppApiService';
+import { UploadConsentModal } from '../components/UploadConsentModal';
+import { AppApiService, appApiClient } from '@/services/api/AppApiService';
+import { getUserProfile, saveUserProfile } from '@/services/api/authStorage';
 import { toast } from '@/shared/toast/Toast';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
@@ -22,6 +24,29 @@ export const UploadScreen: React.FC = () => {
 	const router = useRouter();
 	const appService = useMemo(() => new AppApiService(), []);
 
+	const initialAccepted = getUserProfile()?.hasAcceptedUploadTerms ?? false;
+	const [accepted, setAccepted] = useState(initialAccepted);
+	const [acceptSubmitting, setAcceptSubmitting] = useState(false);
+
+	const handleAccept = async () => {
+		setAcceptSubmitting(true);
+		try {
+			await appApiClient.post('/auth/upload-terms-accepted');
+			const stored = getUserProfile();
+			if (stored) saveUserProfile({ ...stored, hasAcceptedUploadTerms: true });
+			setAccepted(true);
+		} catch (err: any) {
+			toast.error(err?.response?.data?.error || err?.message || 'Impossible d\'enregistrer ton consentement.');
+		} finally {
+			setAcceptSubmitting(false);
+		}
+	};
+
+	const handleCancel = () => {
+		if (router.canGoBack()) router.back();
+		else router.replace('/(main)' as any);
+	};
+
 	useEffect(() => {
 		appService.getSettings()
 			.then((s) => {
@@ -32,26 +57,34 @@ export const UploadScreen: React.FC = () => {
 	}, [appService]);
 
 	return (
-		<ScrollView contentContainerStyle={styles.container}>
-			<View style={styles.modeRow}>
-				<Pressable
-					onPress={() => setMode('photos')}
-					style={[styles.modeBtn, mode === 'photos' && styles.modeBtnActive]}
-				>
-					<Text style={[styles.modeBtnText, mode === 'photos' && styles.modeBtnTextActive]}>Photos</Text>
-				</Pressable>
-				<Pressable
-					onPress={() => setMode('videos')}
-					style={[styles.modeBtn, mode === 'videos' && styles.modeBtnActive]}
-				>
-					<Text style={[styles.modeBtnText, mode === 'videos' && styles.modeBtnTextActive]}>Vidéos</Text>
-				</Pressable>
-			</View>
+		<>
+			<ScrollView contentContainerStyle={styles.container}>
+				<View style={styles.modeRow}>
+					<Pressable
+						onPress={() => setMode('photos')}
+						style={[styles.modeBtn, mode === 'photos' && styles.modeBtnActive]}
+					>
+						<Text style={[styles.modeBtnText, mode === 'photos' && styles.modeBtnTextActive]}>Photos</Text>
+					</Pressable>
+					<Pressable
+						onPress={() => setMode('videos')}
+						style={[styles.modeBtn, mode === 'videos' && styles.modeBtnActive]}
+					>
+						<Text style={[styles.modeBtnText, mode === 'videos' && styles.modeBtnTextActive]}>Vidéos</Text>
+					</Pressable>
+				</View>
 
-			{mode === 'photos'
-				? <PhotosUpload maxBatchBytes={maxBatchBytes} router={router} />
-				: <VideosUpload maxBatchBytes={maxBatchBytes} router={router} />}
-		</ScrollView>
+				{mode === 'photos'
+					? <PhotosUpload maxBatchBytes={maxBatchBytes} router={router} />
+					: <VideosUpload maxBatchBytes={maxBatchBytes} router={router} />}
+			</ScrollView>
+			<UploadConsentModal
+				visible={!accepted}
+				onAccept={handleAccept}
+				onCancel={handleCancel}
+				submitting={acceptSubmitting}
+			/>
+		</>
 	);
 };
 

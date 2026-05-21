@@ -16,9 +16,10 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ isVisible, imageUr
             <Pressable style={styles.overlay} onPress={onClose}>
                 <View style={styles.container}>
                     {imageUrl && (
-                        <AuthenticatedImage 
-                            url={imageUrl} 
-                            style={styles.fullImage} 
+                        <AuthenticatedImage
+                            url={imageUrl}
+                            style={styles.fullImage}
+                            resizeMode="contain"
                         />
                     )}
                     <Pressable style={styles.closeButton} onPress={onClose}>

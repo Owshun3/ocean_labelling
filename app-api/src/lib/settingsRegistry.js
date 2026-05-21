@@ -1,5 +1,63 @@
 'use strict';
 
+const DEFAULT_PRIVACY_POLICY = `## Politique de confidentialité
+
+Cette plateforme est dédiée à la collecte et l'annotation collaborative de données scientifiques sur la biodiversité polynésienne. Cette politique décrit les données collectées, leur usage et les droits dont tu disposes en application du Règlement Général sur la Protection des Données (RGPD).
+
+## Données collectées
+
+- **Identité** : nom d'utilisateur, adresse e-mail, mot de passe (haché), date d'inscription.
+- **Session** : un cookie d'authentification HttpOnly est posé à la connexion ; les sessions expirées sont purgées quotidiennement.
+- **Contenus déposés** : photos et vidéos téléversées par tes soins, et leurs métadonnées (date de prise de vue, position GPS, modèle d'appareil), lorsque tu choisis de les fournir.
+- **Annotations** : les boîtes englobantes et les espèces que tu poses sur les médias.
+- **Journaux d'audit** : les actions administratives (validations, bannissements, modifications de rôle) sont historisées à des fins de traçabilité.
+
+## Finalités
+
+Les données sont utilisées pour les finalités suivantes :
+
+- Annotation collaborative et validation par des curators.
+- Constitution de jeux de données scientifiques exportables au format Datumaro à destination de chercheurs accrédités, après approbation de l'administrateur.
+- Modération des contenus et des comportements (lutte contre le spam et les contenus inappropriés).
+
+## Confidentialité des coordonnées GPS
+
+Les coordonnées GPS et la date de prise de vue extraites des métadonnées ne sont jamais exposées aux autres annotateurs, quelle que soit l'espèce représentée. Elles restent accessibles uniquement aux modérateurs, curators, administrateurs et aux chercheurs accrédités via les exports approuvés. Cette mesure protège notamment les espèces sensibles contre le braconnage.
+
+## Destinataires et sous-traitants
+
+- **CVAT** : moteur d'annotation auto-hébergé, héberge les images et les annotations sur le même serveur que la plateforme.
+- **Chercheurs accrédités** : reçoivent des extraits Datumaro après demande explicite et approbation administrative.
+- Aucune donnée n'est transférée à des tiers commerciaux. Aucun transfert hors Union européenne n'est effectué sans information préalable.
+
+## Conservation des données
+
+- **Sessions** : purgées dès expiration (durée idle 30 minutes, durée absolue 12 heures, prolongée à 30 jours si « se souvenir de moi » coché).
+- **Médias rejetés** : les binaires sont supprimés après le délai paramétré par l'administrateur (par défaut 30 jours après modération, sauf contestation en cours).
+- **Comptes inactifs** : tu peux à tout moment demander la suppression de ton compte auprès de l'administrateur.
+- **Journaux d'audit** : conservés pour la durée nécessaire au respect des obligations légales de traçabilité.
+
+## Tes droits
+
+Conformément aux articles 15 à 22 du RGPD, tu disposes des droits suivants :
+
+- Droit d'accès à tes données.
+- Droit de rectification.
+- Droit à l'effacement (« droit à l'oubli »).
+- Droit à la limitation du traitement.
+- Droit à la portabilité.
+- Droit d'opposition.
+
+Pour exercer ces droits, contacte l'administrateur via l'adresse de contact affichée en pied de page.
+
+## Sécurité
+
+Les mots de passe sont hachés. Les cookies de session sont HttpOnly, Secure (en production HTTPS), SameSite=Lax. Les données EXIF des images sont retirées du binaire avant stockage côté serveur.
+
+## Modification de cette politique
+
+Le contenu de cette page peut être mis à jour par l'administrateur. La date de dernière mise à jour est affichée en bas de page.`;
+
 const REGISTRY = [
   {
     key: 'platform.name', type: 'string', default: 'Ora te Fenua !', is_public: true,
@@ -85,6 +143,18 @@ const REGISTRY = [
     group_name: 'policies', label: 'Délai avant suppression des médias rejetés non contestés (jours)',
     description: 'Réglage du futur job de nettoyage automatique des médias rejetés sans contestation.',
   },
+  {
+    key: 'raw_exif_retention_days', type: 'int', default: '90', is_public: false,
+    group_name: 'policies', label: 'Délai avant purge du blob EXIF brut (jours)',
+    description: 'Minimisation RGPD. Au-delà du délai, la colonne raw_exif est mise à NULL. 0 = désactiver (déconseillé). Les champs GPS/date/camera extraits restent intacts.',
+  },
+
+  {
+    key: 'platform.privacy_policy', type: 'string', is_public: true,
+    group_name: 'legal', label: 'Politique de confidentialité',
+    description: 'Texte affiché sur la page /privacy, accessible depuis le pied de page. Markdown léger supporté (titres ##, listes -, liens [texte](url)).',
+    default: DEFAULT_PRIVACY_POLICY,
+  },
 
   // Apparence des rangs (libellé + couleur ajustables sans redéploiement) ;
   // les seuils restent figés dans frontend/src/shared/ranks.ts.
@@ -127,6 +197,7 @@ const GROUP_LABELS = {
   access:      'Accès',
   upload:      'Téléversement',
   policies:    'Politiques',
+  legal:       'Mentions légales',
   ranks:       'Apparence des rangs',
 };
 

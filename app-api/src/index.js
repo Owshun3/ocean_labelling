@@ -43,5 +43,6 @@ init()
     require('./lib/cleanup').startScheduler();
     require('./lib/curationGate').startScheduler();
     require('./lib/sessionCleanup').startScheduler();
+    require('./lib/exifPurge').startScheduler();
   })
   .catch(err => { console.error('[app-api] DB init failed:', err.message); process.exit(1); });

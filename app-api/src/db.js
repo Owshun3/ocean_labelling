@@ -31,6 +31,8 @@ async function _createSchema() {
     );
     ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS username_changed_at TIMESTAMPTZ;
     ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS has_seen_welcome BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS has_accepted_upload_terms BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS accepted_upload_terms_at TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS upload_history (
       id             SERIAL PRIMARY KEY,

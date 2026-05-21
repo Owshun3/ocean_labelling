@@ -237,7 +237,7 @@ export const AdminSettingsScreen: React.FC = () => {
 													onChangeText={(t) => setDraft(it.key, it.type === 'int' ? t.replace(/[^0-9]/g, '') : t)}
 													editable={!saving[it.key]}
 													keyboardType={it.type === 'int' ? 'numeric' : 'default'}
-													multiline={it.type === 'string' && (it.key.includes('message') || it.key.includes('welcome'))}
+													multiline={it.type === 'string' && (it.key.includes('message') || it.key.includes('welcome') || it.key.includes('privacy_policy'))}
 													style={[
 														styles.input,
 														it.type === 'string' && (it.key.includes('message') || it.key.includes('welcome')) && styles.inputMultiline,

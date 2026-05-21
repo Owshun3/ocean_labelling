@@ -27,6 +27,7 @@ const STATIC_LABELS: Record<string, string> = {
 	media:             'Mes Médias',
 	moderation:        'Modération',
 	password:          'Mot de passe',
+	privacy:           'Politique de confidentialité',
 	profile:           'Mon Profil',
 	requests:          'Demandes',
 	select:            'Choisir un média',
