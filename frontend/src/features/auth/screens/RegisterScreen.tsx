@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
@@ -59,7 +59,8 @@ export const RegisterScreen: React.FC = () => {
 	};
 
 	return (
-		<SafeAreaView style={styles.container}>
+		<SafeAreaView style={styles.safeArea}>
+			<ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
 			<View style={styles.card}>
 				<Text style={styles.title}>Inscription CVAT</Text>
 				
@@ -149,12 +150,15 @@ export const RegisterScreen: React.FC = () => {
 					</Pressable>
 				</View>
 			</View>
+			</ScrollView>
 		</SafeAreaView>
 	);
 };
 
 const styles = StyleSheet.create({
-	container: { flex: 1, backgroundColor: COLORS.background.main, justifyContent: 'center', padding: SPACING.md },
+	safeArea: { flex: 1, backgroundColor: COLORS.background.main },
+	// flexGrow:1 + justifyContent:center -> centre vertical si court, scroll si dépasse.
+	scrollContent: { flexGrow: 1, justifyContent: 'center', padding: SPACING.md },
 	card: { backgroundColor: COLORS.background.card, padding: SPACING.lg, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, maxWidth: 400, width: '100%', alignSelf: 'center' },
 	title: { ...TYPOGRAPHY.h1, marginBottom: SPACING.lg, textAlign: 'center' },
 	errorText: { color: COLORS.danger, marginBottom: SPACING.md, textAlign: 'center' },

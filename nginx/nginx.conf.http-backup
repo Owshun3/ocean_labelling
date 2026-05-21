@@ -1,61 +1,11 @@
-# Configuration NGINX prete pour le mode HTTPS production.
-#
-# Active quand :
-#   1. Cert Let's Encrypt obtenu (/etc/letsencrypt/live/otf.upf.pf/fullchain.pem + privkey.pem)
-#   2. Frontend bundle statique cree (./frontend/dist/ via "npx expo export -p web -o dist/")
-#   3. docker-compose.yml expose les ports 80 + 443 et monte les volumes /etc/letsencrypt et frontend/dist
-#
-# Pour activer :
-#   1. Remplacer toutes les occurrences de otf.upf.pf par ton domaine reel (3 lignes ci-dessous)
-#   2. cp nginx/nginx-https.conf nginx/nginx.conf
-#   3. docker compose restart gateway
-
 events { worker_connections 512; }
 
 http {
-  # Mapping MIME standard (woff2, etc.). Sans ca, NGINX mappe les fonts en
-  # text/plain → certains browsers refusent. nginx:alpine mime.types n'inclut
-  # pas .ttf par defaut, on l'ajoute explicitement.
-  include       /etc/nginx/mime.types;
-  types { font/ttf ttf; }
-  default_type  application/octet-stream;
-
-  # Pour le ACME challenge HTTP-01 de Certbot
   server {
-    listen 80;
-    server_name otf.upf.pf;
+    listen 8080;
     server_tokens off;
 
-    location /.well-known/acme-challenge/ {
-      root /var/www/certbot;
-    }
-
-    location / {
-      return 301 https://$host$request_uri;
-    }
-  }
-
-  server {
-    listen 443 ssl;
-    http2 on;
-    server_name otf.upf.pf;
-    server_tokens off;
-
-    # Cert auto-signe (phase intermediaire avant Let's Encrypt cf. DEPLOYMENT.md).
-    # Volume monte via docker-compose : ./nginx/certs:/etc/nginx/certs:ro
-    ssl_certificate     /etc/nginx/certs/otf.upf.pf.crt;
-    ssl_certificate_key /etc/nginx/certs/otf.upf.pf.key;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers on;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 1d;
-
-    # HSTS desactive en auto-signe : si le browser accepte le warning et reçoit
-    # HSTS, il refusera ensuite tout bypass meme apres reset du cert. A activer
-    # une fois qu'un cert reconnu (Let's Encrypt ou PKI UPF) sera en place.
-    # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    # ── Fichiers statiques Ocean (JS/CSS injectes dans le studio CVAT) ───
+    # ── Fichiers statiques Ocean (JS/CSS injectés dans le studio CVAT) ───────
     location /ocean-static/ {
       alias /etc/nginx/ocean-static/;
       add_header Cache-Control "no-store";
@@ -77,7 +27,6 @@ http {
       proxy_pass http://app-api:3000/;
       proxy_set_header Host $http_host;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto https;
       proxy_redirect off;
       client_max_body_size 1G;
       proxy_request_buffering off;
@@ -103,21 +52,21 @@ http {
       proxy_pass http://cvat_server:8080;
       proxy_set_header Host $http_host;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto https;
       proxy_redirect off;
       client_max_body_size 1G;
     }
 
-    # ── Fichiers statiques et admin Django CVAT ───────────────────────────
+    # ── Fichiers statiques et admin Django ───────────────────────────────
     location /static/ {
       proxy_pass http://cvat_server:8080;
       proxy_set_header Host $http_host;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto https;
       proxy_redirect off;
     }
 
-    # ── Studio d'annotation CVAT injecte (sub_filter CSS/JS) ─────────────
+    # ── Studio d'annotation CVAT ─────────────────────────────────────────
+    # Injecte ocean-studio.css + ocean-studio.js depuis /ocean-static/.
+    # Doit etre AVANT le bloc de blocage (regex evalues dans l'ordre).
     location ~ ^/tasks/[0-9]+/jobs/[0-9]+ {
       proxy_set_header Accept-Encoding "";
 
@@ -131,7 +80,6 @@ http {
       proxy_set_header Connection "upgrade";
       proxy_set_header Host $http_host;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto https;
       proxy_redirect off;
     }
 
@@ -141,34 +89,15 @@ http {
       return 403 '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Acc\xC3\xA8s refus\xC3\xA9</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:#f5f5f5;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{background:#fff;border-radius:8px;padding:2rem 2.5rem;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.1);max-width:400px}h2{color:#1e293b;margin-bottom:.75rem}p{color:#64748b;margin-bottom:1.5rem;line-height:1.5}button{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:.6rem 1.5rem;font-size:1rem;cursor:pointer}button:hover{background:#2563eb}</style></head><body><div class="card"><h2>Acc\xC3\xA8s refus\xC3\xA9</h2><p>Cette section n\xE2\x80\x99est pas accessible depuis l\xE2\x80\x99application. Fermez cet onglet et revenez \xC3\xA0 l\xE2\x80\x99application.</p><button onclick="window.close()">Fermer cet onglet</button></div></body></html>';
     }
 
-    # ── Assets webpack CVAT (utilises par le studio injecte) ─────────────
-    # /assets/, /main.*.js, /vendors.*.js, etc. Le studio CVAT charge ses
-    # bundles depuis la racine sans prefixe. On les laisse passer vers cvat_ui.
-    location ~ ^/(main|vendors|runtime|polyfills|styles)\.[a-f0-9]+\.(js|css|map)$ {
-      proxy_pass http://cvat_ui:8000;
-      proxy_set_header Host $http_host;
-      proxy_set_header X-Forwarded-Proto https;
-    }
-    # /assets/ : conflit Expo (fonts vectorielles /assets/.../Ionicons.ttf) vs
-    # CVAT (studio injecte). On essaie d'abord le bundle Expo statique,
-    # fallback vers cvat_ui si le fichier n'existe pas localement.
-    location /assets/ {
-      root /usr/share/nginx/ocean-dist;
-      try_files $uri @cvat_assets_fallback;
-    }
-    location @cvat_assets_fallback {
-      proxy_pass http://cvat_ui:8000;
-      proxy_set_header Host $http_host;
-      proxy_set_header X-Forwarded-Proto https;
-    }
-
-    # ── Frontend Ocean (bundle statique servi par NGINX) ─────────────────
-    # Sert le bundle Expo Web exporte via "npx expo export -p web -o dist/".
-    # Monte dans le container via docker-compose : ./frontend/dist:/usr/share/nginx/ocean-dist:ro
+    # ── SPA CVAT (page d'accueil, assets, WebSocket) ─────────────────────
     location / {
-      root /usr/share/nginx/ocean-dist;
-      try_files $uri $uri/ /index.html;
-      add_header Cache-Control "no-store, must-revalidate";
+      proxy_pass http://cvat_ui:8000;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_set_header Host $http_host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_redirect off;
     }
   }
 }

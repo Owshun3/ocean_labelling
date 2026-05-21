@@ -17,6 +17,10 @@ services:
       DJANGO_SETTINGS_MODULE: 'cvat.settings.ocean'
       CORS_ALLOW_ALL_ORIGINS: 'True'
       ALLOWED_HOSTS: '*'
+      # OCEAN_HTTPS=1 active SESSION_COOKIE_SECURE / CSRF_COOKIE_SECURE /
+      # SECURE_PROXY_SSL_HEADER cote Django CVAT (cf. cvat-extras/ocean.py).
+      # A definir dans .env quand le gateway termine TLS ; laisser vide en HTTP.
+      OCEAN_HTTPS: '${OCEAN_HTTPS:-}'
       # Origines acceptées par Django CSRF. Défaut localhost pour le dev local —
       # surchargée via .env sur la VM (ex : CSRF_TRUSTED_ORIGINS=https://<domaine>).
       CSRF_TRUSTED_ORIGINS: '${CSRF_TRUSTED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,http://localhost:8888,http://127.0.0.1:8888}'
@@ -69,10 +73,14 @@ services:
   gateway:
     image: nginx:alpine
     ports:
-      - "8888:8080"
+      - "8888:8080"   # fallback HTTP local (test rapide depuis VM)
+      - "80:80"       # redirection HTTP -> HTTPS
+      - "443:443"     # HTTPS production
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/static:/etc/nginx/ocean-static:ro
+      - ./nginx/certs:/etc/nginx/certs:ro                   # cert HTTPS (auto-signe ou LE)
+      - ./frontend/dist:/usr/share/nginx/ocean-dist:ro      # bundle statique Expo Web
     networks:
       - default
       - cvat
