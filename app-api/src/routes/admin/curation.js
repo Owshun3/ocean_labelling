@@ -11,8 +11,6 @@ const router = express.Router();
 
 const ELIGIBLE_CURATOR_ROLES = new Set(['admin', 'moderator', 'curator', 'chercheur']);
 
-// Pool des médias éligibles à l'attribution :
-//   passés en modération (validated), non encore curés, binaires intacts, sans attribution.
 router.get('/pool', async (_req, res) => {
   try {
     const threshold = await getConsensusThreshold();
@@ -68,10 +66,8 @@ router.get('/pool', async (_req, res) => {
   }
 });
 
-// Curators éligibles avec leur workload courant (pour aider l'admin à équilibrer).
 router.get('/curators', async (_req, res) => {
   try {
-    // 1. Tous les utilisateurs ayant un rôle éligible côté app_db
     const { rows: roleRows } = await pool.query(
       `SELECT cvat_user_id, role FROM user_roles WHERE role = ANY($1)`,
       [[...ELIGIBLE_CURATOR_ROLES]],
@@ -79,8 +75,6 @@ router.get('/curators', async (_req, res) => {
     const roleMap = Object.fromEntries(roleRows.map((r) => [r.cvat_user_id, r.role]));
     const ids = roleRows.map((r) => r.cvat_user_id);
 
-    // 2. Tous les superusers CVAT (= admin implicite) — fetch via users/self d'admin via le all-list helper
-    // Au lieu de fetcher tous les CVAT users (lourd), on lit la liste pour récupérer les is_superuser.
     let cvatSuperuserIds = [];
     try {
       const allResp = await cvatGet('/users?page_size=200');
@@ -155,9 +149,6 @@ function shuffle(arr) {
   return a;
 }
 
-// Distribution équilibrée du pool non-attribué entre curators non-admin.
-// Division euclidienne + shuffle (pool et curators) + round-robin.
-// `dry_run=true` retourne le plan sans persister, pour prévisualisation.
 router.post('/auto-assign', async (req, res) => {
   const dryRun = req.body?.dry_run === true;
   const adminId = req.cvatUser.id;
@@ -181,14 +172,12 @@ router.post('/auto-assign', async (req, res) => {
       return res.status(400).json({ error: 'Aucun média en attente d\'attribution.' });
     }
 
-    // Curators non-admin uniquement
     const eligibleRoles = ['moderator', 'curator', 'chercheur'];
     const { rows: roleRows } = await pool.query(
       `SELECT cvat_user_id, role FROM user_roles WHERE role = ANY($1)`,
       [eligibleRoles],
     );
 
-    // Exclure les superusers CVAT (ils sont "admin implicite")
     let superuserIds = new Set();
     try {
       const allResp = await cvatGet('/users?page_size=200');
@@ -207,7 +196,6 @@ router.post('/auto-assign', async (req, res) => {
       return res.status(400).json({ error: 'Aucun curator non-admin disponible.' });
     }
 
-    // Fetch usernames pour le plan (et filtrer les comptes désactivés/inexistants)
     const curators = [];
     await Promise.all(candidateIds.map(async (id) => {
       try {
@@ -223,8 +211,6 @@ router.post('/auto-assign', async (req, res) => {
     }
 
     const shuffledPool = shuffle(poolRows);
-    // Si le pool est plus petit que le nombre de curators, on ne sert
-    // qu'un sous-ensemble tiré au hasard (un média par curator au max).
     const effectiveCurators = shuffle(curators).slice(0, Math.min(curators.length, shuffledPool.length));
 
     const plan = effectiveCurators.map((c) => ({
@@ -298,7 +284,6 @@ router.post('/assign', async (req, res) => {
   if (taskIds.length === 0) return res.status(400).json({ error: 'task_ids requis (entiers > 0)' });
   if (!Number.isFinite(curatorId)) return res.status(400).json({ error: 'curator_id requis' });
 
-  // Vérifier que le curator a un rôle éligible (superuser ou role dans la whitelist)
   let curatorEligible = false;
   try {
     const r = await cvatGet(`/users/${curatorId}`);

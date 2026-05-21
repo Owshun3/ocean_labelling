@@ -112,8 +112,7 @@ const styles = StyleSheet.create({
 		width: 320,
 		minHeight: 180,
 		gap: SPACING.sm,
-		// Subtle elevation: web prend boxShadow, mobile RN ignore (et c'est OK,
-		// la pile native iOS/Android a une élévation par défaut sur les surfaces).
+		// boxShadow ignoré sur RN natif (élévation par défaut iOS/Android)
 		...(({ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }) as any),
 	},
 

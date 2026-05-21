@@ -147,18 +147,11 @@ async function countShapesInJob(jobId, token) {
 
 router.get('/feed', requireAuth, async (req, res) => {
   const me = req.cvatUser.id;
-  // Tri server-side pour les colonnes sensibles (taken_at = date de prise de vue).
-  // La valeur n'est JAMAIS retournée au client — uniquement l'ordre.
+  // taken_at servi uniquement comme clé de tri server-side — sa valeur n'est
+  // jamais retournée au client (sécurité espèces protégées).
   const communitySort = req.query.community_sort === 'taken_at' ? 'taken_at' : null;
   const communityDir  = req.query.community_direction === 'desc' ? 'DESC' : 'ASC';
   try {
-    // Pour le studio annotateur :
-    // - mes médias en attente OU validés peuvent être annotés (mes frames extraites
-    //   apparaissent dès l'upload, avant validation modérateur)
-    // - le mur communautaire ne montre que les médias validés (filtré plus bas)
-    // - les rejetés ne sont jamais annotables (ils n'apparaissent pas)
-    // On lit taken_at depuis media_metadata pour pouvoir trier le mur dessus,
-    // mais on ne renvoie JAMAIS sa valeur dans la réponse (sécurité espèces).
     const { rows } = await pool.query(`
       SELECT mm.cvat_task_id, mm.uploader_id, mm.status, mm.created_at,
              mm.curator_validated_at, mm.reviewed_at,
@@ -190,9 +183,6 @@ router.get('/feed', requireAuth, async (req, res) => {
       catch { jobsByTask.set(id, []); }
     }));
 
-    // Calcule "mes shapes par task" pour TOUTES les tâches où j'ai un job (own + community).
-    // Sert à : (a) marquer ma tâche perso en "annotated", (b) filtrer le mur communautaire
-    // pour faire disparaître les médias que j'ai déjà annotés.
     const myShapesCounts = new Map();
     await Promise.all(rows.map(async (row) => {
       if (!tasksById.has(row.cvat_task_id)) return;
@@ -204,7 +194,6 @@ router.get('/feed', requireAuth, async (req, res) => {
 
     const ownRows = rows.filter((r) => r.uploader_id === me && tasksById.has(r.cvat_task_id));
 
-    // Mes contestations annotation déjà déposées pour la certification courante
     const certifiedOwnIds = ownRows
       .filter((r) => r.curator_validated_at)
       .map((r) => r.cvat_task_id);
@@ -224,8 +213,6 @@ router.get('/feed', requireAuth, async (req, res) => {
 
     const own = [];
     const community = [];
-    // taken_at par taskId pour le tri server-side ; la valeur ne sort JAMAIS
-    // de cette map vers la réponse — uniquement comparée ici pour ordonner.
     const takenAtByTaskId = new Map();
 
     for (const row of rows) {
@@ -265,8 +252,6 @@ router.get('/feed', requireAuth, async (req, res) => {
       } else if (row.status === 'validated') {
         const myShapes = myShapesCounts.get(row.cvat_task_id) ?? 0;
         const myJobDone = myAssigned?.state === 'completed';
-        // Une fois que j'ai déjà annoté (≥1 shape) ou que mon job est complété,
-        // le média disparaît de MON mur communautaire.
         if (myShapes > 0 || myJobDone) continue;
         if (myAssigned || freeJobs.length > 0) {
           community.push(summary);
@@ -279,7 +264,6 @@ router.get('/feed', requireAuth, async (req, res) => {
       || new Date(b.created_date) - new Date(a.created_date));
 
     if (communitySort === 'taken_at') {
-      // NULLS LAST quelle que soit la direction (médias sans EXIF en fin de liste).
       const mult = communityDir === 'DESC' ? -1 : 1;
       community.sort((a, b) => {
         const av = takenAtByTaskId.get(a.cvat_task_id);
@@ -368,7 +352,6 @@ router.put('/jobs/:jobId/annotations', requireAuth, async (req, res) => {
     const token = await getAdminToken();
     await ensureJobAccess(jobId, req.cvatUser, token);
     const putResp = await cvatPut(`/jobs/${jobId}/annotations`, req.body, token);
-    // Met à jour le compteur dénormalisé pour ce task (fire-and-forget, ne bloque pas la réponse)
     require('../lib/curationGate').recomputeFromJob(jobId).catch(() => {});
     res.json(putResp.data);
   } catch (err) {
@@ -462,10 +445,8 @@ router.post('/contest-annotation', requireAuth, async (req, res) => {
     if (rows.length === 0)            return res.status(404).json({ error: 'media inconnu' });
     if (!rows[0].curator_validated_at) return res.status(400).json({ error: 'l\'annotation finale n\'est pas encore validée par le curator' });
 
-    // Une seule contestation par utilisateur par certification.
-    // On compare contre la date de certification courante : si un overturn admin
-    // a rouvert la curation et qu'une nouvelle certification a eu lieu, l'utilisateur
-    // pourra contester à nouveau (sa contestation précédente est "antérieure").
+    // Une contestation par certification : compare contre `curator_validated_at`
+    // pour autoriser une nouvelle contestation après un overturn admin + re-certif.
     const dup = await pool.query(`
       SELECT 1 FROM annotation_contestations
       WHERE cvat_task_id = $1 AND contester_id = $2 AND created_at >= $3

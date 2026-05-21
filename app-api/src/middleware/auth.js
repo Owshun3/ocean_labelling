@@ -181,8 +181,6 @@ async function requireModeratorOrAbove(req, res, next) {
   return res.status(403).json({ error: 'Moderator access required' });
 }
 
-// Strict : la fonctionnalité de demande d'export est PROPRE au rôle chercheur.
-// Admin/moderator ne demandent pas — ils ont leurs propres flux. On reste exigeant.
 async function requireChercheur(req, res, next) {
   const cvatUser = await authenticate(req, res);
   if (!cvatUser) return;

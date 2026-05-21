@@ -2,27 +2,16 @@ import React from 'react';
 import { Platform } from 'react-native';
 
 interface BboxOverlayProps {
-	/** Coordonnées bbox dans le référentiel pixel image : [x1, y1, x2, y2]. */
+	// [x1, y1, x2, y2] en coordonnées pixel image
 	points: number[];
-	/** Dimensions naturelles de l'image (pour mapper le viewBox SVG). */
 	imageWidth: number;
 	imageHeight: number;
-	/** Couleur de bordure (défaut rouge danger). */
 	color?: string;
-	/** Couleur de remplissage translucide (défaut rouge translucide). */
 	fillColor?: string;
 }
 
-/**
- * Rectangle SVG superposé à une image, scalé automatiquement via `viewBox` +
- * `preserveAspectRatio="xMidYMid meet"`. À utiliser sur une image affichée en
- * `resizeMode: 'contain'` pour que la géométrie corresponde.
- *
- * Le SVG est positionné `position: absolute` ; le parent doit être positioned.
- *
- * Web only (utilise les éléments SVG natifs du DOM). Sur native, retourne null
- * — à remplacer par react-native-svg si besoin mobile plus tard.
- */
+// Web only (SVG DOM natif). Parent doit être positioned ; l'image associée
+// doit utiliser resizeMode 'contain' pour que la géométrie corresponde.
 export function BboxOverlay({
 	points, imageWidth, imageHeight,
 	color = '#dc2626',

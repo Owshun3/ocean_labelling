@@ -28,9 +28,6 @@ function mimeForExt(filename) {
 }
 
 function helpVideoPath(filename) {
-  // L'admin contrôle la valeur via setting → on accepte uniquement les noms simples,
-  // pas de traversée de path (juste un sanity check, le filename est toujours
-  // contrôlé par notre code à l'upload).
   const safe = path.basename(filename);
   return path.join(HELP_DIR, safe);
 }

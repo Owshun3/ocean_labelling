@@ -22,8 +22,6 @@ import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
-// Rôles assignables via l'UI : 'admin' est exclu (réservé aux superusers CVAT,
-// rang de fait, non attribuable).
 const ASSIGNABLE_ROLES: AppRole[] = ['moderator', 'curator', 'chercheur', 'annotator', 'guest'];
 
 const ROLE_LABELS: Record<AppRole, string> = {
@@ -85,9 +83,7 @@ interface StateSelectProps {
 	user: UserWithRole;
 	onSetActive: (isActive: boolean) => Promise<void>;
 	onRequestBan: () => void;
-	/** Désactive le passage à « Désactivé » (sanction). Vide = autorisé. */
 	deactivateLockedReason?: string | null;
-	/** Désactive le passage à « Banni ». Vide = autorisé. */
 	banLockedReason?: string | null;
 }
 
@@ -193,7 +189,6 @@ function RoleSelect({ user, onSave }: { user: UserWithRole; onSave: (role: AppRo
 
 	if (Platform.OS !== 'web') return <Text style={{ color: COLORS.text.secondary }}>Web only</Text>;
 
-	// Le superuser CVAT est administrateur de fait — le rôle est verrouillé.
 	if (user.is_superuser) {
 		return (
 			<View style={styles.roleCell}>

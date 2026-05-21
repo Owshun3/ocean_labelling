@@ -40,7 +40,6 @@ export const ChercheurExportRequestsScreen: React.FC = () => {
 	const [history, setHistory]     = useState<ChercheurExportRequest[]>([]);
 	const [loading, setLoading]     = useState(true);
 
-	// Form state — identique à l'admin + message + organisation
 	const [dateFrom, setDateFrom] = useState('');
 	const [dateTo,   setDateTo]   = useState('');
 	const [selectedSpecies, setSelectedSpecies] = useState<Species[]>([]);
@@ -109,7 +108,6 @@ export const ChercheurExportRequestsScreen: React.FC = () => {
 		finally { setPreviewing(false); }
 	}, [svc, filters]);
 
-	// Auto-refresh dès qu'un filtre change (debounce 400 ms).
 	useEffect(() => {
 		if (loading) return;
 		const t = setTimeout(() => { handlePreview(); }, 400);

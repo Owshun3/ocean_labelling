@@ -79,8 +79,7 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 	useEffect(() => { load(); }, [load]);
 
 	useEffect(() => {
-		// Indexe l'ordre courant (post-filtre/tri) pour que la sélection range
-		// shift+clic respecte l'ordre visible.
+		// shift+clic doit suivre l'ordre visible post-filtre/tri
 		orderedIdsRef.current = filteredPool.map((p) => p.cvat_task_id);
 	}, [filteredPool]);
 

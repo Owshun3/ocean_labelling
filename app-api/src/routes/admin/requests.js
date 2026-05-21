@@ -7,8 +7,6 @@ const { recordAction } = require('../../lib/auditLog');
 
 const router = express.Router();
 
-// Compteurs des onglets du hub /admin/requests. Plus de species_edits — l'édition
-// des fiches d'espèces est maintenant directe (audit via /admin/species-history).
 router.get('/summary', async (_req, res) => {
   try {
     const [contMedia, contAnnotation, researcher] = await Promise.all([
@@ -22,7 +20,7 @@ router.get('/summary', async (_req, res) => {
         media:      contMedia.rows[0].n,
         annotation: contAnnotation.rows[0].n,
       },
-      species_edits: 0, // obsolète — gardé pour compat client v1
+      species_edits: 0, // tombstone : ancien client lit ce champ, ne pas supprimer
       researcher_access: researcher.rows[0].n,
     });
   } catch (err) {
@@ -30,8 +28,6 @@ router.get('/summary', async (_req, res) => {
   }
 });
 
-// ── Demandes d'export chercheur ───────────────────────────────────────────
-// Liste les demandes en attente (avec username du demandeur).
 router.get('/chercheur-exports', async (_req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -59,7 +55,6 @@ router.get('/chercheur-exports', async (_req, res) => {
   }
 });
 
-// Résolution : approve (avec durée optionnelle en jours, défaut 30) ou reject (motif obligatoire).
 router.post('/chercheur-exports/:id/resolve', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
@@ -117,8 +112,5 @@ router.post('/chercheur-exports/:id/resolve', async (req, res) => {
     client.release();
   }
 });
-
-// Note : les routes /species-edits ont été retirées (migration vers édition
-// directe par le curator + audit/revert via /admin/species-history).
 
 module.exports = router;

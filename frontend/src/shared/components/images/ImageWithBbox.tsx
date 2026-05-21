@@ -8,21 +8,13 @@ interface ImageWithBboxProps {
 	url: string;
 	client?: AxiosInstance;
 	bboxPoints: number[] | null;
-	/** Dimensions de l'image (pour scaler la bbox). Si null, lit via onNaturalSize. */
 	initialWidth?: number | null;
 	initialHeight?: number | null;
-	/** Style du conteneur (taille notamment). Le composant fixe lui-même `position`. */
 	containerStyle?: StyleProp<ViewStyle>;
 	imageStyle?: StyleProp<ImageStyle>;
-	/** Sur web, déclencheur de double-clic (zoom-in cursor + handler). */
 	onDoubleClickWeb?: () => void;
 }
 
-/**
- * Image authentifiée affichée en `contain`, avec un rectangle bbox superposé.
- * Récupère les dimensions naturelles via `onNaturalSize` si elles ne sont pas fournies.
- * Gère le double-clic sur web pour ouvrir un viewer haute résolution.
- */
 export function ImageWithBbox({
 	url, client, bboxPoints,
 	initialWidth, initialHeight,

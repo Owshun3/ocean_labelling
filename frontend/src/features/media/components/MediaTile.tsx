@@ -31,14 +31,9 @@ interface Props {
 	item: MediaItem;
 	selected: boolean;
 	onPress: (e: GestureResponderEvent) => void;
-	/** Bouton de lecture sur les tuiles vidéo (ouvre le modal d'aperçu). */
 	onPlayVideo?: (videoId: number) => void;
 }
 
-/**
- * Tuile média générique : rend l'aperçu adapté au kind (photo ou vidéo).
- * Selection visuelle uniforme. Pas de logique métier interne — tout passe par les props.
- */
 export function MediaTile({ item, selected, onPress, onPlayVideo }: Props) {
 	return (
 		<Pressable onPress={onPress} style={[styles.tile, selected && styles.tileSelected]}>

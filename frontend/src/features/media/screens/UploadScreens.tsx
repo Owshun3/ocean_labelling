@@ -28,7 +28,7 @@ export const UploadScreen: React.FC = () => {
 				const n = Number(s.upload_max_bytes);
 				if (Number.isFinite(n) && n > 0) setMaxBatchBytes(n);
 			})
-			.catch(() => { /* fallback */ });
+			.catch(() => { /* keep default */ });
 	}, [appService]);
 
 	return (

@@ -17,7 +17,7 @@ export const WelcomeScreen: React.FC = () => {
 	const acknowledgeWelcome = async () => {
 		try {
 			await appApiClient.post('/auth/welcome-seen');
-		} catch { /* best-effort — pire des cas, l'utilisateur reverra l'écran une fois */ }
+		} catch { /* best-effort */ }
 		const stored = getUserProfile();
 		if (stored) saveUserProfile({ ...stored, hasSeenWelcome: true });
 		router.replace('/(main)' as Href);

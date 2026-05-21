@@ -75,19 +75,11 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 		setSelectedSpeciesKey(key);
 	}, [state.mode, state.selectedIds, proposals, selectedSpeciesKey]);
 
-	// Saisie autorisée uniquement quand on est en train de tracer (Nouvelle annotation)
-	// OU quand la proposition sélectionnée est non-validée (NV) — autrement dit, pas
-	// d'édition possible quand rien n'est sélectionné ou quand une espèce approuvée
-	// est sélectionnée (sa fiche fait foi).
 	const isApprovedSelected = selectedSpeciesOpt?.species?.status === 'approved';
 	const isPendingSelected  = selectedSpeciesOpt
 		&& (!selectedSpeciesOpt.species || selectedSpeciesOpt.species.status === 'pending');
 	const canTypeSpecies = state.mode === 'drawing' || !!isPendingSelected;
 
-	// Pilote le contenu des 3 champs en fonction de l'état :
-	//   - drawing / rien sélectionné : vide
-	//   - sélection approuvée : pré-rempli (non éditable, sert à montrer la fiche)
-	//   - sélection NV : pré-rempli (éditable, le curator peut ajuster)
 	useEffect(() => {
 		if (state.mode === 'drawing' || !selectedSpeciesOpt) {
 			setSpecies(EMPTY_SPECIES);
@@ -112,7 +104,6 @@ export const CuratorStudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 		setTags(Array.isArray(sp.tags) ? sp.tags : []);
 	}, [state.mode, selectedSpeciesOpt]);
 
-	// Re-clic sur l'option déjà sélectionnée → désélection.
 	const onPickSpecies = useCallback((opt: SpeciesOption) => {
 		setSelectedSpeciesKey((prev) => (prev === opt.key ? null : opt.key));
 	}, []);

@@ -9,7 +9,6 @@ const CVAT = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
 
 const VALID_SOURCE_TYPES = new Set(['all', 'image', 'video_frame']);
 
-// Lit le nom de plateforme depuis app_settings (modifiable par l'admin).
 async function getPlatformName() {
   try {
     const { rows } = await pool.query("SELECT value FROM app_settings WHERE key = 'platform.name'");
@@ -18,7 +17,6 @@ async function getPlatformName() {
   } catch { return 'Ora te Fenua'; }
 }
 
-// Lit width/height depuis les segments SOF du binaire JPEG.
 function readJpegSize(buf) {
   if (!buf || buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
   let i = 2;
@@ -106,9 +104,6 @@ async function computePreview(filters) {
   return { count: rows[0].n, breakdown: breakdownQ.rows[0], filters };
 }
 
-// Stream le zip Datumaro via res. À appeler depuis une route Express.
-// `actor`: { id, label } — utilisé pour `info.exported_by` + audit.
-// `originContext`: 'admin' | 'chercheur-approved' — pour audit/recordAction.
 async function streamExportZip(res, filters, actor, originContext = 'admin') {
   const { recordAction } = require('./auditLog');
   const { sql, params } = buildWhere(filters);

@@ -10,12 +10,7 @@ interface Props {
 	onClose: () => void;
 }
 
-/**
- * Modal lecteur vidéo authentifié.
- * - `videoId === null` → ne rend rien (le composant peut être monté en permanence).
- * - Bloque le téléchargement direct (`controlsList="nodownload"` + clic droit).
- * - Web only (lecteur HTML5 natif).
- */
+// Web only. Bloque le download direct (controlsList=nodownload + contextmenu).
 export const VideoPreviewModal: React.FC<Props> = ({ videoId, onClose }) => {
 	if (videoId === null) return null;
 	const streamUrl = `${videoApiBase}/${videoId}/stream`;
@@ -32,7 +27,7 @@ export const VideoPreviewModal: React.FC<Props> = ({ videoId, onClose }) => {
 					</View>
 					{Platform.OS === 'web' ? (
 						<div style={webPlayerWrap}>
-							{/* @ts-ignore HTML natif sur RN Web */}
+							{/* @ts-ignore */}
 							<video
 								src={streamUrl}
 								controls

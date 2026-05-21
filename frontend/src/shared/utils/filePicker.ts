@@ -2,12 +2,8 @@ import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 
-/**
- * Représentation unifiée d'un fichier sélectionné par l'utilisateur, quelle que
- * soit la plateforme. Le champ `formPart` est opaque : sur web c'est un `File`
- * natif, sur mobile c'est un objet `{ uri, name, type }` que FormData accepte
- * comme valeur multipart. Utiliser `appendToFormData` plutôt que d'y toucher.
- */
+// `formPart` est opaque : File natif sur web, { uri, name, type } sur mobile.
+// Toujours passer par appendToFormData() plutôt que d'y accéder directement.
 export interface PickedFile {
 	uri: string;
 	name: string;

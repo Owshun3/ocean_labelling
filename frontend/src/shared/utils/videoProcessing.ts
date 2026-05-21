@@ -12,16 +12,8 @@ export interface VideoProbe {
 	posterMime: string;
 }
 
-/**
- * Sonde une vidéo pour extraire durée + dimensions + frame poster.
- *
- * - Web : utilise un `<video>` HTML offscreen pour lire metadata, puis un
- *   canvas pour capturer une frame.
- * - Mobile : `expo-video-thumbnails` génère le poster ; durée et dimensions
- *   ne sont pas fournies (le backend accepte null sur ces champs).
- *
- * Le poster est rendu en JPEG q=0.85 à un poster_time_seconds donné.
- */
+// Sur mobile, expo-video-thumbnails ne donne ni durée ni dimensions — le
+// backend les accepte null. Poster toujours JPEG q=0.85.
 export async function probeVideo(file: PickedFile, posterTimeSeconds = 1.0, posterMaxWidth = 480): Promise<VideoProbe> {
 	if (Platform.OS === 'web') {
 		return probeVideoWeb(file, posterTimeSeconds, posterMaxWidth);
@@ -88,10 +80,6 @@ async function probeVideoNative(file: PickedFile, posterTimeSeconds: number): Pr
 	}
 }
 
-/**
- * Convertit la sortie de `probeVideo` en `PickedFile` poster prêt pour FormData,
- * ou `null` si aucune frame n'a pu être extraite.
- */
 export async function posterToPickedFile(probe: VideoProbe): Promise<PickedFile | null> {
 	if (!probe.posterUri || !probe.posterName) return null;
 	return uriToPickedFile(probe.posterUri, probe.posterName, probe.posterMime);

@@ -15,7 +15,7 @@ async function loadFilename() {
   } catch { return null; }
 }
 
-// Logo public (pas d'auth requise) : affiché aussi côté login.
+// Public (pas d'auth) : le logo s'affiche aussi sur la page de login.
 router.get('/stream', async (_req, res) => {
   const filename = await loadFilename();
   if (!filename) return res.status(404).json({ error: 'no logo' });
@@ -23,7 +23,7 @@ router.get('/stream', async (_req, res) => {
   try {
     const stat = await fs.promises.stat(filePath);
     res.setHeader('Content-Type', mimeForExt(filename));
-    res.setHeader('Cache-Control', 'public, max-age=300'); // 5 min — change rarement
+    res.setHeader('Cache-Control', 'public, max-age=300');
     res.setHeader('Content-Length', stat.size);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     fs.createReadStream(filePath).pipe(res);

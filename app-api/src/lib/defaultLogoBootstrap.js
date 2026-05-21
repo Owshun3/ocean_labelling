@@ -9,8 +9,6 @@ const {
 
 const ASSETS_DIR = path.resolve(__dirname, '../../assets');
 
-// Cherche un fichier `default-logo.<ext>` dans /app/assets (committé dans le repo,
-// copié dans l'image par le Dockerfile). Retourne le nom de fichier ou null.
 function findBundledDefaultLogo() {
   try {
     const files = fs.readdirSync(ASSETS_DIR);
@@ -20,9 +18,8 @@ function findBundledDefaultLogo() {
   }
 }
 
-// Au premier démarrage (fresh install), copie le logo bundlé vers le volume
-// persistant `/data/videos/.logo/` et renseigne le setting `platform.logo_filename`.
-// Idempotent : ne touche à rien si un logo a déjà été configuré par l'admin.
+// Idempotent : copie le logo bundlé vers le volume persistant uniquement si
+// l'admin n'a rien configuré et que le dossier est vide.
 async function seedDefaultLogo() {
   const bundled = findBundledDefaultLogo();
   if (!bundled) return;
@@ -33,8 +30,6 @@ async function seedDefaultLogo() {
 
   ensureLogoDirSync();
 
-  // Si l'admin a déjà configuré un logo (setting non-vide OU fichier déjà présent),
-  // on ne touche à rien : ses choix sont prioritaires sur le default bundlé.
   const { rows } = await pool.query(`SELECT value FROM app_settings WHERE key = 'platform.logo_filename'`);
   const currentSetting = rows[0]?.value;
   if (currentSetting && currentSetting.trim().length > 0) return;

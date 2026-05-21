@@ -20,7 +20,7 @@ const tmpStorage = multer.diskStorage({
   filename: (_req, file, cb) => cb(null, `help-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
 });
 
-const HELP_MAX_BYTES = 500 * 1024 * 1024; // 500 Mo — usage interne, taille raisonnable.
+const HELP_MAX_BYTES = 500 * 1024 * 1024;
 
 const upload = multer({
   storage: tmpStorage,
@@ -46,7 +46,6 @@ router.post('/', (req, res) => {
     const filename = `help-video.${ext}`;
 
     try {
-      // Remplace l'ancienne (peu importe son extension).
       await removeAllHelpVideos();
       await fs.promises.rename(file.path, helpVideoPath(filename));
 

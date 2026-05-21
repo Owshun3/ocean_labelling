@@ -23,8 +23,7 @@ const DEFAULT_STATE: FilterSortState = {
 	sort: { key: 'name', direction: 'asc' },
 };
 
-// Pas d'extractor pour `query` — la recherche texte est résolue côté serveur,
-// le hook ignore la clé pour ne pas re-filtrer en mémoire.
+// `query` est délégué au serveur (pas d'extractor → le hook l'ignore en mémoire)
 const CATALOG_EXTRACTORS: FieldExtractors<Species> = {
 	tags:            (s) => s.tags ?? [],
 	status:          (s) => s.status,
@@ -68,9 +67,6 @@ export const CuratorSpeciesCatalogScreen: React.FC = () => {
 		return () => { if (debRef.current) clearTimeout(debRef.current); };
 	}, [query, fetchList]);
 
-	// Construit les chips de filtre tags à partir de la taxonomie active.
-	// Multi-select : un chip = une valeur tag. Tous les groupes confondus
-	// (l'utilisateur curator connaît la sémantique).
 	const tagOptions = useMemo(() => {
 		const opts: { value: string; label: string }[] = [];
 		for (const group of tagGroups) {

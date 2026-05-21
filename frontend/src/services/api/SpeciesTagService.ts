@@ -33,7 +33,6 @@ export class SpeciesTagService {
 		return resp.data.groups;
 	}
 
-	// Admin — inclut les définitions archivées
 	async listAdmin(): Promise<SpeciesTagGroup[]> {
 		const resp = await adminClient.get<{ groups: SpeciesTagGroup[] }>('/');
 		return resp.data.groups;
@@ -64,7 +63,7 @@ export class SpeciesTagService {
 	}
 }
 
-// Validation côté client : même règles qu'au backend, pour bloquer le submit avant l'aller-retour.
+// Miroir de app-api/src/lib/speciesTagValidation.js — bloque le submit avant l'aller-retour.
 export interface SpeciesTagValidation { ok: boolean; error?: string; }
 
 export function validateSpeciesTags(tags: string[], groups: SpeciesTagGroup[]): SpeciesTagValidation {

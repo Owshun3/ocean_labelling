@@ -14,10 +14,6 @@ export interface ExifInfo {
 	raw?: Record<string, unknown>;
 }
 
-/**
- * Lit les métadonnées EXIF depuis l'URI d'un fichier image. Cross-platform :
- * fetch sur le file:// URI (RN) ou blob URI (web) puis parse via exifr.
- */
 export async function readExif(file: PickedFile): Promise<ExifInfo | null> {
 	if (!file.mimeType.startsWith('image/')) return null;
 	try {
@@ -39,13 +35,8 @@ export async function readExif(file: PickedFile): Promise<ExifInfo | null> {
 	}
 }
 
-/**
- * Re-encode l'image en JPEG via expo-image-manipulator. Strip implicitement
- * tous les segments EXIF/XMP (la sortie ne les conserve pas). Cross-platform.
- *
- * Renvoie un nouveau PickedFile pointant sur le résultat. Si le re-encode
- * échoue, renvoie le fichier d'origine inchangé.
- */
+// Le re-encode JPEG via expo-image-manipulator drop implicitement les segments
+// EXIF/XMP — c'est le seul mécanisme cross-platform fiable.
 export async function stripExif(file: PickedFile, quality = 0.92): Promise<PickedFile> {
 	if (!file.mimeType.startsWith('image/')) return file;
 	try {
@@ -65,11 +56,8 @@ function replaceExtension(name: string, newExt: string): string {
 	return name.replace(/\.[^.]+$/, '') + newExt;
 }
 
-/**
- * Convertit une URI locale (file:// ou blob:) en `PickedFile`. Sur web on
- * fetche le blob pour produire un `File` natif compatible FormData. Sur mobile
- * on conserve l'URI et FormData accepte le shape `{ uri, name, type }`.
- */
+// Web : fetch + File natif pour FormData. Mobile : URI brute, FormData accepte
+// le shape `{ uri, name, type }` (RN-specific).
 export async function uriToPickedFile(uri: string, name: string, mimeType: string): Promise<PickedFile> {
 	if (Platform.OS === 'web') {
 		const blob = await (await fetch(uri)).blob();
@@ -79,16 +67,10 @@ export async function uriToPickedFile(uri: string, name: string, mimeType: strin
 	return { uri, name, mimeType, size: 0, formPart: { uri, name, type: mimeType } };
 }
 
-/**
- * Wrap un `Blob` (typiquement obtenu côté web via canvas.toBlob) dans un
- * `PickedFile` prêt à passer à `appendToFormData`.
- */
 export function blobToPickedFile(blob: Blob, name: string, mimeType: string): PickedFile {
 	if (Platform.OS === 'web') {
 		const file = new File([blob], name, { type: mimeType });
 		return { uri: '', name, mimeType, size: file.size, formPart: file };
 	}
-	// Sur mobile on n'utilise pas ce chemin (les frames sont extraites via expo-video-thumbnails
-	// et arrivent en URI file://). Conserver la signature compile-safe pour un usage cross-platform.
 	return { uri: '', name, mimeType, size: blob.size, formPart: blob as unknown };
 }

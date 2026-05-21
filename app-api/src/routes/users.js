@@ -33,7 +33,6 @@ function translateCvatError(msg) {
   return msg;
 }
 
-// Token CVAT admin caché — utilisé pour lister tous les users (seul un superuser CVAT peut le faire)
 let cachedAdminToken = null;
 
 async function getCvatAdminToken(forceRefresh = false) {
@@ -124,7 +123,6 @@ async function loadLastBanByUser() {
   return map;
 }
 
-// GET /users/me — retourne le rôle de l'utilisateur courant (auth requise)
 router.get('/me', requireAuth, async (req, res) => {
   const userId = req.cvatUser.id;
   try {
@@ -310,7 +308,6 @@ router.post('/me/password', requireAuth, async (req, res) => {
   }
 });
 
-// GET /users — liste tous les users CVAT fusionnés avec les rôles DB
 router.get('/', requireAdmin, async (req, res) => {
   try {
     const cvatResp = await cvatFetchAllUsers();
@@ -337,8 +334,6 @@ router.get('/', requireAdmin, async (req, res) => {
 
     const actionsTotals = await fetchActionsTotals(cvatUsers.map((u) => u.id));
 
-    // Sessions actives par utilisateur (cohérent avec dashboard) :
-    // expires_at > NOW() ET last_seen_at récent (< 30 min).
     const { rows: sessionRows } = await pool.query(`
       SELECT cvat_user_id, COUNT(*)::int AS n, MAX(last_seen_at) AS last_seen_at
       FROM app_sessions
@@ -387,10 +382,6 @@ router.get('/', requireAdmin, async (req, res) => {
   }
 });
 
-/**
- * Vérifie qu'un acteur peut sanctionner (ban/désactivation) une cible.
- * Voir lib/permissions.js pour les règles.
- */
 async function assertSanctionAllowed(actorCvatUser, targetUserId, actionLabel) {
   const actorRole  = actorCvatUser.is_superuser ? 'admin' : await fetchAppRole(actorCvatUser.id);
   const targetCvat = await cvatGetUser(targetUserId);
@@ -413,8 +404,6 @@ router.patch('/:id/active', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'is_active must be a boolean' });
   }
 
-  // Garde de sanction sur DÉSACTIVATION uniquement (l'activation/déban est
-  // l'inverse, on la laisse passer pour permettre la révocation d'un ban).
   if (is_active === false) {
     try {
       await assertSanctionAllowed(req.cvatUser, id, 'désactiver');
@@ -445,10 +434,8 @@ router.patch('/:id/active', requireAdmin, async (req, res) => {
   }
 });
 
-// Rôles assignables via l'UI : 'admin' est exclu (réservé aux CVAT superusers).
 const ASSIGNABLE_ROLES = ['moderator', 'curator', 'chercheur', 'annotator', 'guest'];
 
-// PATCH /users/:id/role — assigner un rôle (admin réservé aux superusers CVAT)
 router.patch('/:id/role', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { role } = req.body;
@@ -460,7 +447,6 @@ router.patch('/:id/role', requireAdmin, async (req, res) => {
   }
 
   try {
-    // Verrouille le rôle du superuser CVAT : il est administrateur de fait, on ne touche pas.
     const cvatUser = await cvatGetUser(id);
     if (cvatUser?.is_superuser || cvatUser?.is_staff) {
       return res.status(403).json({
@@ -486,7 +472,6 @@ router.patch('/:id/role', requireAdmin, async (req, res) => {
   }
 });
 
-// POST /users — crée un compte CVAT + assigne un rôle (admin only)
 router.post('/', requireAdmin, async (req, res) => {
   const b = req.body || {};
   const username   = typeof b.username   === 'string' ? b.username.trim()   : '';
@@ -506,20 +491,17 @@ router.post('/', requireAdmin, async (req, res) => {
   }
 
   try {
-    // 1. Créer le compte CVAT via /auth/register (la route est publique côté CVAT).
     await axios.post(`${CVAT_API}/auth/register`, {
       username, email,
       first_name: firstName, last_name: lastName,
       password1: password, password2: password,
     }, { headers: { Host: 'localhost', 'Content-Type': 'application/json' } });
 
-    // 2. Récupérer l'id CVAT créé (auth/register ne le renvoie pas systématiquement).
     const userId = await resolveCvatUserIdByUsername(username);
     if (!userId) {
       return res.status(500).json({ error: 'Compte CVAT créé mais id introuvable — recharge la liste.' });
     }
 
-    // 3. Poser le rôle dans user_roles.
     await pool.query(`
       INSERT INTO user_roles (cvat_user_id, username, email, role)
       VALUES ($1, $2, $3, $4)
@@ -534,7 +516,6 @@ router.post('/', requireAdmin, async (req, res) => {
     const status = err?.response?.status;
     const data   = err?.response?.data;
     if (status === 400 && data) {
-      // CVAT répond { username: [...], email: [...] } en cas de doublon/violation.
       const firstError = (() => {
         for (const k of Object.keys(data)) {
           const v = data[k];
@@ -549,7 +530,6 @@ router.post('/', requireAdmin, async (req, res) => {
 });
 
 async function resolveCvatUserIdByUsername(username) {
-  // CVAT n'expose pas de filtre exact, on parcourt les pages de search.
   const resp = await cvatAdminGet(`/users?search=${encodeURIComponent(username)}&page_size=20`);
   const match = (resp.data?.results || []).find((u) => u.username === username);
   return match?.id ?? null;

@@ -28,8 +28,6 @@ function assignmentBucket(task: CuratorTask, isAdmin: boolean): AssignmentBucket
 	return task.is_assigned_to_me || !isAdmin ? 'mine' : 'other';
 }
 
-// Concatène les 3 noms d'espèces proposées en une chaîne lowercase, pour
-// permettre une recherche `text` qui matche n'importe lequel des 3 noms.
 function speciesSearchBlob(task: CuratorTask): string {
 	const list = task.proposed_species ?? [];
 	return list
@@ -61,7 +59,6 @@ export const CuratorHubScreen: React.FC = () => {
 			{ kind: 'text', key: 'species_query', label: 'Rechercher une espèce', placeholder: 'Nom scientifique, usage ou polynésien…' },
 			{ kind: 'number-range', key: 'proposals', label: 'Nombre de propositions', min: 2 },
 		];
-		// Filtre assignation visible uniquement en vue admin.
 		if (adminView) {
 			base.push({ kind: 'chips', key: 'assignment', label: 'Assignation', multi: false, options: [
 				{ value: 'mine',       label: 'À moi' },

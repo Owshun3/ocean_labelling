@@ -1,7 +1,6 @@
 'use strict';
 
 const express = require('express');
-const fs = require('fs');
 const { pool } = require('../../db');
 const { cvatGet, cvatDelete, cvatPut } = require('../../lib/cvatAdmin');
 const { recordAction } = require('../../lib/auditLog');
@@ -46,8 +45,6 @@ async function fetchAppRoles(userIds) {
   return map;
 }
 
-// Polymorphic JOIN: moderation_contestations ↔ media_moderation matches on (media_kind, cvat_task_id|video_id).
-// For annotation_contestations (currently image-only) the JOIN is the legacy cvat_task_id match.
 function buildModerationJoin(kind) {
   return kind === 'annotation'
     ? 'JOIN media_moderation mm ON mm.media_kind = \'image\' AND mm.cvat_task_id = c.cvat_task_id'
@@ -276,7 +273,7 @@ router.post('/resolve', async (req, res) => {
   const adminId = req.cvatUser.id;
   let imageTasksToDelete = [];
   let videosToDelete = [];
-  let curatorJobsToReset = []; // [{ taskId, jobId }] — pour effacer les annotations CVAT après commit
+  let curatorJobsToReset = [];
 
   const client = await pool.connect();
   try {
@@ -331,8 +328,6 @@ router.post('/resolve', async (req, res) => {
       }
     } else if (kind === 'annotation') {
       if (action === 'overturned' && imageTaskIds.length) {
-        // Capture les jobs certifiés AVANT suppression, pour pouvoir vider
-        // leurs annotations CVAT après commit.
         const certRows = await client.query(
           `SELECT cvat_task_id, cvat_job_id
            FROM curator_certifications
@@ -343,7 +338,6 @@ router.post('/resolve', async (req, res) => {
           taskId: r.cvat_task_id, jobId: r.cvat_job_id,
         }));
 
-        // Efface l'audit de certification — le média repart vierge en pool curation.
         await client.query(
           `DELETE FROM curator_certifications WHERE cvat_task_id = ANY($1)`,
           [imageTaskIds],

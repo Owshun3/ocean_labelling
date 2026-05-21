@@ -122,12 +122,9 @@ router.get('/bans/check', async (req, res) => {
       } catch (err) {
         console.warn(`[moderation] lazy reactivate ${user.id} failed:`, err.response?.data ?? err.message);
       }
-      // Lazy reactivation faite : on retourne « non banni, non désactivé ».
       return res.json({ banned: false, deactivated: false });
     }
 
-    // Pas de ban actif, pas de ban expiré récupérable : si le compte est
-    // toujours inactif côté CVAT, c'est une désactivation admin volontaire.
     if (!user.is_active) {
       return res.json({ banned: false, deactivated: true });
     }
@@ -164,11 +161,9 @@ router.post('/contest', requireAuth, async (req, res) => {
       eligible.video = rows.map((r) => r.video_id);
     }
 
-    // Sécurité : on REJETTE la requête si au moins un ID demandé n'est pas
-    // éligible (validé, en attente, supprimé, ou non-propriétaire). Évite
-    // qu'une sélection mixte "rejeté + validé" passe en silence le validé
-    // — l'utilisateur croit alors avoir contesté quelque chose qui n'a jamais
-    // été créé côté admin.
+    // Tout-ou-rien : si un id n'est pas éligible (non rejeté ou non propriétaire),
+    // on refuse l'ensemble pour ne pas créer silencieusement une contestation
+    // partielle sur une sélection mixte.
     const ineligibleImages = imageIds.filter((id) => !eligible.image.includes(id));
     const ineligibleVideos = videoIds.filter((id) => !eligible.video.includes(id));
     if (ineligibleImages.length || ineligibleVideos.length) {
@@ -583,11 +578,6 @@ router.post('/media/reject', requireModeratorOrAbove, async (req, res) => {
   res.json({ updated });
 });
 
-/**
- * Vérifie qu'un acteur a le droit de sanctionner (ban/désactivation) une cible.
- * Fetch les rôles + flags CVAT puis délègue à assertCanSanction.
- * Lève une erreur avec `.status` HTTP si interdit.
- */
 async function assertSanctionAllowed(actorCvatUser, targetUserId, actionLabel) {
   const actorRole  = actorCvatUser.is_superuser ? 'admin' : await fetchAppRole(actorCvatUser.id);
   const targetCvat = await cvatGet(`/users/${targetUserId}`, await getAdminToken());
@@ -606,8 +596,6 @@ router.post('/users/:id/ban', requireModeratorOrAbove, async (req, res) => {
   const userId = Number(req.params.id);
   if (!Number.isFinite(userId)) return res.status(400).json({ error: 'invalid user id' });
 
-  // Garde de sanction : self-ban interdit, admin/superuser intouchable,
-  // hiérarchie stricte (moderator ne peut bannir au-dessus de annotator/guest).
   try {
     await assertSanctionAllowed(req.cvatUser, userId, 'bannir');
   } catch (err) {

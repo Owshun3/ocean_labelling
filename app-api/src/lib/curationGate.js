@@ -15,7 +15,6 @@ async function getConsensusThreshold() {
   }
 }
 
-// Compte les jobs d'un task qui ont ≥ 1 shape. Source de vérité = CVAT.
 async function countAnnotatedJobsFromCvat(taskId, token) {
   const t = token ?? (await getAdminToken());
   const jobsResp = await cvatGet(`/jobs?task_id=${taskId}&page_size=50`, t);
@@ -30,8 +29,6 @@ async function countAnnotatedJobsFromCvat(taskId, token) {
   return counts.filter((n) => n > 0).length;
 }
 
-// Met à jour la colonne dénormalisée pour un task. À appeler après toute modif d'annotations
-// (PUT annotations annotateur, certify curator, etc.).
 async function recomputeAnnotatedForTask(taskId) {
   try {
     const count = await countAnnotatedJobsFromCvat(taskId);
@@ -48,7 +45,6 @@ async function recomputeAnnotatedForTask(taskId) {
   }
 }
 
-// Variante : on connait le jobId, on remonte au taskId. Utilisé après PUT job annotations.
 async function recomputeFromJob(jobId) {
   try {
     const token = await getAdminToken();
@@ -67,8 +63,6 @@ async function recomputeFromJob(jobId) {
   }
 }
 
-// Backfill / drift-fix : recalcule pour tous les médias modérés validés non encore curés.
-// Appelé au boot et périodiquement (toutes les heures).
 async function refreshAllPending() {
   const { rows } = await pool.query(`
     SELECT cvat_task_id FROM media_moderation
@@ -80,7 +74,6 @@ async function refreshAllPending() {
   if (rows.length === 0) return { refreshed: 0 };
   const token = await getAdminToken();
   let refreshed = 0;
-  // Limite la concurrence à 10 pour ne pas saturer CVAT
   const queue = [...rows];
   await Promise.all(Array.from({ length: 10 }).map(async () => {
     while (queue.length > 0) {
@@ -106,7 +99,6 @@ function startScheduler(intervalMs = 60 * 60 * 1000) {
       .then((r) => console.log('[curation-gate] periodic refresh:', r))
       .catch((err) => console.warn('[curation-gate] periodic refresh failed:', err.message));
   }, intervalMs);
-  // Boot warm-up : 60s après le démarrage pour laisser CVAT se stabiliser
   setTimeout(() => {
     refreshAllPending()
       .then((r) => console.log('[curation-gate] initial refresh:', r))

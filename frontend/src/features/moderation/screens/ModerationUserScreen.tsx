@@ -246,7 +246,6 @@ export const ModerationUserScreen: React.FC<Props> = ({ userId }) => {
 										</Pressable>
 									);
 								}
-								// video
 								return (
 									<Pressable
 										key={key}

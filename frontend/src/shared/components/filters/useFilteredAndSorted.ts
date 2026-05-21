@@ -3,18 +3,9 @@ import type {
 	FilterField, SortOption, FilterSortState, FieldExtractors,
 } from './types';
 
-/**
- * Applique en mémoire les filtres + le tri définis par le schéma sur une liste typée.
- *
- * Chaque clé du schéma doit avoir un extractor correspondant (`extractors[key]`)
- * qui renvoie la valeur à comparer côté item. Les filtres ignorent silencieusement
- * une clé sans extractor (utile pour les filtres conditionnels ou en construction).
- *
- * Le filtrage est non-destructif : si l'état du filtre est vide/null/undefined,
- * il ne contraint pas la liste.
- *
- * Le tri est stable (relativement à l'ordre d'entrée) grâce à un tie-breaker sur l'index.
- */
+// Une clé sans extractor est ignorée silencieusement — permet de confier ce
+// filtre/tri au serveur sans changer le schéma. Tri stable via tie-breaker
+// sur l'index d'entrée.
 export function useFilteredAndSorted<T>(
 	items: T[],
 	filters: FilterField[],
@@ -23,7 +14,6 @@ export function useFilteredAndSorted<T>(
 	extractors: FieldExtractors<T>,
 ): T[] {
 	return useMemo(() => {
-		// 1. Filter pass
 		let result = items.filter((item) => {
 			for (const field of filters) {
 				const raw = value.filters?.[field.key];
@@ -36,7 +26,6 @@ export function useFilteredAndSorted<T>(
 			return true;
 		});
 
-		// 2. Sort pass
 		if (value.sort && sorts.some((s) => s.key === value.sort!.key)) {
 			const { key, direction } = value.sort;
 			const extractor = extractors[key];
@@ -67,8 +56,6 @@ function matchesFilter(field: FilterField, raw: any, itemValue: unknown): boolea
 		case 'chips': {
 			const selected: string[] = Array.isArray(raw) ? raw.filter((v) => typeof v === 'string') : [];
 			if (selected.length === 0) return true;
-			// Si l'item porte une liste de valeurs (ex: tags d'espèce) → match si
-			// au moins une valeur de l'item est dans la sélection (OR / union).
 			if (Array.isArray(itemValue)) {
 				return selected.some((v) => itemValue.includes(v));
 			}
@@ -84,7 +71,7 @@ function matchesFilter(field: FilterField, raw: any, itemValue: unknown): boolea
 				if (Number.isFinite(fromTs) && ts < fromTs) return false;
 			}
 			if (to) {
-				// inclusif sur la journée : ajoute 24h
+				// +24h pour rendre la borne haute inclusive sur la journée entière
 				const toTs = Date.parse(to);
 				if (Number.isFinite(toTs) && ts > toTs + 86_400_000) return false;
 			}
@@ -108,7 +95,7 @@ function matchesFilter(field: FilterField, raw: any, itemValue: unknown): boolea
 }
 
 function compareValues(a: unknown, b: unknown): number {
-	// null/undefined toujours après les valeurs définies (en ordre asc).
+	// NULLS LAST en ordre asc (équivalent du tri server-side taken_at)
 	const aN = a === null || a === undefined;
 	const bN = b === null || b === undefined;
 	if (aN && bN) return 0;

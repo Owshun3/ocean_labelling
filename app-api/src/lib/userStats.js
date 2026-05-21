@@ -2,11 +2,8 @@
 
 const { pool } = require('../db');
 
-/**
- * Pour un ensemble d'IDs utilisateurs, retourne map { user_id → actions_validated_total }.
- * Combine annotations retenues verbatim par un curator + médias validés en modération.
- * Calcul cohérent avec /users/me/profile (rang).
- */
+// actions_validated_total = annotations review-mode retenues par un curator +
+// médias validés en modération. Calcul cohérent avec /users/me/profile (rang).
 async function fetchActionsTotals(userIds) {
   const map = {};
   if (!Array.isArray(userIds) || userIds.length === 0) return map;

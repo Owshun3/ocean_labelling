@@ -11,26 +11,21 @@ interface Props {
 	onChange:  (tags: string[]) => void;
 }
 
-// Rend une section par groupe : radio si exclusif, multi-chips sinon.
-// Pour les groupes is_required, ajoute un astérisque rouge.
 export const SpeciesTagPicker: React.FC<Props> = ({ groups, tags, disabled, onChange }) => {
 	const selected = new Set(tags);
 
 	const toggle = (value: string, group: SpeciesTagGroup) => {
 		if (disabled) return;
 		if (group.is_exclusive) {
-			// Radio : retirer toutes les autres valeurs du groupe + toggle celle-ci.
 			const otherValues = group.definitions.map((d) => d.value).filter((v) => v !== value);
 			const next = tags.filter((t) => !otherValues.includes(t));
 			if (selected.has(value)) {
-				// Re-cliquer désélectionne SAUF si le groupe est requis (laisser au moins la sélection).
 				if (group.is_required) return;
 				onChange(next.filter((t) => t !== value));
 			} else {
 				onChange([...next, value]);
 			}
 		} else {
-			// Multi : toggle simple.
 			if (selected.has(value)) onChange(tags.filter((t) => t !== value));
 			else                     onChange([...tags, value]);
 		}

@@ -13,14 +13,8 @@ interface Props {
 	onExtract: (videoId: number) => void;
 }
 
-/**
- * Tuile vidéo dans le contexte studio annotateur.
- *
- * UX : single-click sur la tuile → ouvre l'extracteur de frames.
- * Différent de StudioFeedTile (double-clic) car l'extraction n'engage rien
- * d'irréversible — c'est juste une navigation vers l'écran d'extraction.
- * Le badge bleu « Extraire des frames » signale visuellement l'action.
- */
+// Single-click ici (vs double-click sur StudioFeedTile) : ouvrir l'extracteur
+// ne déclenche rien d'irréversible.
 export function StudioVideoTile({ video, disabled, onExtract }: Props) {
 	return (
 		<Pressable

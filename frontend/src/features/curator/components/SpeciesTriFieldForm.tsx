@@ -80,8 +80,8 @@ const FieldRow: React.FC<FieldProps> = ({ rowIndex, field, value, disabled, onCh
 		return () => { if (debRef.current) clearTimeout(debRef.current); };
 	}, [value, open, field, service]);
 
-	// zIndex décroissant par ligne (top = au-dessus). Boost massif quand le
-	// dropdown est ouvert pour passer au-dessus des frères et conteneurs.
+	// zIndex décroissant par ligne (top = devant) ; boosté à l'ouverture pour
+	// passer au-dessus des frères et conteneurs.
 	const rowZ = (open ? 1000 : 10) - rowIndex;
 	return (
 		<View style={[styles.field, { zIndex: rowZ }]}>

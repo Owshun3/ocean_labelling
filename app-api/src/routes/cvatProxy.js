@@ -20,7 +20,6 @@ function filterHeaders(src) {
   return out;
 }
 
-// Endpoints CVAT atteignables sans session (inscription, mot de passe oublié).
 const PUBLIC_PATHS = [
   /^\/auth\/register\/?($|\?)/,
   /^\/auth\/password\/reset\/?($|\?)/,
@@ -65,8 +64,6 @@ async function proxyHandler(req, res) {
   }
 }
 
-// Auth conditionnelle : si la route fait partie de l'allowlist publique (register,
-// reset password), on saute `requireAuth`. Sinon, comportement standard.
 router.use((req, res, next) => {
   const cvatPath = req.originalUrl.replace(/^\/app-api/, '').replace(/^\/cvat/, '');
   if (isPublicCvatPath(cvatPath)) return proxyHandler(req, res);

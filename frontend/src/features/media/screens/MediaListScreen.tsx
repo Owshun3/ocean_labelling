@@ -30,11 +30,9 @@ const SECTION_COLORS: Record<ModerationStatus, string> = {
 const POLL_INTERVAL_MS = 15_000;
 const DOUBLE_CLICK_MS  = 400;
 
-// Item interne avec statut de modération attaché, séparé du type MediaTile (UI).
-// Type intersection (pas `interface extends`) car MediaItem est une union discriminée.
 type MediaWithStatus = MediaItem & { status: ModerationStatus };
 
-// Clé composite utilisée pour la sélection : "image:42" / "video:5".
+// Clé composite "image:42" / "video:5" — sélection multi-kind dans un seul Set.
 type MediaKey = `${MediaKind}:${number}`;
 function makeKey(kind: MediaKind, id: number): MediaKey { return `${kind}:${id}`; }
 function parseKey(key: MediaKey): { kind: MediaKind; id: number } {
@@ -99,7 +97,6 @@ export const MediaListScreen: React.FC = () => {
 		const merged = [...images, ...videoItems];
 		setMedia(merged);
 
-		// Nettoie la sélection des items disparus (média supprimé, vidéo soft-deleted).
 		setSelected((prev) => {
 			const validKeys = new Set(merged.map((m) => makeKey(m.kind, m.id)));
 			const next = new Set<MediaKey>();
@@ -134,8 +131,6 @@ export const MediaListScreen: React.FC = () => {
 		() => media.filter((m) => selected.has(makeKey(m.kind, m.id))),
 		[media, selected],
 	);
-	// Contestation : exige que TOUS les médias sélectionnés soient rejetés. Un seul
-	// validé/pending dans la sélection désactive le bouton.
 	const canContest = selectedItems.length > 0
 		&& selectedItems.every((m) => m.status === 'rejected');
 
@@ -144,7 +139,6 @@ export const MediaListScreen: React.FC = () => {
 		const now = Date.now();
 		const last = lastClickRef.current;
 
-		// Double-clic image → lightbox plein écran.
 		if (item.kind === 'image' && last && last.key === key && now - last.time < DOUBLE_CLICK_MS) {
 			lastClickRef.current = null;
 			setLightboxUrl(`/tasks/${item.id}/data?type=frame&number=0&quality=original`);

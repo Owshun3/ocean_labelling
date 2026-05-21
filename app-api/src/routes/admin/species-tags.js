@@ -7,8 +7,6 @@ const { loadDefinitions } = require('../../lib/speciesTagValidation');
 
 const router = express.Router();
 
-// Lecture admin (même payload que GET /species/tag-definitions, mais inclut les archivés
-// pour permettre la gestion).
 router.get('/', async (_req, res) => {
   try {
     const { rows: groups } = await pool.query(`
@@ -45,7 +43,6 @@ function sanitizeLabel(s, maxLen = 120) {
   return trimmed;
 }
 
-// ── Groups ─────────────────────────────────────────────────────────────────
 router.post('/groups', async (req, res) => {
   const b = req.body || {};
   const key   = sanitizeKey(b.key);
@@ -98,9 +95,9 @@ router.delete('/groups/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'id invalide' });
   try {
-    // CASCADE supprime aussi les définitions du groupe. Attention : les valeurs
-    // restent dans species.tags[] des espèces existantes (FK array — pas géré).
-    // Au prochain edit de ces espèces, la validation rejettera les tags orphelins.
+    // CASCADE supprime les définitions du groupe ; les valeurs déjà présentes
+    // dans species.tags[] deviennent orphelines et seront rejetées par
+    // validateTags() au prochain edit de l'espèce.
     const { rowCount } = await pool.query('DELETE FROM species_tag_groups WHERE id = $1', [id]);
     if (rowCount === 0) return res.status(404).json({ error: 'groupe introuvable' });
     recordAction(req.cvatUser.id, 'species_tags.group_deleted', { payload: { id } });
@@ -110,7 +107,6 @@ router.delete('/groups/:id', async (req, res) => {
   }
 });
 
-// ── Definitions (valeurs) ──────────────────────────────────────────────────
 router.post('/definitions', async (req, res) => {
   const b = req.body || {};
   const groupId = Number(b.group_id);
@@ -162,8 +158,6 @@ router.patch('/definitions/:id', async (req, res) => {
   }
 });
 
-// Suppression dure (rare — préférer archiver). À utiliser uniquement si la
-// valeur n'a jamais été assignée à une espèce.
 router.delete('/definitions/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'id invalide' });

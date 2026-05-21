@@ -1,10 +1,5 @@
-/**
- * Permissions de sanction côté front — miroir des règles backend (lib/permissions.js).
- * À jour avec : self-action interdite, superuser intouchable, hiérarchie stricte.
- *
- * Sert à griser les boutons d'UI quand l'action ne sera pas acceptée backend.
- * Le backend reste la source de vérité ; ce module est ergonomie pure.
- */
+// Miroir UI de app-api/src/lib/permissions.js — ergonomie pure pour griser
+// les boutons. Le backend reste source de vérité.
 
 const ROLE_RANK: Record<string, number> = {
 	admin:     5,
@@ -38,11 +33,6 @@ export interface SanctionPermission {
 	reason: string | null;
 }
 
-/**
- * Renvoie `{ allowed: false, reason: '...' }` quand la sanction est interdite,
- * `{ allowed: true, reason: null }` sinon. Le `reason` est destiné aux tooltips
- * ou aux toasts.
- */
 export function canSanction(actor: SanctionActor, target: SanctionTarget, actionLabel = 'sanctionner'): SanctionPermission {
 	if (Number(actor.id) === Number(target.id)) {
 		return { allowed: false, reason: `Tu ne peux pas te ${actionLabel} toi-même.` };

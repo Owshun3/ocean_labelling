@@ -4,7 +4,6 @@ const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// POST /upload-history — record an upload batch + auto-create pending moderation entry
 router.post('/', requireAuth, async (req, res) => {
   const { cvat_task_id, batch_name, file_count } = req.body;
   if (!cvat_task_id || !batch_name) {
@@ -36,7 +35,6 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-// GET /upload-history — all batches for admin/staff, own batches for others
 router.get('/', requireAuth, async (req, res) => {
   const user = req.cvatUser;
   try {

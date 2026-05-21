@@ -30,7 +30,6 @@ export const AdminExportScreen: React.FC = () => {
 	const [dateTo,      setDateTo]      = useState('');
 	const [selectedSpecies, setSelectedSpecies] = useState<Species[]>([]);
 	const [selectedTags,    setSelectedTags]    = useState<Set<string>>(new Set());
-	// groupValues : pour chaque groupe exclusif, la valeur sélectionnée (chaîne vide = aucune).
 	const [groupValues,     setGroupValues]     = useState<Record<string, string>>({});
 	const [sourceType,  setSourceType]  = useState<ExportSourceType>('all');
 	const [includeMeta, setIncludeMeta] = useState(true);
@@ -64,14 +63,12 @@ export const AdminExportScreen: React.FC = () => {
 
 	const exclusiveGroups    = useMemo(() => tagGroups.filter((g) => g.is_exclusive),  [tagGroups]);
 	const nonExclusiveGroups = useMemo(() => tagGroups.filter((g) => !g.is_exclusive), [tagGroups]);
-	// Tags appartenant à un groupe défini (exclu du multi-select « orphelins »).
 	const knownValues = useMemo(() => {
 		const s = new Set<string>();
 		for (const g of tagGroups) for (const d of g.definitions) s.add(d.value);
 		return s;
 	}, [tagGroups]);
-	// « Autres tags » = valeurs présentes sur des espèces mais hors taxonomie connue.
-	// Sert de garde-fou pour les tags hérités ou ad-hoc à nettoyer.
+	// Tags présents sur des espèces mais hors taxonomie connue — garde-fou nettoyage
 	const orphanTags = useMemo(
 		() => (facets?.tags ?? []).filter((t) => !knownValues.has(t)),
 		[facets, knownValues],
@@ -113,13 +110,11 @@ export const AdminExportScreen: React.FC = () => {
 
 	const setDateFromCoherent = (v: string) => {
 		setDateFrom(v);
-		// Garde-fou : si la nouvelle date_from dépasse date_to, on aligne date_to.
 		if (v && dateTo && v > dateTo) setDateTo(v);
 		setPreview(null);
 	};
 	const setDateToCoherent = (v: string) => {
 		setDateTo(v);
-		// Garde-fou symétrique.
 		if (v && dateFrom && v < dateFrom) setDateFrom(v);
 		setPreview(null);
 	};
@@ -150,8 +145,6 @@ export const AdminExportScreen: React.FC = () => {
 		}
 	}, [service, filters]);
 
-	// Rafraîchissement automatique : 400ms après le dernier changement de filtre,
-	// on relance l'aperçu. Pas besoin de bouton manuel — le count reflète l'état courant.
 	useEffect(() => {
 		if (facetsLoading) return;
 		const t = setTimeout(() => { handlePreview(); }, 400);

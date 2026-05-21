@@ -17,9 +17,8 @@ router.get('/summary', async (_req, res) => {
                (SELECT value::int FROM app_settings WHERE key = 'consensus_replicas_default'),
                2
              ))                                                                       AS media_awaiting_curation,
-        -- Comptage des utilisateurs actuellement actifs : 1 par cvat_user_id, et
-        -- seules les sessions touchées dans la fenêtre d'idle (30 min) comptent.
-        -- Sinon on accumule les sessions zombies de navigateurs fermés.
+        -- 1 user = 1 compte (DISTINCT) ; filtre idle 30 min pour exclure les
+        -- sessions zombies de navigateurs fermés.
         (SELECT COUNT(DISTINCT cvat_user_id) FROM app_sessions
            WHERE expires_at > NOW()
              AND last_seen_at > NOW() - INTERVAL '30 minutes')                       AS active_sessions,
@@ -29,10 +28,6 @@ router.get('/summary', async (_req, res) => {
         (SELECT value FROM app_settings WHERE key = 'upload_max_bytes')               AS upload_max_bytes
     `);
     const r = rows[0];
-    // Total « requêtes en attente » : tout ce que l'admin doit traiter sur le hub
-    // /admin/requests (contestations + accès chercheur). Les éditions de fiches
-    // d'espèces ne sont plus des requêtes — édition directe + audit/revert via
-    // /admin/species-history.
     const requestsTotal =
       Number(r.open_media_contestations) +
       Number(r.open_annotation_contestations) +

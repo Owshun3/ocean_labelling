@@ -9,13 +9,8 @@ import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 
-/**
- * Vocabulaire UI (différent du schéma DB pour rester lisible) :
- *   - Catégorie  = species_tag_groups (DB)        ex: « Type », « Habitat »
- *   - Étiquette  = species_tag_definitions (DB)   ex: « Récif », « Lagon »
- *
- * Axes : Obligatoire (required), Unique (exclusive) → 4 combinaisons d'usage.
- */
+// Vocabulaire UI ≠ schéma DB : « Catégorie » = species_tag_groups,
+// « Étiquette » = species_tag_definitions.
 
 function slugify(input: string): string {
 	return input
@@ -202,7 +197,6 @@ export const AdminSpeciesTagsScreen: React.FC = () => {
 		}
 	};
 
-	// Données enrichies pour le filtre/tri.
 	const enriched = useMemo(() => categories.map((c) => ({
 		...c,
 		_rule:         ruleOf(c).key,
@@ -574,15 +568,12 @@ const styles = StyleSheet.create({
 	content: { padding: SPACING.lg, paddingBottom: SPACING.xl * 2, gap: SPACING.md },
 	center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl },
 
-	// `position: relative` + `zIndex` sur le wrapper du titre établit un stacking
-	// context qui contient la tooltip de l'icône d'aide ; sans ça les cartes
-	// suivantes (createCard) repassent devant à cause de l'ordre du document.
+	// stacking context (position+zIndex) requis pour que la tooltip reste devant
+	// les cartes suivantes ; sans ça l'ordre du document gagne.
 	titleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flexWrap: 'wrap', position: 'relative' as any, zIndex: 9999 as any },
 	title: { ...TYPOGRAPHY.h1 },
 	code: { fontFamily: Platform.OS === 'web' ? ('ui-monospace, Menlo, monospace' as any) : 'monospace', fontSize: 11, color: COLORS.text.secondary },
 
-	// Help info box + tooltip — z-index élevé pour toujours passer devant les
-	// cartes suivantes (createCard, catégories, etc.).
 	helpAnchor: { position: 'relative' as any, zIndex: 9999 as any },
 	helpBox: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 99, backgroundColor: COLORS.background.card, borderWidth: 1, borderColor: COLORS.border },
 	helpBoxHovered: { borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}11` },
@@ -606,8 +597,6 @@ const styles = StyleSheet.create({
 	tooltipBullet: { fontSize: 12, color: COLORS.text.primary, lineHeight: 18, marginLeft: SPACING.sm },
 	tooltipBold: { fontWeight: '700' },
 
-	// Create category card — visuellement distinct via fond bleu pâle + bordure
-	// pleine épaisse + accent color sur le titre.
 	createCard: {
 		padding: SPACING.md, gap: SPACING.sm,
 		backgroundColor: `${COLORS.primary}0d`,
@@ -616,8 +605,7 @@ const styles = StyleSheet.create({
 	},
 	createHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
 	createBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', position: 'relative' as any },
-	// Croix dessinée géométriquement : 2 barres centrées qui se croisent à l'origine
-	// du badge. Évite les inconsistances de baseline d'une glyphe « + ».
+	// + dessiné en 2 barres pour éviter les baseline-inconsistencies d'un glyphe « + »
 	plusHorizontal: { position: 'absolute' as any, width: 14, height: 2, borderRadius: 1, backgroundColor: COLORS.text.inverse },
 	plusVertical:   { position: 'absolute' as any, width: 2, height: 14, borderRadius: 1, backgroundColor: COLORS.text.inverse },
 	createTitle: { ...TYPOGRAPHY.h2, fontSize: 16, color: COLORS.primary },
@@ -646,7 +634,6 @@ const styles = StyleSheet.create({
 	rulePreviewLabel: { fontSize: 11, color: COLORS.text.secondary, fontWeight: '700', textTransform: 'uppercase' },
 	rulePreviewValue: { fontSize: 13, color: COLORS.text.primary, lineHeight: 18, marginTop: 2 },
 
-	// Section divider between create and list
 	sectionDivider: { height: 1, backgroundColor: COLORS.border, marginVertical: SPACING.sm },
 
 	listHeader: { gap: 2 },

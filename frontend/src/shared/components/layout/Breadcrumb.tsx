@@ -39,48 +39,43 @@ const STATIC_LABELS: Record<string, string> = {
 	welcome:           'Bienvenue',
 };
 
-// Routes dont l'URL contient des segments techniques (ids) ou pour lesquelles le
-// chemin parent n'est pas une vraie page. On y substitue un libellé contextuel
-// pour la page courante et un nombre fixe de segments-liens.
+// Overrides : utilisés quand l'URL contient un id technique ou quand un
+// segment parent n'est pas une page navigable (linkSegments = 0).
 interface RouteOverride {
 	match: (parts: string[]) => boolean;
-	linkSegments: number;     // nombre de segments à conserver comme liens cliquables
-	currentLabel: string;     // libellé de la page courante (jamais cliquable)
+	linkSegments: number;
+	currentLabel: string;
 }
 
 const ROUTE_OVERRIDES: RouteOverride[] = [
-	// /studio/<taskId>/<jobId> → studio annotateur
 	{
 		match: (p) => p[0] === 'studio' && p.length >= 3 && /^\d+$/.test(p[1]) && /^\d+$/.test(p[2]),
 		linkSegments: 1,
 		currentLabel: 'Annoter ce média',
 	},
-	// /studio/video/<videoId> → extracteur de frames
 	{
 		match: (p) => p[0] === 'studio' && p[1] === 'video' && p.length >= 3,
 		linkSegments: 1,
 		currentLabel: 'Extracteur de frames',
 	},
-	// /studio/view/<taskId> → consultation d'une annotation
 	{
 		match: (p) => p[0] === 'studio' && p[1] === 'view' && p.length >= 3,
 		linkSegments: 1,
 		currentLabel: 'Aperçu d\'annotation',
 	},
-	// /curator/studio/<taskId>/<jobId> → studio curator
 	{
 		match: (p) => p[0] === 'curator' && p[1] === 'studio',
 		linkSegments: 1,
 		currentLabel: 'Certifier ce média',
 	},
-	// /chercheur/export-requests : /chercheur tout court n'existe pas comme page.
 	{
+		// /chercheur tout court n'est pas une page → linkSegments 0
 		match: (p) => p[0] === 'chercheur' && p[1] === 'export-requests',
 		linkSegments: 0,
 		currentLabel: 'Mes exports',
 	},
-	// /species/<id> : /species index n'existe pas non plus.
 	{
+		// /species index n'existe pas → linkSegments 0
 		match: (p) => p[0] === 'species' && p.length >= 2 && /^\d+$/.test(p[1]),
 		linkSegments: 0,
 		currentLabel: 'Fiche d\'espèce',

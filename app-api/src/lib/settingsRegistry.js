@@ -1,7 +1,6 @@
 'use strict';
 
 const REGISTRY = [
-  // Branding
   {
     key: 'platform.name', type: 'string', default: 'Ora te Fenua !', is_public: true,
     group_name: 'branding', label: 'Nom de la plateforme',
@@ -14,7 +13,6 @@ const REGISTRY = [
     description: 'Affiché à la première connexion d\'un nouvel utilisateur.',
   },
 
-  // Contact
   {
     key: 'platform.contact_email', type: 'string', default: '', is_public: true,
     group_name: 'contact', label: 'Email de contact',
@@ -33,25 +31,21 @@ const REGISTRY = [
     group_name: 'contact', label: 'Adresse postale', description: '',
   },
 
-  // Logo affiché dans le header. Stocké sous /data/videos/.logo/<filename>
-  // (réutilise le volume ocean_videos pour ne pas multiplier les mounts).
-  // Géré via POST /admin/logo, pas via la PATCH générique.
+  // Logo + vidéo d'aide : binaires stockés sous /data/videos/.logo et .help
+  // (volume ocean_videos partagé). Settings gérés via POST /admin/logo et
+  // /admin/help-video, pas via la PATCH générique.
   {
     key: 'platform.logo_filename', type: 'string', default: '', is_public: true,
     group_name: 'branding', label: 'Logo (nom du fichier)',
     description: 'Géré via la section dédiée plus bas — vide = aucun logo, le nom seul s\'affiche.',
   },
 
-  // Vidéo d'aide affichée sur la page « Besoin d'aide ? ». Stockée sous
-  // /data/videos/.help/<filename>. Vide → aucun lecteur affiché côté frontend.
-  // Géré via POST /admin/help-video, pas via la PATCH générique.
   {
     key: 'platform.help_video_filename', type: 'string', default: '', is_public: true,
     group_name: 'help', label: 'Vidéo explicative (nom du fichier)',
     description: 'Géré via la section dédiée plus bas — vide = aucune vidéo.',
   },
 
-  // Maintenance
   {
     key: 'platform.maintenance_mode', type: 'bool', default: 'false', is_public: true,
     group_name: 'maintenance', label: 'Mode maintenance',
@@ -63,21 +57,18 @@ const REGISTRY = [
     group_name: 'maintenance', label: 'Message affiché en mode maintenance', description: '',
   },
 
-  // Accès
   {
     key: 'platform.public_registration', type: 'bool', default: 'true', is_public: true,
     group_name: 'access', label: 'Inscriptions ouvertes au public',
     description: 'Désactivé, le formulaire d\'inscription est bloqué (utile pour figer la base d\'utilisateurs).',
   },
 
-  // Upload
   {
     key: 'upload_max_bytes', type: 'int', default: '209715200', is_public: false,
     group_name: 'upload', label: 'Taille maximale par lot (Mo)',
     description: 'Limite globale par téléversement, en mégaoctets.',
   },
 
-  // Politiques
   {
     key: 'consensus_replicas_default', type: 'int', default: '2', is_public: false,
     group_name: 'policies', label: 'Replicas de consensus par nouvelle tâche',
@@ -95,10 +86,8 @@ const REGISTRY = [
     description: 'Réglage du futur job de nettoyage automatique des médias rejetés sans contestation.',
   },
 
-  // Apparence des rangs (médailles affichées un peu partout — fiche profil,
-  // listes d'utilisateurs, propositions d'annotations…). Les seuils restent
-  // figés dans `frontend/src/shared/ranks.ts` ; seuls le libellé et la couleur
-  // sont ajustables sans redéploiement.
+  // Apparence des rangs (libellé + couleur ajustables sans redéploiement) ;
+  // les seuils restent figés dans frontend/src/shared/ranks.ts.
   ...rankAppearanceEntries(),
 ];
 
@@ -155,7 +144,6 @@ function coerceFromString(type, str) {
 }
 
 function validateForType(type, raw, meta) {
-  // raw is whatever the client sent: bool, number or string
   if (type === 'int') {
     if (typeof raw === 'string') raw = raw.trim();
     const n = Number(raw);
@@ -189,7 +177,6 @@ async function ensureSchema(pool) {
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS group_name  TEXT NOT NULL DEFAULT 'misc';
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS is_public   BOOLEAN NOT NULL DEFAULT FALSE;
   `);
-  // Upsert registry: metadata always refreshed from code, value preserved on existing rows.
   for (const r of REGISTRY) {
     await pool.query(`
       INSERT INTO app_settings (key, value, type, label, description, group_name, is_public)

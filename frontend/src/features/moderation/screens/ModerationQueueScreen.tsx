@@ -68,7 +68,6 @@ export const ModerationQueueScreen: React.FC = () => {
 
 	useEffect(() => { load(); }, [load]);
 
-	// Construit les chips Rôle dynamiquement depuis les rôles présents dans la file.
 	const roleOptions = useMemo(() => {
 		const set = new Set(entries.map((e) => e.role).filter(Boolean));
 		return Array.from(set).map((r) => ({ value: r, label: r }));

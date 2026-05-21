@@ -16,7 +16,6 @@ import { APP_API_BASE } from '@/services/api/runtimeUrls';
 
 const MAINTENANCE_KEY = 'platform.maintenance_mode';
 
-// Some int settings are stored in a fine-grained unit but presented in a coarser one for ergonomics.
 const DISPLAY_UNITS: Record<string, { toDisplay: (raw: number) => number; toRaw: (display: number) => number }> = {
 	upload_max_bytes: {
 		toDisplay: (bytes) => Math.round(bytes / (1024 * 1024)),
@@ -112,11 +111,9 @@ export const AdminSettingsScreen: React.FC = () => {
 
 	const handleMaintenanceToggle = (it: SettingItem, next: boolean) => {
 		if (next === true) {
-			// turning ON → ask confirmation
 			setDraft(it.key, true);
 			setConfirmMaintenance(true);
 		} else {
-			// turning OFF → save immediately
 			setDraft(it.key, false);
 			void service.updateSetting(it.key, false)
 				.then(() => { toast.success('Mode maintenance désactivé.'); load(); refreshPublicSettings(); })
@@ -204,8 +201,7 @@ export const AdminSettingsScreen: React.FC = () => {
 						) : null}
 						<View style={styles.groupCard}>
 							{groupItems
-								// La vidéo d'aide et le logo ont leur propre widget — on cache
-								// les champs texte par défaut qui sinon créeraient un doublon.
+								// help_video_filename et logo_filename ont leur widget dédié → on cache le champ texte par défaut
 								.filter((it) => it.key !== 'platform.help_video_filename' && it.key !== 'platform.logo_filename')
 								.map((it, idx) => (
 								<View key={it.key} style={[styles.row, idx > 0 && styles.rowBordered]}>
@@ -518,8 +514,6 @@ const styles = StyleSheet.create({
 	title: { ...TYPOGRAPHY.h1 },
 	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginBottom: SPACING.md },
 
-	// Carte qui démarque la barre de recherche du reste du contenu (même
-	// traitement visuel que la FilterSortBar : fond carte, bord, élévation).
 	searchBar: {
 		backgroundColor: COLORS.background.card,
 		borderRadius: 8,

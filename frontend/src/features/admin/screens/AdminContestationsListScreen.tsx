@@ -48,8 +48,6 @@ function fmtRelative(iso: string): string {
 
 interface ListProps {
 	embedded?: boolean;
-	/** Pré-comptes par kind (depuis RequestsSummary). Permet d'afficher un badge
-	 * sur chaque sous-onglet sans déclencher un fetch supplémentaire. */
 	breakdown?: { media: number; annotation: number } | null;
 }
 

@@ -45,8 +45,7 @@ type DragMode =
 	| { kind: 'resize'; handle: ResizeHandle; startShape: CuratorBbox; startImg: { x: number; y: number } }
 	| null;
 
-// 4 coins + 4 milieux de côté. Les milieux contraignent le resize à une seule
-// dimension (utile pour ajuster précisément hauteur OU largeur d'une bbox).
+// 4 coins (resize 2D) + 4 milieux de côté (resize 1D — ajuste H ou L seule)
 type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br' | 't' | 'r' | 'b' | 'l';
 const RESIZE_HANDLES: ResizeHandle[] = ['tl', 'tr', 'bl', 'br', 't', 'r', 'b', 'l'];
 
@@ -194,7 +193,6 @@ export const CuratorCanvas = forwardRef<CuratorCanvasHandle, Props>(({
 					dragRef.current = { kind: 'move', startShape: { x: curatorBbox.x, y: curatorBbox.y }, startImg: imgPt };
 					return;
 				}
-				// Already a curator bbox + rectangle tool: ignore (must clear first)
 				return;
 			}
 			if (tool === 'rectangle') {
@@ -204,7 +202,6 @@ export const CuratorCanvas = forwardRef<CuratorCanvasHandle, Props>(({
 			return;
 		}
 
-		// Review mode: click proposal to select
 		const ordered = proposals.map((p) => p.cvat_shape_id);
 		const hit = [...proposals].reverse().find((p) => pointInRect(imgPt, p as any));
 		if (hit) {

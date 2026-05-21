@@ -10,11 +10,6 @@ interface FieldControlProps {
 	onChange: (next: any) => void;
 }
 
-/**
- * Rend le contrôle UI adapté à un `FilterField` selon son `kind`.
- * Dispatcher pur : pas d'état local. Chaque sous-rendu est inline et bref ;
- * si l'un d'eux dépasse 30 lignes, l'extraire en composant nommé.
- */
 export function FieldControl({ field, value, onChange }: FieldControlProps) {
 	switch (field.kind) {
 		case 'text':       return <TextField     field={field} value={value} onChange={onChange} />;
@@ -108,7 +103,7 @@ function DateRangeField({ field, value, onChange }: FieldControlProps) {
 		<View style={styles.field}>
 			<Text style={styles.fieldLabel}>{field.label}</Text>
 			<View style={styles.dateRow}>
-				{/* @ts-ignore — input HTML natif sur RN Web */}
+				{/* @ts-ignore */}
 				<input
 					type="date"
 					value={from ?? ''}

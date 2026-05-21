@@ -38,8 +38,7 @@ type DragMode =
 	| { kind: 'resize'; shapeId: string; handle: ResizeHandle; startShape: ShapeBox; startImg: { x: number; y: number } }
 	| null;
 
-// 4 coins + 4 milieux de côté. Les milieux contraignent le resize à une seule
-// dimension (utile pour ajuster précisément hauteur OU largeur d'une bbox).
+// 4 coins (resize 2D) + 4 milieux de côté (resize 1D — ajuste H ou L seule)
 type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br' | 't' | 'r' | 'b' | 'l';
 const RESIZE_HANDLES: ResizeHandle[] = ['tl', 'tr', 'bl', 'br', 't', 'r', 'b', 'l'];
 type ShapeBox = { x: number; y: number; width: number; height: number };
@@ -406,8 +405,7 @@ function shapeHeight(shapes: StudioShape[], id: string): number {
 
 function hitTestHandle(imgPt: { x: number; y: number }, shape: StudioShape, screenScale: number): ResizeHandle | null {
 	const tol = HANDLE_SIZE / screenScale;
-	// Tester les coins d'abord (priorité), puis les milieux : si on clique exactement
-	// à la jonction coin/milieu, le coin gagne (resize 2D plus probable que 1D).
+	// Coins testés en premier → tie-break sur la jonction coin/milieu : 2D gagne
 	for (const h of RESIZE_HANDLES) {
 		const c = handleCenter(shape, h);
 		if (Math.abs(imgPt.x - c.x) <= tol && Math.abs(imgPt.y - c.y) <= tol) return h;

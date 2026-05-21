@@ -32,9 +32,8 @@ const COMMUNITY_SORTS: SortOption[] = [
 	{ key: 'name',                  label: 'Nom (A-Z)',              defaultDirection: 'asc' },
 ];
 
-// Pas d'extractor pour `taken_at` — le tri est appliqué côté serveur (sécurité
-// métadonnées : la valeur ne doit pas être exposée aux annotateurs non-propriétaires
-// pour ne pas révéler la date de capture d'espèces protégées).
+// taken_at omis : tri appliqué côté serveur (la valeur ne doit jamais arriver
+// au client — révèle un lieu/date de capture d'espèce protégée).
 const COMMUNITY_EXTRACTORS: FieldExtractors<FeedTask> = {
 	name:                   (t) => t.name,
 	source:                 (t) => t.source_kind ?? 'image',
@@ -51,7 +50,6 @@ const DEFAULT_COMMUNITY_STATE: FilterSortState = {
 	sort: { key: 'completed_count', direction: 'asc' },
 };
 
-// Clés de tri qui doivent être résolues côté serveur (refetch sur changement).
 const SERVER_SORT_KEYS = new Set(['taken_at']);
 
 export const StudioSelectScreen: React.FC = () => {
@@ -67,7 +65,6 @@ export const StudioSelectScreen: React.FC = () => {
 	const [communityFilters, setCommunityFilters] = useState<FilterSortState>(DEFAULT_COMMUNITY_STATE);
 	const [contestSubmitting, setContestSubmitting] = useState(false);
 
-	// Pour les clés de tri server-side (ex: taken_at), on passe les params au backend.
 	const serverSortKey = communityFilters.sort?.key && SERVER_SORT_KEYS.has(communityFilters.sort.key)
 		? communityFilters.sort.key : null;
 	const serverSortDir = communityFilters.sort?.direction;
@@ -116,8 +113,6 @@ export const StudioSelectScreen: React.FC = () => {
 		router.push(`/(main)/studio/video/${videoId}` as Href);
 	};
 
-	// Dans le studio annotateur, les vidéos rejetées par la modération sont
-	// exclues (CLAUDE.md: only non-rejected videos can have frames extracted).
 	const annotatorVideos = useMemo(
 		() => videos.filter((v) => v.moderation_status !== 'rejected'),
 		[videos],

@@ -4,16 +4,8 @@ import * as Sharing from 'expo-sharing';
 
 export type DownloadableData = Blob | ArrayBuffer;
 
-/**
- * Sauvegarde un binaire côté utilisateur.
- *
- * - Web : déclenche un download natif via <a download>.
- * - Mobile : écrit dans le cacheDirectory puis ouvre la feuille de partage du
- *   système, laissant l'utilisateur choisir où sauvegarder (Files, Drive…).
- *
- * Accepte `Blob` (typique de `axios responseType: 'blob'` côté web) ou
- * `ArrayBuffer` (`responseType: 'arraybuffer'`, cross-platform fiable).
- */
+// Web : <a download> natif. Mobile : cacheDirectory + Sharing.shareAsync
+// (l'utilisateur choisit Files/Drive/etc).
 export async function saveBinaryToDevice(
 	data: DownloadableData,
 	filename: string,

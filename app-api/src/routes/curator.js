@@ -79,13 +79,6 @@ async function cvatPut(path, body, token) {
   }
 }
 
-/* Pour une tâche donnée, résout les labels CVAT en noms d'espèces (3 noms)
- * pour pouvoir filtrer côté front par espèce proposée. Retourne [] si aucune
- * proposition.
- *
- * Coût : 1 cvatGet labels + 1 SELECT species. Acceptable au volume actuel
- * (< 200 tâches éligibles à un moment donné). À batcher si la liste explose.
- */
 async function resolveProposedSpecies(taskId, labelIds, token) {
   if (!labelIds || labelIds.length === 0) return [];
   try {
@@ -101,8 +94,6 @@ async function resolveProposedSpecies(taskId, labelIds, token) {
        FROM species WHERE name = ANY($1)`,
       [labelNames],
     );
-    // Garde aussi les labels CVAT sans match côté species (legacy) — leur nom
-    // sert au moins de fallback à la recherche.
     const matched = new Set(rows.map((r) => r.name));
     const orphans = labelNames.filter((n) => !matched.has(n)).map((n) => ({
       id: null, name: n, scientific_name: null, usage_name: null, polynesian_name: null,
@@ -113,10 +104,6 @@ async function resolveProposedSpecies(taskId, labelIds, token) {
   }
 }
 
-/* ── GET /curator/tasks
- * Liste toutes les tâches avec résumé des jobs.
- * Les curators voient toutes les tâches (pas de filtre d'assignation pour l'instant).
- */
 router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
   try {
     const me = req.cvatUser;
@@ -150,7 +137,6 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
     const assignedByTask = new Map();
     eligibleRows.forEach((r) => assignedByTask.set(r.cvat_task_id, r.assigned_curator_id));
 
-    // Résoudre les usernames des curators assignés (pour affichage admin)
     const assignedCuratorIds = [...new Set(eligibleRows.map((r) => r.assigned_curator_id).filter(Boolean))];
     const curatorUsernames = {};
     if (treatAsAdmin && assignedCuratorIds.length > 0) {
@@ -185,8 +171,6 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
           stage: j.stage,
           assignee: j.assignee ? { id: j.assignee.id, username: j.assignee.username } : null,
         }));
-        // Collecte shapes + label_ids en un seul passage pour pouvoir résoudre
-        // ensuite les noms d'espèces proposées (utile au filtre catalogue côté front).
         const perJob = await Promise.all(rawJobs.map(async (j) => {
           try {
             const ann = await cvatGet(`/jobs/${j.id}/annotations`, token);
@@ -230,7 +214,6 @@ router.get('/tasks', requireCuratorOrAbove, async (req, res) => {
       }
     }));
 
-    // Le gate par seuil est déjà appliqué côté SQL (annotated_jobs_count >= $threshold).
     res.json({ results: withJobs, count: withJobs.length, admin_view: treatAsAdmin, threshold });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -272,9 +255,6 @@ router.get('/tasks/:taskId/preview', requireCuratorOrAbove, async (req, res) => 
   }
 });
 
-/* ── GET /curator/tasks/:id/jobs
- * Détail des jobs d'une tâche avec assignations.
- */
 router.get('/tasks/:id/jobs', requireCuratorOrAbove, async (req, res) => {
   try {
     const token = await getAdminToken();
@@ -293,9 +273,6 @@ router.get('/tasks/:id/jobs', requireCuratorOrAbove, async (req, res) => {
   }
 });
 
-/* ── POST /curator/tasks/:id/quality
- * Déclenche la génération d'un rapport qualité CVAT (async).
- */
 router.post('/tasks/:id/quality', requireCuratorOrAbove, async (req, res) => {
   try {
     const token = await getAdminToken();
@@ -306,9 +283,6 @@ router.post('/tasks/:id/quality', requireCuratorOrAbove, async (req, res) => {
   }
 });
 
-/* ── GET /curator/tasks/:id/quality
- * Récupère le dernier rapport qualité + liste des conflits pour une tâche.
- */
 router.get('/tasks/:id/quality', requireCuratorOrAbove, async (req, res) => {
   try {
     const token = await getAdminToken();
@@ -323,10 +297,6 @@ router.get('/tasks/:id/quality', requireCuratorOrAbove, async (req, res) => {
   }
 });
 
-/* ── POST /curator/tasks/:id/merge
- * Déclenche la fusion par consensus (IoU) des jobs d'une tâche.
- * Retourne l'objet merge avec son id pour polling.
- */
 router.post('/tasks/:id/merge', requireCuratorOrAbove, async (req, res) => {
   try {
     const token = await getAdminToken();
@@ -337,9 +307,6 @@ router.post('/tasks/:id/merge', requireCuratorOrAbove, async (req, res) => {
   }
 });
 
-/* ── GET /curator/merges/:mergeId
- * Polling du statut d'un merge en cours.
- */
 router.get('/merges/:mergeId', requireCuratorOrAbove, async (req, res) => {
   try {
     const token = await getAdminToken();
@@ -494,8 +461,6 @@ router.post('/tasks/:taskId/certify', requireCuratorOrAbove, async (req, res) =>
     return res.status(400).json({ error: 'species.scientific_name, usage_name, polynesian_name required' });
   }
 
-  // Validation taxonomie tags : refuse la certification si la taxonomie n'est pas
-  // respectée (groupe obligatoire manquant, exclusif violé, valeur inconnue).
   const { validateTags } = require('../lib/speciesTagValidation');
   const tagsCandidate = Array.isArray(sp.tags) ? sp.tags.filter((t) => typeof t === 'string') : [];
   const tagsCheck = await validateTags(tagsCandidate);
@@ -505,8 +470,6 @@ router.post('/tasks/:taskId/certify', requireCuratorOrAbove, async (req, res) =>
   try {
     await client.query('BEGIN');
 
-    // Garde de concurrence : verrouille la ligne et vérifie qu'elle n'est pas déjà certifiée.
-    // Deux requêtes simultanées seront sérialisées par le FOR UPDATE.
     const lockResult = await client.query(
       `SELECT curator_validated_at, curator_validated_by
        FROM media_moderation
@@ -581,7 +544,6 @@ router.post('/tasks/:taskId/certify', requireCuratorOrAbove, async (req, res) =>
       [req.cvatUser.id, taskId],
     );
     if (upd.rowCount === 0) {
-      // Devrait être impossible grâce au FOR UPDATE plus haut, mais on garde le filet.
       await client.query('ROLLBACK');
       client.release();
       return res.status(409).json({ error: 'Ce média a été certifié entre-temps.' });
@@ -671,7 +633,6 @@ async function upsertSpeciesFull(client, { scientific_name, usage_name, polynesi
     }
   }
 
-  // Dernière garde case-insensitive sur le legacy `name`
   const dup = await client.query(`SELECT * FROM species WHERE LOWER(name) = LOWER($1) LIMIT 1`, [sName]);
   if (dup.rows.length > 0) {
     const upd = await client.query(

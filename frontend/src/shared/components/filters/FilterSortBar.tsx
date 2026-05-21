@@ -12,26 +12,12 @@ interface FilterSortBarProps {
 	onChange: (next: FilterSortState) => void;
 	totalCount?: number;
 	resultCount?: number;
-	/** Clé du filtre `text` à exposer toujours visible dans la barre principale. */
 	searchKey?: string;
-	/**
-	 * État par défaut (filtres + tri) auquel le bouton « Réinitialiser tout »
-	 * remettra l'écran. Quand `value` diffère de `defaultState`, le bouton
-	 * apparaît dans la barre du haut.
-	 */
 	defaultState?: FilterSortState;
 }
 
 type OpenPanel = 'filters' | 'sort' | null;
 
-/**
- * Barre filtres/tris réutilisable en accordéon.
- * - Recherche (si `searchKey` correspond à un filtre text) toujours visible.
- * - Bouton « Filtres (N) » déplie un panneau avec tous les autres champs.
- * - Bouton « Trier : X ↑↓ » déplie une radio-list + boutons asc/desc explicites.
- *
- * Les panneaux sont mutuellement exclusifs (un clic ferme l'autre).
- */
 export function FilterSortBar({
 	filters, sorts, value, onChange,
 	totalCount, resultCount, searchKey, defaultState,

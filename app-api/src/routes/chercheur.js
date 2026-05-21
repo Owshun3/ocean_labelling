@@ -2,15 +2,12 @@
 
 const express = require('express');
 const { pool } = require('../db');
-const { requireChercheur, requireAuth } = require('../middleware/auth');
+const { requireChercheur } = require('../middleware/auth');
 const { parseFilters, computePreview, streamExportZip } = require('../lib/datumaroExport');
 const { recordAction } = require('../lib/auditLog');
 
 const router = express.Router();
 
-// Lecture des facets — accessible chercheur ET admin (le formulaire chercheur réutilise
-// les mêmes facets que l'admin → on ne duplique pas).
-const { getAdminToken: _t } = require('../lib/cvatAdmin'); // not used, kept for future
 router.get('/export/facets', requireChercheur, async (_req, res) => {
   try {
     const tagsQ = await pool.query(`
@@ -25,7 +22,6 @@ router.get('/export/facets', requireChercheur, async (_req, res) => {
   }
 });
 
-// Aperçu (chercheur peut voir combien d'items correspondent avant de demander)
 router.post('/export/preview', requireChercheur, async (req, res) => {
   const filters = parseFilters(req.body);
   try {
@@ -36,7 +32,6 @@ router.post('/export/preview', requireChercheur, async (req, res) => {
   }
 });
 
-// Crée une nouvelle demande
 router.post('/export-requests', requireChercheur, async (req, res) => {
   const b = req.body || {};
   const message = typeof b.message === 'string' ? b.message.trim() : '';
@@ -60,7 +55,6 @@ router.post('/export-requests', requireChercheur, async (req, res) => {
   }
 });
 
-// Liste mes demandes (toutes statuts)
 router.get('/export-requests', requireChercheur, async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -76,7 +70,6 @@ router.get('/export-requests', requireChercheur, async (req, res) => {
   }
 });
 
-// Retirer ma demande pending (annulation propre)
 router.delete('/export-requests/:id', requireChercheur, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
@@ -94,7 +87,6 @@ router.delete('/export-requests/:id', requireChercheur, async (req, res) => {
   }
 });
 
-// Télécharger l'export d'une demande approuvée et non expirée
 router.post('/export-requests/:id/download', requireChercheur, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });

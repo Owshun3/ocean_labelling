@@ -125,7 +125,6 @@ const DiffBlock: React.FC<{ before?: any; after?: any }> = ({ before, after }) =
 		}
 	}
 
-	// Tags : rendu visuel dédié (chips colorés) au lieu d'un avant → après en texte.
 	if (Array.isArray(before?.tags) || Array.isArray(after?.tags)) {
 		const beforeArr: string[] = before?.tags ?? [];
 		const afterArr:  string[] = after?.tags  ?? [];

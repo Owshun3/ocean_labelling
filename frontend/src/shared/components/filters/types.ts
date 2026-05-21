@@ -1,15 +1,3 @@
-/**
- * Schéma déclaratif pour la barre filtres/tris réutilisable.
- *
- * Chaque page définit un tableau de FilterField + un tableau de SortOption ;
- * le composant FilterSortBar rend l'UI adaptée à chaque type et `useFilteredAndSorted`
- * applique les valeurs sur une liste en mémoire.
- *
- * Évolutif : pour passer plus tard à un filtrage serveur, on conserve le même
- * schéma côté front et on POST les FilterValue au backend au lieu de filtrer
- * côté client.
- */
-
 export type FilterField =
 	| { kind: 'text';         key: string; label: string; placeholder?: string }
 	| { kind: 'chips';        key: string; label: string; options: { value: string; label: string }[]; multi: boolean }
@@ -30,13 +18,15 @@ export interface SortValue {
 	direction: SortDirection;
 }
 
-// Valeur normalisée d'un filtre selon son `kind`.
+// Shape normalisé par kind : text→string, chips→string[] (single = len 1),
+// date-range→{from,to} en ISO yyyy-mm-dd, bool→true|false|null (null = ignoré),
+// number-range→{min,max}.
 export type FilterValue =
-	| string                              // text
-	| string[]                            // chips multi (ou single = array longueur 1)
-	| { from?: string; to?: string }      // date-range (ISO yyyy-mm-dd)
-	| boolean | null                      // bool (null = "peu importe")
-	| { min?: number; max?: number };     // number-range
+	| string
+	| string[]
+	| { from?: string; to?: string }
+	| boolean | null
+	| { min?: number; max?: number };
 
 export type FilterValueMap = Record<string, FilterValue | undefined>;
 
@@ -45,8 +35,5 @@ export interface FilterSortState {
 	sort: SortValue | null;
 }
 
-// Extracteurs : pour chaque clé déclarée dans le schéma, comment lire la valeur
-// correspondante sur un item de la liste. Permet au hook de rester agnostique
-// du shape métier.
 export type FieldExtractor<T> = (item: T) => unknown;
 export type FieldExtractors<T> = Record<string, FieldExtractor<T>>;

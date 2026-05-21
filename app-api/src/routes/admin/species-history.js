@@ -7,7 +7,6 @@ const { recordAction } = require('../../lib/auditLog');
 
 const router = express.Router();
 
-// Champs édités via PATCH /species/:id que l'on sait restaurer en revert.
 const RESTORABLE_FIELDS = [
   'scientific_name',
   'usage_name',
@@ -19,7 +18,6 @@ const RESTORABLE_FIELDS = [
   'tags',
 ];
 
-// Liste l'historique des éditions d'espèces (200 dernières).
 router.get('/', async (_req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -36,7 +34,7 @@ router.get('/', async (_req, res) => {
     const usernames = {};
     await Promise.all(actorIds.map(async (id) => {
       try { const r = await cvatGet(`/users/${id}`); usernames[id] = r.data.username; }
-      catch { /* user supprimé éventuellement */ }
+      catch { /* ignore */ }
     }));
 
     let speciesByIdMap = {};
@@ -47,10 +45,6 @@ router.get('/', async (_req, res) => {
       speciesByIdMap = Object.fromEntries(spRows.map((s) => [s.id, s]));
     }
 
-    // Marqueur "déjà annulée" : pour chaque ligne edited, on regarde s'il existe
-    // une ligne reverted plus récente qui pointe vers elle (via reverted_action_id
-    // dans le payload). Plus simple : on flagge les rows où une revert ultérieure
-    // référence leur id.
     const editedIds = rows.filter((r) => r.action === 'species.edited').map((r) => r.id);
     const revertedSet = new Set();
     if (editedIds.length > 0) {
@@ -80,7 +74,6 @@ router.get('/', async (_req, res) => {
   }
 });
 
-// Revert : restaure le `before` d'une action `species.edited`.
 router.post('/:id/revert', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid action id' });
@@ -108,7 +101,6 @@ router.post('/:id/revert', async (req, res) => {
       return res.status(400).json({ error: 'snapshot before manquant — action trop ancienne ?' });
     }
 
-    // Sécurité : si une revert ciblant cette action existe déjà, refuse.
     const { rows: existingRevert } = await client.query(`
       SELECT id FROM admin_actions
       WHERE action = 'species.reverted'
@@ -120,7 +112,6 @@ router.post('/:id/revert', async (req, res) => {
       return res.status(409).json({ error: 'cette modification a déjà été annulée' });
     }
 
-    // Lecture de l'état courant pour construire la nouvelle ligne d'historique.
     const { rows: cur } = await client.query(
       `SELECT scientific_name, usage_name, polynesian_name, description, description_source,
               reference_image_url, category, tags
@@ -133,7 +124,6 @@ router.post('/:id/revert', async (req, res) => {
     }
     const currentState = cur[0];
 
-    // Restaure les champs présents dans `before` (sans toucher aux autres).
     const sets = [];
     const params = [];
     let p = 1;
