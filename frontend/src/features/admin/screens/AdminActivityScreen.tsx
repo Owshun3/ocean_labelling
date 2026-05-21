@@ -3,6 +3,8 @@ import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet } from '
 import { useRouter, Href } from 'expo-router';
 import { AdminService, AuditEntry, AuditAction } from '@/services/api/AdminService';
 import { toast } from '@/shared/toast/Toast';
+import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
+import type { FilterField, FilterSortState, SortOption, FieldExtractors } from '@/shared/components/filters';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -41,8 +43,7 @@ const ACTION_COLORS: Record<AuditAction, string> = {
 	'species_edit.resolved':  '#7c3aed',
 };
 
-const FILTER_OPTIONS: { value: AuditAction | ''; label: string }[] = [
-	{ value: '',                        label: 'Tout' },
+const ACTION_OPTIONS: { value: AuditAction; label: string }[] = [
 	{ value: 'user.banned',             label: 'Bans' },
 	{ value: 'user.active_changed',     label: 'État compte' },
 	{ value: 'user.role_changed',       label: 'Rôle' },
@@ -56,6 +57,25 @@ const FILTER_OPTIONS: { value: AuditAction | ''; label: string }[] = [
 	{ value: 'species_edit.proposed',   label: 'Demandes espèces' },
 	{ value: 'species_edit.resolved',   label: 'Demandes résolues' },
 ];
+
+const ACTIVITY_SORTS: SortOption[] = [
+	{ key: 'created_at', label: 'Date', defaultDirection: 'desc' },
+];
+
+const DEFAULT_STATE: FilterSortState = {
+	filters: {},
+	sort: { key: 'created_at', direction: 'desc' },
+};
+
+// `action` n'a pas d'extractor : le filtre est appliqué côté serveur via le
+// query param de listActivity (single action). Les autres filtres opèrent en
+// mémoire sur le chunk déjà chargé.
+const ACTIVITY_EXTRACTORS: FieldExtractors<AuditEntry> = {
+	search:     (e) => `${e.actor.username ?? ''} ${e.target_id ?? ''}`.toLowerCase(),
+	actor_role: (e) => e.actor.role,
+	date_range: (e) => e.created_at,
+	created_at: (e) => e.created_at,
+};
 
 interface ResourceLink {
 	label: string;
@@ -149,12 +169,19 @@ export const AdminActivityScreen: React.FC = () => {
 	const [total, setTotal] = useState(0);
 	const [loading, setLoading] = useState(true);
 	const [loadingMore, setLoadingMore] = useState(false);
-	const [filter, setFilter] = useState<AuditAction | ''>('');
+	const [filterState, setFilterState] = useState<FilterSortState>(DEFAULT_STATE);
 
-	const loadInitial = useCallback(async (action: AuditAction | '') => {
+	// `action` est server-side : on lit la sélection chips-single dans filterState.filters.action.
+	const serverAction = useMemo<AuditAction | undefined>(() => {
+		const raw = filterState.filters?.action;
+		if (Array.isArray(raw) && raw.length > 0) return raw[0] as AuditAction;
+		return undefined;
+	}, [filterState.filters?.action]);
+
+	const loadInitial = useCallback(async (action: AuditAction | undefined) => {
 		setLoading(true);
 		try {
-			const resp = await service.listActivity({ limit: PAGE_SIZE, offset: 0, action: action || undefined });
+			const resp = await service.listActivity({ limit: PAGE_SIZE, offset: 0, action });
 			setEntries(resp.results);
 			setTotal(resp.total);
 		} catch (err: any) {
@@ -164,13 +191,13 @@ export const AdminActivityScreen: React.FC = () => {
 		}
 	}, [service]);
 
-	useEffect(() => { loadInitial(filter); }, [loadInitial, filter]);
+	useEffect(() => { loadInitial(serverAction); }, [loadInitial, serverAction]);
 
 	const loadMore = async () => {
 		if (loadingMore || entries.length >= total) return;
 		setLoadingMore(true);
 		try {
-			const resp = await service.listActivity({ limit: PAGE_SIZE, offset: entries.length, action: filter || undefined });
+			const resp = await service.listActivity({ limit: PAGE_SIZE, offset: entries.length, action: serverAction });
 			setEntries((prev) => [...prev, ...resp.results]);
 			setTotal(resp.total);
 		} catch (err: any) {
@@ -179,6 +206,20 @@ export const AdminActivityScreen: React.FC = () => {
 			setLoadingMore(false);
 		}
 	};
+
+	const presentRoles = useMemo(() => {
+		const set = new Set(entries.map((e) => e.actor.role).filter(Boolean));
+		return Array.from(set).map((r) => ({ value: r, label: r }));
+	}, [entries]);
+
+	const filters = useMemo<FilterField[]>(() => [
+		{ kind: 'text',       key: 'search',     label: 'Rechercher', placeholder: 'Acteur ou cible (#id)…' },
+		{ kind: 'chips',      key: 'action',     label: 'Type d\'action', multi: false, options: ACTION_OPTIONS },
+		{ kind: 'chips',      key: 'actor_role', label: 'Rôle de l\'acteur', multi: true, options: presentRoles },
+		{ kind: 'date-range', key: 'date_range', label: 'Plage de dates' },
+	], [presentRoles]);
+
+	const filtered = useFilteredAndSorted(entries, filters, ACTIVITY_SORTS, filterState, ACTIVITY_EXTRACTORS);
 
 	if (loading) {
 		return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
@@ -193,29 +234,29 @@ export const AdminActivityScreen: React.FC = () => {
 				</Text>
 			</View>
 
-			<View style={styles.filterBar}>
-				{FILTER_OPTIONS.map((opt) => {
-					const active = filter === opt.value;
-					return (
-						<Pressable
-							key={opt.value || 'all'}
-							onPress={() => setFilter(opt.value)}
-							style={[styles.filterPill, active && styles.filterPillActive]}
-						>
-							<Text style={[styles.filterText, active && styles.filterTextActive]}>{opt.label}</Text>
-						</Pressable>
-					);
-				})}
-			</View>
+			<FilterSortBar
+				filters={filters}
+				sorts={ACTIVITY_SORTS}
+				value={filterState}
+				onChange={setFilterState}
+				defaultState={DEFAULT_STATE}
+				totalCount={total}
+				resultCount={filtered.length}
+				searchKey="search"
+			/>
 
 			{entries.length === 0 ? (
 				<View style={styles.empty}>
 					<Text style={styles.emptyText}>Aucune action enregistrée pour ce filtre.</Text>
 				</View>
+			) : filtered.length === 0 ? (
+				<View style={styles.empty}>
+					<Text style={styles.emptyText}>Aucune action ne correspond aux filtres (sur le chunk chargé).</Text>
+				</View>
 			) : (
 				<FlatList
 					style={{ flex: 1 }}
-					data={entries}
+					data={filtered}
 					keyExtractor={(e) => String(e.id)}
 					contentContainerStyle={{ paddingBottom: SPACING.xl }}
 					renderItem={({ item }) => {
@@ -266,17 +307,6 @@ const styles = StyleSheet.create({
 	headerRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm },
 	title: { ...TYPOGRAPHY.h1 },
 	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary },
-
-	filterBar: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.sm },
-	filterPill: {
-		paddingHorizontal: SPACING.sm, paddingVertical: 4,
-		borderRadius: 99,
-		backgroundColor: COLORS.background.card,
-		borderWidth: 1, borderColor: COLORS.border,
-	},
-	filterPillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-	filterText: { fontSize: 12, color: COLORS.text.secondary, fontWeight: '600' },
-	filterTextActive: { color: COLORS.text.inverse },
 
 	row: {
 		flexDirection: 'row',

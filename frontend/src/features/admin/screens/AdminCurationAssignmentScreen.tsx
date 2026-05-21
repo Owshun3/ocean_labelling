@@ -5,6 +5,8 @@ import { appApiClient } from '@/services/api/AppApiService';
 import { AuthenticatedImage } from '@/shared/components/images/AuthenticatedImage';
 import { RankBadge } from '@/shared/components/RankBadge';
 import { toast } from '@/shared/toast/Toast';
+import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
+import type { FilterField, FilterSortState, SortOption, FieldExtractors } from '@/shared/components/filters';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -13,6 +15,30 @@ function fmtDate(s: string): string {
 	try { return new Date(s).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
 	catch { return s; }
 }
+
+const POOL_SORTS: SortOption[] = [
+	{ key: 'reviewed_at', label: 'Ancienneté',           defaultDirection: 'asc'  },
+	{ key: 'task_name',   label: 'Nom du média (A-Z)',   defaultDirection: 'asc'  },
+	{ key: 'uploader',    label: 'Uploadeur (A-Z)',      defaultDirection: 'asc'  },
+];
+
+const POOL_DEFAULT_STATE: FilterSortState = {
+	filters: {},
+	sort: { key: 'reviewed_at', direction: 'asc' },
+};
+
+const POOL_EXTRACTORS: FieldExtractors<CurationPoolItem> = {
+	search:      (p) => `${p.task_name} ${p.uploader.username ?? ''}`.toLowerCase(),
+	reviewed_at: (p) => p.reviewed_at,
+	date_range:  (p) => p.reviewed_at,
+	task_name:   (p) => p.task_name.toLowerCase(),
+	uploader:    (p) => (p.uploader.username ?? '').toLowerCase(),
+};
+
+const POOL_FILTERS: FilterField[] = [
+	{ kind: 'text',       key: 'search',     label: 'Rechercher', placeholder: 'Nom du média ou uploadeur…' },
+	{ kind: 'date-range', key: 'date_range', label: 'Date de validation modération' },
+];
 
 export const AdminCurationAssignmentScreen: React.FC = () => {
 	const service = useMemo(() => new AdminService(), []);
@@ -29,8 +55,11 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 	const [autoLoading, setAutoLoading] = useState(false);
 	const [autoApplying, setAutoApplying] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
+	const [poolFilterState, setPoolFilterState] = useState<FilterSortState>(POOL_DEFAULT_STATE);
 	const inputRef = useRef<TextInput>(null);
 	const orderedIdsRef = useRef<number[]>([]);
+
+	const filteredPool = useFilteredAndSorted(pool, POOL_FILTERS, POOL_SORTS, poolFilterState, POOL_EXTRACTORS);
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -50,8 +79,10 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 	useEffect(() => { load(); }, [load]);
 
 	useEffect(() => {
-		orderedIdsRef.current = pool.map((p) => p.cvat_task_id);
-	}, [pool]);
+		// Indexe l'ordre courant (post-filtre/tri) pour que la sélection range
+		// shift+clic respecte l'ordre visible.
+		orderedIdsRef.current = filteredPool.map((p) => p.cvat_task_id);
+	}, [filteredPool]);
 
 	const filteredCurators = useMemo(() => {
 		const q = query.trim().toLowerCase();
@@ -202,12 +233,6 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 					</View>
 
 					<View style={styles.card}>
-						<Text style={styles.cardTitle}>Tri</Text>
-						<Text style={styles.legend}>Aujourd'hui : par date de validation modération (asc).</Text>
-						<Text style={styles.legend}>À venir : par uploadeur, par rang annotateur, par tag d'espèce, par date d'upload.</Text>
-					</View>
-
-					<View style={styles.card}>
 						<Text style={styles.cardTitle}>Notes</Text>
 						<Text style={styles.legend}>Un média attribué disparaît immédiatement de cette file. La réassignation se fera depuis une page séparée (TODO).</Text>
 						<Text style={styles.legend}>Si la certification est ensuite contestée et acceptée par l'admin, le média revient ici, sans attribution.</Text>
@@ -215,11 +240,26 @@ export const AdminCurationAssignmentScreen: React.FC = () => {
 				</View>
 
 				<ScrollView style={styles.centerColumn} contentContainerStyle={styles.centerContent}>
+					{pool.length > 0 ? (
+						<FilterSortBar
+							filters={POOL_FILTERS}
+							sorts={POOL_SORTS}
+							value={poolFilterState}
+							onChange={setPoolFilterState}
+							defaultState={POOL_DEFAULT_STATE}
+							totalCount={pool.length}
+							resultCount={filteredPool.length}
+							searchKey="search"
+						/>
+					) : null}
+
 					{pool.length === 0 ? (
 						<View style={styles.empty}><Text style={styles.emptyText}>Aucun média en attente d'attribution.</Text></View>
+					) : filteredPool.length === 0 ? (
+						<View style={styles.empty}><Text style={styles.emptyText}>Aucun média ne correspond aux filtres.</Text></View>
 					) : (
 						<View style={styles.tiles}>
-							{pool.map((item) => {
+							{filteredPool.map((item) => {
 								const isSelected = selected.has(item.cvat_task_id);
 								return (
 									<Pressable

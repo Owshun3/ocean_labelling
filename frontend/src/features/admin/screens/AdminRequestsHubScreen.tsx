@@ -69,7 +69,7 @@ export const AdminRequestsHubScreen: React.FC = () => {
 
 			<View style={styles.body}>
 				{tab === 'contestations' ? (
-					<AdminContestationsListScreen embedded />
+					<AdminContestationsListScreen embedded breakdown={summary?.contestations_breakdown ?? null} />
 				) : (
 					<AdminResearcherRequestsTab onChanged={loadSummary} />
 				)}

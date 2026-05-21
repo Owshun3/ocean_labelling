@@ -2,9 +2,31 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform, Alert } from 'react-native';
 import { toast } from '@/shared/toast/Toast';
 import { AdminService, ChercheurExportRequestAdminView } from '@/services/api/AdminService';
+import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
+import type { FilterField, FilterSortState, SortOption, FieldExtractors } from '@/shared/components/filters';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
+
+const RESEARCHER_SORTS: SortOption[] = [
+	{ key: 'created_at', label: 'Date de demande', defaultDirection: 'desc' },
+	{ key: 'requester',  label: 'Demandeur (A-Z)', defaultDirection: 'asc'  },
+];
+
+const DEFAULT_STATE: FilterSortState = {
+	filters: {},
+	sort: { key: 'created_at', direction: 'desc' },
+};
+
+const RESEARCHER_EXTRACTORS: FieldExtractors<ChercheurExportRequestAdminView> = {
+	search:     (r) => `${r.requester_username ?? ''} ${r.organization ?? ''} ${r.message ?? ''}`.toLowerCase(),
+	created_at: (r) => r.created_at,
+	requester:  (r) => (r.requester_username ?? '').toLowerCase(),
+};
+
+const RESEARCHER_FILTERS: FilterField[] = [
+	{ kind: 'text', key: 'search', label: 'Rechercher', placeholder: 'Demandeur, organisation ou justification…' },
+];
 
 interface Props { onChanged?: () => void; }
 
@@ -14,6 +36,9 @@ export const AdminResearcherRequestsTab: React.FC<Props> = ({ onChanged }) => {
 	const [submitting, setSubmitting] = useState(false);
 	const [comments, setComments]   = useState<Record<number, string>>({});
 	const [durations, setDurations] = useState<Record<number, string>>({});
+	const [filterState, setFilterState] = useState<FilterSortState>(DEFAULT_STATE);
+
+	const filtered = useFilteredAndSorted(items ?? [], RESEARCHER_FILTERS, RESEARCHER_SORTS, filterState, RESEARCHER_EXTRACTORS);
 
 	const load = useCallback(async () => {
 		setItems(null);
@@ -88,7 +113,22 @@ export const AdminResearcherRequestsTab: React.FC<Props> = ({ onChanged }) => {
 
 	return (
 		<ScrollView contentContainerStyle={styles.list}>
-			{items.map((r) => (
+			<FilterSortBar
+				filters={RESEARCHER_FILTERS}
+				sorts={RESEARCHER_SORTS}
+				value={filterState}
+				onChange={setFilterState}
+				defaultState={DEFAULT_STATE}
+				totalCount={items.length}
+				resultCount={filtered.length}
+				searchKey="search"
+			/>
+			{filtered.length === 0 ? (
+				<View style={styles.empty}>
+					<Text style={styles.emptyText}>Aucune demande ne correspond aux filtres.</Text>
+				</View>
+			) : null}
+			{filtered.map((r) => (
 				<View key={r.id} style={styles.card}>
 					<View style={styles.cardHeader}>
 						<View style={{ flex: 1 }}>

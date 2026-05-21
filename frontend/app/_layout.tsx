@@ -66,6 +66,13 @@ export default function RootLayout() {
 				-webkit-user-select: none;
 				-ms-user-select: none;
 			}
+			/* Masque l'icône œil natif des navigateurs (Edge/IE) sur les champs
+			 * password : on a déjà notre propre toggle Ionicons à droite, le doublon
+			 * gênait à la saisie. */
+			input::-ms-reveal,
+			input::-ms-clear {
+				display: none;
+			}
 		`;
 		document.head.appendChild(style);
 	}, []);

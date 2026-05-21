@@ -109,32 +109,64 @@ export const AdminSpeciesHistoryScreen: React.FC = () => {
 	);
 };
 
+type TextDiffRow = { kind: 'text';  label: string; b: any; a: any };
+type TagsDiffRow = { kind: 'tags';  label: string; added: string[]; removed: string[]; kept: string[] };
+type DiffRow = TextDiffRow | TagsDiffRow;
+
 const DiffBlock: React.FC<{ before?: any; after?: any }> = ({ before, after }) => {
 	if (!before && !after) return null;
-	const rows: { label: string; b: any; a: any }[] = [];
+	const rows: DiffRow[] = [];
+
 	for (const { key, label } of EDITED_FIELDS) {
 		const b = before?.[key];
 		const a = after?.[key];
 		if (b !== undefined || a !== undefined) {
 			if (JSON.stringify(b) !== JSON.stringify(a)) {
-				rows.push({ label, b, a });
+				rows.push({ kind: 'text', label, b, a });
 			}
 		}
 	}
-	// Tags
+
+	// Tags : rendu visuel dédié (chips colorés) au lieu d'un avant → après en texte.
 	if (Array.isArray(before?.tags) || Array.isArray(after?.tags)) {
-		const beforeSet = new Set(before?.tags ?? []);
-		const afterSet  = new Set(after?.tags  ?? []);
-		const added   = [...afterSet].filter((t) => !beforeSet.has(t));
-		const removed = [...beforeSet].filter((t) => !afterSet.has(t));
+		const beforeArr: string[] = before?.tags ?? [];
+		const afterArr:  string[] = after?.tags  ?? [];
+		const beforeSet = new Set(beforeArr);
+		const afterSet  = new Set(afterArr);
+		const added   = afterArr.filter((t) => !beforeSet.has(t));
+		const removed = beforeArr.filter((t) => !afterSet.has(t));
+		const kept    = beforeArr.filter((t) => afterSet.has(t));
 		if (added.length > 0 || removed.length > 0) {
-			rows.push({ label: 'Tags', b: removed.join(', ') || '—', a: added.join(', ') || '—' });
+			rows.push({ kind: 'tags', label: 'Tags', added, removed, kept });
 		}
 	}
+
 	if (rows.length === 0) return <Text style={styles.diffEmpty}>Aucun champ modifié visible (snapshot vide).</Text>;
+
 	return (
 		<View style={styles.diffTable}>
-			{rows.map((r, i) => (
+			{rows.map((r, i) => r.kind === 'tags' ? (
+				<View key={i} style={styles.diffRow}>
+					<Text style={styles.diffLabel}>{r.label}</Text>
+					<View style={styles.tagsDiffWrap}>
+						{r.removed.map((t) => (
+							<View key={`rm-${t}`} style={[styles.tagChip, styles.tagChipRemoved]}>
+								<Text style={styles.tagChipRemovedText}>− {t}</Text>
+							</View>
+						))}
+						{r.added.map((t) => (
+							<View key={`add-${t}`} style={[styles.tagChip, styles.tagChipAdded]}>
+								<Text style={styles.tagChipAddedText}>+ {t}</Text>
+							</View>
+						))}
+						{r.kept.map((t) => (
+							<View key={`kp-${t}`} style={[styles.tagChip, styles.tagChipKept]}>
+								<Text style={styles.tagChipKeptText}>{t}</Text>
+							</View>
+						))}
+					</View>
+				</View>
+			) : (
 				<View key={i} style={styles.diffRow}>
 					<Text style={styles.diffLabel}>{r.label}</Text>
 					<Text style={styles.diffBefore} numberOfLines={3}>{fmt(r.b)}</Text>
@@ -182,4 +214,13 @@ const styles = StyleSheet.create({
 	diffArrow:  { color: COLORS.text.secondary, fontWeight: '700' },
 	diffAfter:  { flex: 1, fontSize: 12, color: COLORS.success, backgroundColor: `${COLORS.success}22`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3 },
 	diffEmpty: { ...TYPOGRAPHY.caption, color: COLORS.text.placeholder, fontStyle: 'italic' },
+
+	tagsDiffWrap: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+	tagChip: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99, borderWidth: 1 },
+	tagChipRemoved:     { backgroundColor: `${COLORS.danger}22`,  borderColor: COLORS.danger },
+	tagChipRemovedText: { fontSize: 11, color: COLORS.danger,  fontWeight: '700', textDecorationLine: 'line-through' as any },
+	tagChipAdded:       { backgroundColor: `${COLORS.success}22`, borderColor: COLORS.success },
+	tagChipAddedText:   { fontSize: 11, color: COLORS.success, fontWeight: '700' },
+	tagChipKept:        { backgroundColor: COLORS.background.card, borderColor: COLORS.border },
+	tagChipKeptText:    { fontSize: 11, color: COLORS.text.secondary },
 });

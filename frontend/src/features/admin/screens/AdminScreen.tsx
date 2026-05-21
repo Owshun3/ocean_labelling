@@ -15,6 +15,8 @@ import { CreateAccountModal } from '../components/CreateAccountModal';
 import { formatRemaining } from '@/services/api/banInterceptor';
 import { toast } from '@/shared/toast/Toast';
 import { RankBadge } from '@/shared/components/RankBadge';
+import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
+import type { FilterField, FilterSortState, SortOption, FieldExtractors } from '@/shared/components/filters';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -42,6 +44,29 @@ const ROLE_COLORS: Record<AppRole, string> = {
 };
 
 const STATES: AccountState[] = ['active', 'disabled', 'banned'];
+
+const ACCOUNTS_SORTS: SortOption[] = [
+	{ key: 'username',                label: 'Nom (A-Z)',             defaultDirection: 'asc' },
+	{ key: 'last_seen_at',            label: 'Dernière activité',     defaultDirection: 'desc' },
+	{ key: 'actions_validated_total', label: 'Actions validées',      defaultDirection: 'desc' },
+	{ key: 'date_joined',             label: 'Date d\'inscription',   defaultDirection: 'desc' },
+];
+
+const DEFAULT_STATE: FilterSortState = {
+	filters: {},
+	sort: { key: 'username', direction: 'asc' },
+};
+
+const ACCOUNTS_EXTRACTORS: FieldExtractors<UserWithRole> = {
+	identity:                 (u) => `${u.username || ''} ${u.email || ''}`.toLowerCase(),
+	role:                     (u) => u.role,
+	state:                    (u) => u.state,
+	online:                   (u) => (u.active_sessions ?? 0) > 0,
+	username:                 (u) => (u.username || '').toLowerCase(),
+	last_seen_at:             (u) => u.last_seen_at ?? null,
+	actions_validated_total:  (u) => u.actions_validated_total ?? 0,
+	date_joined:              (u) => u.date_joined ?? null,
+};
 
 const STATE_LABELS: Record<AccountState, string> = {
 	active: 'Activé',
@@ -210,8 +235,23 @@ export const AdminScreen: React.FC = () => {
 	const [banSubmitting, setBanSubmitting] = useState(false);
 	const [createOpen, setCreateOpen] = useState(false);
 	const [createSubmitting, setCreateSubmitting] = useState(false);
+	const [filterState, setFilterState] = useState<FilterSortState>(DEFAULT_STATE);
 	const service = useMemo(() => new AppApiService(), []);
 	const currentProfile = getUserProfile();
+
+	const presentRoles = useMemo(() => {
+		const set = new Set(users.map((u) => u.role).filter(Boolean));
+		return Array.from(set).map((r) => ({ value: r, label: ROLE_LABELS[r] ?? r }));
+	}, [users]);
+
+	const filters = useMemo<FilterField[]>(() => [
+		{ kind: 'text',  key: 'identity', label: 'Rechercher', placeholder: 'Identifiant ou email…' },
+		{ kind: 'chips', key: 'role',     label: 'Rôle',       multi: true, options: presentRoles },
+		{ kind: 'chips', key: 'state',    label: 'État',       multi: true, options: STATES.map((s) => ({ value: s, label: STATE_LABELS[s] })) },
+		{ kind: 'bool',  key: 'online',   label: 'Connexion',  trueLabel: 'En ligne', falseLabel: 'Hors-ligne' },
+	], [presentRoles]);
+
+	const filtered = useFilteredAndSorted(users, filters, ACCOUNTS_SORTS, filterState, ACCOUNTS_EXTRACTORS);
 
 	const reload = () => service.listUsers().then(setUsers);
 
@@ -291,6 +331,17 @@ export const AdminScreen: React.FC = () => {
 				</Pressable>
 			</View>
 
+			<FilterSortBar
+				filters={filters}
+				sorts={ACCOUNTS_SORTS}
+				value={filterState}
+				onChange={setFilterState}
+				defaultState={DEFAULT_STATE}
+				totalCount={users.length}
+				resultCount={filtered.length}
+				searchKey="identity"
+			/>
+
 			<View style={styles.tableHeader}>
 				<Text style={[styles.colUsername, styles.headerCell]}>Identifiant</Text>
 				<Text style={[styles.colEmail, styles.headerCell]}>Email</Text>
@@ -300,9 +351,12 @@ export const AdminScreen: React.FC = () => {
 			</View>
 
 			<FlatList
-				data={users}
+				data={filtered}
 				keyExtractor={u => String(u.id)}
-				extraData={users}
+				extraData={filtered}
+				ListEmptyComponent={
+					<View style={styles.empty}><Text style={styles.emptyText}>Aucun compte ne correspond aux filtres.</Text></View>
+				}
 				renderItem={({ item }) => (
 					<View style={[
 						styles.row,
@@ -413,4 +467,7 @@ const styles = StyleSheet.create({
 		textTransform: 'uppercase',
 	},
 	statusDot: { width: 8, height: 8, borderRadius: 4 },
+
+	empty: { padding: SPACING.xl, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed' as any, borderRadius: 8 },
+	emptyText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },
 });

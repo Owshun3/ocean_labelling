@@ -3,22 +3,36 @@ import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator } from '
 import { useRouter, Href } from 'expo-router';
 import { AdminService, ContestationUploaderEntry, ContestationKind } from '@/services/api/AdminService';
 import { toast } from '@/shared/toast/Toast';
+import { FilterSortBar, useFilteredAndSorted } from '@/shared/components/filters';
+import type { FilterField, FilterSortState, SortOption, FieldExtractors } from '@/shared/components/filters';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
-type SortKey = 'oldest' | 'newest' | 'count' | 'user';
-
 const KIND_TABS: { value: ContestationKind; label: string; hint: string }[] = [
-	{ value: 'media',      label: 'Rejets média',          hint: 'Uploadeurs contestant un rejet en modération' },
-	{ value: 'annotation', label: 'Annotations curator',   hint: 'Annotateurs contestant une annotation certifiée' },
+	{ value: 'media',      label: 'Rejets média',        hint: 'Uploadeurs contestant un rejet en modération' },
+	{ value: 'annotation', label: 'Annotations curator', hint: 'Annotateurs contestant une annotation certifiée' },
 ];
 
-const SORT_LABELS: Record<SortKey, string> = {
-	oldest: 'Plus ancienne',
-	newest: 'Plus récente',
-	count:  'Nombre',
-	user:   'Utilisateur',
+const CONTESTATIONS_SORTS: SortOption[] = [
+	{ key: 'oldest_contestation', label: 'Plus ancienne',           defaultDirection: 'asc'  },
+	{ key: 'newest_contestation', label: 'Plus récente',            defaultDirection: 'desc' },
+	{ key: 'contestation_count',  label: 'Nombre de contestations', defaultDirection: 'desc' },
+	{ key: 'username',            label: 'Utilisateur (A-Z)',       defaultDirection: 'asc'  },
+];
+
+const DEFAULT_STATE: FilterSortState = {
+	filters: {},
+	sort: { key: 'oldest_contestation', direction: 'asc' },
+};
+
+const CONTESTATIONS_EXTRACTORS: FieldExtractors<ContestationUploaderEntry> = {
+	search:               (e) => (e.username ?? '').toLowerCase(),
+	role:                 (e) => e.role,
+	oldest_contestation:  (e) => e.oldest_contestation,
+	newest_contestation:  (e) => e.newest_contestation,
+	contestation_count:   (e) => e.contestation_count,
+	username:             (e) => (e.username ?? '').toLowerCase(),
 };
 
 function fmtRelative(iso: string): string {
@@ -32,15 +46,20 @@ function fmtRelative(iso: string): string {
 	return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-interface ListProps { embedded?: boolean }
+interface ListProps {
+	embedded?: boolean;
+	/** Pré-comptes par kind (depuis RequestsSummary). Permet d'afficher un badge
+	 * sur chaque sous-onglet sans déclencher un fetch supplémentaire. */
+	breakdown?: { media: number; annotation: number } | null;
+}
 
-export const AdminContestationsListScreen: React.FC<ListProps> = ({ embedded }) => {
+export const AdminContestationsListScreen: React.FC<ListProps> = ({ embedded, breakdown }) => {
 	const router = useRouter();
 	const service = useMemo(() => new AdminService(), []);
 	const [entries, setEntries] = useState<ContestationUploaderEntry[]>([]);
 	const [loading, setLoading] = useState(true);
-	const [sort, setSort]       = useState<SortKey>('oldest');
 	const [kind, setKind]       = useState<ContestationKind>('media');
+	const [filterState, setFilterState] = useState<FilterSortState>(DEFAULT_STATE);
 
 	useEffect(() => {
 		setLoading(true);
@@ -50,24 +69,23 @@ export const AdminContestationsListScreen: React.FC<ListProps> = ({ embedded }) 
 			.finally(() => setLoading(false));
 	}, [service, kind]);
 
-	const sorted = useMemo(() => {
-		const copy = [...entries];
-		copy.sort((a, b) => {
-			switch (sort) {
-				case 'oldest': return new Date(a.oldest_contestation).getTime() - new Date(b.oldest_contestation).getTime();
-				case 'newest': return new Date(b.newest_contestation).getTime() - new Date(a.newest_contestation).getTime();
-				case 'count':  return b.contestation_count - a.contestation_count;
-				case 'user':   return (a.username ?? '').localeCompare(b.username ?? '', 'fr');
-			}
-		});
-		return copy;
-	}, [entries, sort]);
+	const presentRoles = useMemo(() => {
+		const set = new Set(entries.map((e) => e.role).filter(Boolean));
+		return Array.from(set).map((r) => ({ value: r, label: r }));
+	}, [entries]);
 
-	if (loading) {
-		return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
-	}
+	const filters = useMemo<FilterField[]>(() => [
+		{ kind: 'text',  key: 'search', label: 'Rechercher', placeholder: 'Nom d\'utilisateur…' },
+		{ kind: 'chips', key: 'role',   label: 'Rôle',       multi: true, options: presentRoles },
+	], [presentRoles]);
+
+	const filtered = useFilteredAndSorted(entries, filters, CONTESTATIONS_SORTS, filterState, CONTESTATIONS_EXTRACTORS);
 
 	const tabHint = KIND_TABS.find((t) => t.value === kind)?.hint ?? '';
+	const tabCounts: Record<ContestationKind, number | null> = {
+		media:      breakdown?.media ?? null,
+		annotation: breakdown?.annotation ?? null,
+	};
 
 	return (
 		<View style={embedded ? styles.containerEmbedded : styles.container}>
@@ -83,40 +101,43 @@ export const AdminContestationsListScreen: React.FC<ListProps> = ({ embedded }) 
 			<View style={styles.tabBar}>
 				{KIND_TABS.map((t) => {
 					const active = kind === t.value;
+					const count = tabCounts[t.value];
 					return (
 						<Pressable key={t.value} onPress={() => setKind(t.value)} style={[styles.tab, active && styles.tabActive]}>
 							<Text style={[styles.tabText, active && styles.tabTextActive]}>{t.label}</Text>
+							{count !== null ? (
+								<View style={[styles.tabBadge, (count ?? 0) === 0 && styles.tabBadgeZero, active && styles.tabBadgeActive]}>
+									<Text style={[styles.tabBadgeText, active && styles.tabBadgeTextActive]}>{count}</Text>
+								</View>
+							) : null}
 						</Pressable>
 					);
 				})}
 			</View>
 			<Text style={styles.tabHint}>{tabHint}</Text>
 
-			<View style={styles.sortBar}>
-				<Text style={styles.sortLabel}>Trier :</Text>
-				{(Object.keys(SORT_LABELS) as SortKey[]).map((k) => {
-					const active = sort === k;
-					return (
-						<Pressable
-							key={k}
-							onPress={() => setSort(k)}
-							style={[styles.sortPill, active && styles.sortPillActive]}
-						>
-							<Text style={[styles.sortPillText, active && styles.sortPillTextActive]}>
-								{SORT_LABELS[k]}
-							</Text>
-						</Pressable>
-					);
-				})}
-			</View>
+			<FilterSortBar
+				filters={filters}
+				sorts={CONTESTATIONS_SORTS}
+				value={filterState}
+				onChange={setFilterState}
+				defaultState={DEFAULT_STATE}
+				totalCount={entries.length}
+				resultCount={filtered.length}
+				searchKey="search"
+			/>
 
-			{sorted.length === 0 ? (
+			{loading ? (
+				<View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
+			) : filtered.length === 0 ? (
 				<View style={styles.empty}>
-					<Text style={styles.emptyText}>Aucune contestation en attente.</Text>
+					<Text style={styles.emptyText}>
+						{entries.length === 0 ? 'Aucune contestation en attente.' : 'Aucun utilisateur ne correspond aux filtres.'}
+					</Text>
 				</View>
 			) : (
 				<FlatList
-					data={sorted}
+					data={filtered}
 					keyExtractor={(e) => String(e.uploader_id)}
 					renderItem={({ item }) => (
 						<Pressable
@@ -153,22 +174,16 @@ const styles = StyleSheet.create({
 	subtitle: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary },
 
 	tabBar: { flexDirection: 'row', gap: SPACING.xs, marginTop: SPACING.sm },
-	tab: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, backgroundColor: COLORS.background.card, borderWidth: 1, borderColor: COLORS.border },
+	tab: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 6, backgroundColor: COLORS.background.card, borderWidth: 1, borderColor: COLORS.border },
 	tabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
 	tabText: { fontSize: 13, fontWeight: '600', color: COLORS.text.secondary },
 	tabTextActive: { color: COLORS.text.inverse },
+	tabBadge: { minWidth: 22, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99, backgroundColor: COLORS.danger, alignItems: 'center', justifyContent: 'center' },
+	tabBadgeZero: { backgroundColor: COLORS.text.placeholder },
+	tabBadgeActive: { backgroundColor: COLORS.background.card },
+	tabBadgeText: { fontSize: 11, fontWeight: '700', color: COLORS.text.inverse },
+	tabBadgeTextActive: { color: COLORS.primary },
 	tabHint: { fontSize: 11, color: COLORS.text.placeholder, fontStyle: 'italic', marginBottom: SPACING.sm },
-	sortBar: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginBottom: SPACING.sm },
-	sortLabel: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontWeight: '700' },
-	sortPill: {
-		paddingHorizontal: SPACING.sm, paddingVertical: 4,
-		borderRadius: 99,
-		backgroundColor: COLORS.background.card,
-		borderWidth: 1, borderColor: COLORS.border,
-	},
-	sortPillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-	sortPillText: { fontSize: 12, color: COLORS.text.secondary, fontWeight: '600' },
-	sortPillTextActive: { color: COLORS.text.inverse },
 
 	row: {
 		flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
