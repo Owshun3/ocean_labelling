@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { confirm } from '@/shared/utils/dialog';
 import { saveBinaryToDevice } from '@/shared/utils/fileDownload';
 import { toast } from '@/shared/toast/Toast';
@@ -167,7 +167,7 @@ export const ChercheurExportRequestsScreen: React.FC = () => {
 	if (loading) return <View style={styles.center}><ActivityIndicator color={COLORS.primary} /></View>;
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<Text style={styles.title}>Demande d'accès à l'export</Text>
 			<Text style={styles.subtitle}>
 				En tant que chercheur, tu peux demander à l'administrateur l'accès à un sous-ensemble de données certifiées.
@@ -363,7 +363,7 @@ export const ChercheurExportRequestsScreen: React.FC = () => {
 					</View>
 				</View>
 			))}
-		</ScrollView>
+		</View>
 	);
 };
 

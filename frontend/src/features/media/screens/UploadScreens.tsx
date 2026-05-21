@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Button, Image, Pressable, ScrollView, StyleSheet, Animated, Easing } from 'react-native';
+import { View, Text, Button, Image, Pressable, StyleSheet, Animated, Easing } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { useVideoUpload } from '../hooks/useVideoUpload';
@@ -58,7 +58,7 @@ export const UploadScreen: React.FC = () => {
 
 	return (
 		<>
-			<ScrollView contentContainerStyle={styles.container}>
+			<View style={styles.container}>
 				<View style={styles.modeRow}>
 					<Pressable
 						onPress={() => setMode('photos')}
@@ -77,7 +77,7 @@ export const UploadScreen: React.FC = () => {
 				{mode === 'photos'
 					? <PhotosUpload maxBatchBytes={maxBatchBytes} router={router} />
 					: <VideosUpload maxBatchBytes={maxBatchBytes} router={router} />}
-			</ScrollView>
+			</View>
 			<UploadConsentModal
 				visible={!accepted}
 				onAccept={handleAccept}

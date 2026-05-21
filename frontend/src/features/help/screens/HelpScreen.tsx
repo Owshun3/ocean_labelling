@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { getPublicSettings, refreshPublicSettings, subscribePublicSettings } from '@/services/api/publicSettings';
 import type { PublicSettings } from '@/services/api/publicSettings';
 import { COLORS } from '@/shared/theme/colors';
@@ -26,7 +26,7 @@ export const HelpScreen: React.FC = () => {
 	const hasContacts = !!(email || phone || hours || address);
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<Text style={styles.title}>Besoin d'aide ?</Text>
 			<Text style={styles.subtitle}>
 				Bienvenue dans l'aide de la plateforme <Text style={styles.bold}>{platformName}</Text>.
@@ -83,7 +83,7 @@ export const HelpScreen: React.FC = () => {
 					</Text>
 				</View>
 			</Section>
-		</ScrollView>
+		</View>
 	);
 };
 

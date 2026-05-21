@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { AppApiService, UpdateProfilePayload, UserProfile } from '@/services/api/AppApiService';
 import { getUserProfile, saveUserProfile } from '@/services/api/authStorage';
@@ -87,7 +87,7 @@ export const EditProfileScreen: React.FC = () => {
 	}
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<Text style={styles.title}>Modifier mes informations</Text>
 
 			<View style={styles.card}>
@@ -112,7 +112,7 @@ export const EditProfileScreen: React.FC = () => {
 			<View style={styles.footer}>
 				<BackButton href={'/(main)/profile' as Href} />
 			</View>
-		</ScrollView>
+		</View>
 	);
 };
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, TextInput, Image, StyleSheet, Linking } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, TextInput, Image, StyleSheet, Linking } from 'react-native';
 import { SpeciesService, Species, WikipediaSummary } from '@/services/api/SpeciesService';
 import { SpeciesTagService, SpeciesTagGroup, validateSpeciesTags } from '@/services/api/SpeciesTagService';
 import { SpeciesTagPicker } from '@/features/curator/components/SpeciesTagPicker';
@@ -144,7 +144,7 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 	const title = species.usage_name || species.scientific_name || species.name;
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<View style={styles.titleRow}>
 				<Text style={styles.title}>{title}</Text>
 				{canEdit && !editing ? (
@@ -315,7 +315,7 @@ export const SpeciesSheetScreen: React.FC<Props> = ({ speciesId }) => {
 			<View style={styles.footer}>
 				<BackButton />
 			</View>
-		</ScrollView>
+		</View>
 	);
 };
 

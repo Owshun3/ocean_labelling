@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Linking } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Linking } from 'react-native';
 import { usePublicSettings } from '@/shared/hooks/usePublicSettings';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
@@ -69,7 +69,7 @@ export const PrivacyPolicyScreen: React.FC = () => {
 	const blocks = useMemo(() => parseMarkdown(source), [source]);
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<View style={styles.header}>
 				<Text style={styles.kicker}>{platformName}</Text>
 				<Text style={styles.title}>Politique de confidentialité</Text>
@@ -95,7 +95,7 @@ export const PrivacyPolicyScreen: React.FC = () => {
 				);
 				return <Text key={i} style={styles.paragraph}>{renderSegments(b.segments)}</Text>;
 			})}
-		</ScrollView>
+		</View>
 	);
 };
 

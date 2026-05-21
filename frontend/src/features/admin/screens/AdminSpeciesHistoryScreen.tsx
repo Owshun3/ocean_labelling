@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { confirm } from '@/shared/utils/dialog';
 import { toast } from '@/shared/toast/Toast';
 import { AdminService, SpeciesEditHistoryEntry } from '@/services/api/AdminService';
@@ -51,7 +51,7 @@ export const AdminSpeciesHistoryScreen: React.FC = () => {
 	if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<Text style={styles.title}>Historique des modifications d'espèces</Text>
 			<Text style={styles.subtitle}>
 				Édition libre par les curators+ — chaque changement est enregistré ici, avec possibilité d'annulation.
@@ -103,7 +103,7 @@ export const AdminSpeciesHistoryScreen: React.FC = () => {
 					</View>
 				);
 			})}
-		</ScrollView>
+		</View>
 	);
 };
 

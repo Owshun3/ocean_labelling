@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import Svg, { G, Image as SvgImage, Rect as SvgRect } from 'react-native-svg';
 import { StudioService, CertifiedView } from '@/services/api/StudioService';
@@ -52,7 +52,7 @@ export const StudioCertifiedViewScreen: React.FC<Props> = ({ taskId }) => {
 	}
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<View style={styles.headerRow}>
 				<View style={{ flex: 1 }}>
 					<Text style={styles.title}>{task.name}</Text>
@@ -133,7 +133,7 @@ export const StudioCertifiedViewScreen: React.FC<Props> = ({ taskId }) => {
 			<View style={styles.footer}>
 				<BackButton />
 			</View>
-		</ScrollView>
+		</View>
 	);
 };
 

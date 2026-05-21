@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { toast } from '@/shared/toast/Toast';
 import { useFocusEffect, useRouter, Href } from 'expo-router';
 import { AnnotationState, FeedTask, StudioFeed, StudioService } from '@/services/api/StudioService';
@@ -161,7 +161,7 @@ export const StudioSelectScreen: React.FC = () => {
 	own.forEach((t) => ownByState[t.annotation_state].push(t));
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<View style={styles.headerRow}>
 				<Text style={styles.title}>Annotation</Text>
 				<Pressable onPress={() => router.push('/(main)' as Href)} style={styles.homeBtn}>
@@ -266,7 +266,7 @@ export const StudioSelectScreen: React.FC = () => {
 				onCancel={() => setContestTarget(null)}
 				onConfirm={handleContestConfirm}
 			/>
-		</ScrollView>
+		</View>
 	);
 };
 

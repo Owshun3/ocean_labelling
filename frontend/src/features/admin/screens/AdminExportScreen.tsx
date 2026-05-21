@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { toast } from '@/shared/toast/Toast';
 import { saveBinaryToDevice } from '@/shared/utils/fileDownload';
 import {
@@ -180,7 +180,7 @@ export const AdminExportScreen: React.FC = () => {
 	}
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<Text style={styles.title}>Export des données</Text>
 			<Text style={styles.subtitle}>
 				Export Datumaro 1.0 (zip) des médias <Text style={styles.bold}>validés par un curator</Text>. Utilise les filtres pour cibler le périmètre puis lance un aperçu avant de télécharger.
@@ -407,7 +407,7 @@ export const AdminExportScreen: React.FC = () => {
 					</View>
 				</View>
 			</View>
-		</ScrollView>
+		</View>
 	);
 };
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { Href } from 'expo-router';
 import { AdminService, DashboardSummary } from '@/services/api/AdminService';
 import { AdminCard, AdminCardSeverity } from '@/features/admin/components/AdminCard';
@@ -31,7 +31,7 @@ export const AdminDashboardScreen: React.FC = () => {
 	const banSev: AdminCardSeverity = (summary?.accounts.active_bans ?? 0) > 0 ? 'warning' : 'success';
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<Text style={styles.title}>Tableau de bord administrateur</Text>
 			{error ? <Text style={styles.error}>Données partielles : {error}</Text> : null}
 
@@ -114,7 +114,7 @@ export const AdminDashboardScreen: React.FC = () => {
 					severity="neutral"
 				/>
 			</View>
-		</ScrollView>
+		</View>
 	);
 };
 

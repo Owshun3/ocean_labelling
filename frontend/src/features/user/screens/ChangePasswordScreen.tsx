@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AppApiService } from '@/services/api/AppApiService';
@@ -50,7 +50,7 @@ export const ChangePasswordScreen: React.FC = () => {
 	}, [submitting, oldPassword, newPassword, confirmPassword, service, router]);
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<Text style={styles.title}>Modifier mon mot de passe</Text>
 
 			<View style={styles.card}>
@@ -71,7 +71,7 @@ export const ChangePasswordScreen: React.FC = () => {
 			<View style={styles.footer}>
 				<BackButton href={'/(main)/profile' as Href} />
 			</View>
-		</ScrollView>
+		</View>
 	);
 };
 

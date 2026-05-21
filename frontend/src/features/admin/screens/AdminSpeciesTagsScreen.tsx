@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { confirm } from '@/shared/utils/dialog';
 import { toast } from '@/shared/toast/Toast';
 import { SpeciesTagService, SpeciesTagGroup, SpeciesTagDefinition } from '@/services/api/SpeciesTagService';
@@ -216,7 +216,7 @@ export const AdminSpeciesTagsScreen: React.FC = () => {
 	if (loading) return <View style={styles.center}><ActivityIndicator color={COLORS.primary} /></View>;
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<View style={styles.titleRow}>
 				<Text style={styles.title}>Étiquetage des espèces</Text>
 				<HelpInfoBox hovered={helpHover} onHover={setHelpHover} />
@@ -289,7 +289,7 @@ export const AdminSpeciesTagsScreen: React.FC = () => {
 					);
 				})
 			)}
-		</ScrollView>
+		</View>
 	);
 };
 

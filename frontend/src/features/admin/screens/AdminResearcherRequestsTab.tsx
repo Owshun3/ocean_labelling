@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, TextInput, ActivityIndicator } from 'react-native';
 import { confirm } from '@/shared/utils/dialog';
 import { toast } from '@/shared/toast/Toast';
 import { AdminService, ChercheurExportRequestAdminView } from '@/services/api/AdminService';
@@ -110,7 +110,7 @@ export const AdminResearcherRequestsTab: React.FC<Props> = ({ onChanged }) => {
 	);
 
 	return (
-		<ScrollView contentContainerStyle={styles.list}>
+		<View style={styles.list}>
 			<FilterSortBar
 				filters={RESEARCHER_FILTERS}
 				sorts={RESEARCHER_SORTS}
@@ -187,7 +187,7 @@ export const AdminResearcherRequestsTab: React.FC<Props> = ({ onChanged }) => {
 					</View>
 				</View>
 			))}
-		</ScrollView>
+		</View>
 	);
 };
 

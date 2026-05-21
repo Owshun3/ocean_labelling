@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { AdminService, HealthReport } from '@/services/api/AdminService';
 import { toast } from '@/shared/toast/Toast';
 import { formatBytes, formatUptime } from '@/shared/utils/formatters';
@@ -61,7 +61,7 @@ export const AdminHealthScreen: React.FC = () => {
 		: null;
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<View style={styles.header}>
 				<View style={{ flex: 1 }}>
 					<Text style={styles.title}>Santé plateforme</Text>
@@ -168,7 +168,7 @@ export const AdminHealthScreen: React.FC = () => {
 					<Text style={styles.bold}>Auto-refresh</Text> : la page se réactualise silencieusement toutes les 15 secondes. Bouton « Rafraîchir » pour forcer.
 				</Text>
 			</View>
-		</ScrollView>
+		</View>
 	);
 };
 

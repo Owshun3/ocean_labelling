@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, StyleSheet, Switch, Modal, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet, Switch, Modal, Platform } from 'react-native';
 import { confirm } from '@/shared/utils/dialog';
 import { pickSingleFile } from '@/shared/utils/filePicker';
 import { AdminService, SettingItem } from '@/services/api/AdminService';
@@ -147,7 +147,7 @@ export const AdminSettingsScreen: React.FC = () => {
 
 	return (
 		<>
-			<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+			<View style={[styles.container, styles.content]}>
 				<Text style={styles.title}>Paramètres système</Text>
 				<Text style={styles.subtitle}>
 					{query.trim()
@@ -258,7 +258,7 @@ export const AdminSettingsScreen: React.FC = () => {
 						</View>
 					</View>
 				))}
-			</ScrollView>
+			</View>
 
 			<Modal visible={confirmMaintenance} transparent animationType="fade" onRequestClose={cancelActivateMaintenance}>
 				<View style={styles.backdrop}>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { CuratorService, CuratorTask } from '@/services/api/CuratorService';
 import { CuratorTile } from '../components/CuratorTile';
@@ -31,7 +31,7 @@ export const CuratorPostValidationScreen: React.FC<Props> = ({ completedTaskId }
 	useEffect(() => { load(); }, [load]);
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<View style={styles.confirmCard}>
 				<View style={styles.checkCircle}><Text style={styles.checkIcon}>✓</Text></View>
 				<View style={{ flex: 1 }}>
@@ -77,7 +77,7 @@ export const CuratorPostValidationScreen: React.FC<Props> = ({ completedTaskId }
 					))}
 				</View>
 			)}
-		</ScrollView>
+		</View>
 	);
 };
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { toast } from '@/shared/toast/Toast';
 import { useRouter, Href, useFocusEffect } from 'expo-router';
 import { AppApiService, UserProfile } from '@/services/api/AppApiService';
@@ -53,7 +53,7 @@ export const ProfileScreen: React.FC = () => {
 	const rank = computeRank(profile.stats.actions_validated_total);
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<Text style={styles.title}>Mon Profil</Text>
 
 			<View style={styles.columns}>
@@ -135,7 +135,7 @@ export const ProfileScreen: React.FC = () => {
 			<View style={styles.footer}>
 				<BackButton href={'/(main)' as Href} />
 			</View>
-		</ScrollView>
+		</View>
 	);
 };
 

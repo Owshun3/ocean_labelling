@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -50,7 +50,7 @@ export const DashboardScreen: React.FC = () => {
 	if (isAdmin)            cards.push({ id: 'admin',      category: 'Administration', title: 'Panneau admin',  description: 'Gérez les utilisateurs, paramètres et exports.',     cta: 'Panneau admin',     href: '/(main)/admin' as Href,      accent: COLORS.danger });
 
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<View style={[styles.container, styles.content]}>
 			<View style={styles.hero}>
 				<Text style={styles.title}>Tableau de bord</Text>
 				<Text style={styles.subtitle}>Que souhaitez-vous accomplir aujourd'hui ?</Text>
@@ -59,7 +59,7 @@ export const DashboardScreen: React.FC = () => {
 			<View style={styles.grid}>
 				{cards.map((c) => <ActionTile key={c.id} card={c} onPress={() => router.push(c.href)} />)}
 			</View>
-		</ScrollView>
+		</View>
 	);
 };
 
