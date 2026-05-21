@@ -22,7 +22,9 @@ import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 
-const ASSIGNABLE_ROLES: AppRole[] = ['moderator', 'curator', 'chercheur', 'annotator', 'guest'];
+// Le rôle 'guest' est réservé aux sessions invité non-authentifiées (front uniquement).
+// Pas attribuable à un compte réel — l'attribuer ferait perdre l'accès à ses données.
+const ASSIGNABLE_ROLES: AppRole[] = ['moderator', 'curator', 'chercheur', 'annotator'];
 
 const ROLE_LABELS: Record<AppRole, string> = {
 	admin: 'Administrateur',

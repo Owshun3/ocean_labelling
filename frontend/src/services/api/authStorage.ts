@@ -11,6 +11,24 @@ export interface StoredUserProfile {
 	hasAcceptedUploadTerms: boolean;
 }
 
+// Profil "invité" (guest) : aucune session backend, aucun cookie, aucune donnée
+// personnelle stockée. Existe uniquement côté client pour gate les routes vers
+// la landing page.
+export const GUEST_PROFILE: StoredUserProfile = {
+	id: 0,
+	username: 'Invité',
+	is_superuser: false,
+	is_staff: false,
+	appRole: 'guest',
+	hasSeenWelcome: true,
+	hasAcceptedUploadTerms: false,
+};
+
+export function startGuestSession(): void {
+	saveUserProfile(GUEST_PROFILE);
+	markSessionAlive();
+}
+
 const USER_PROFILE_KEY = 'cvat_user_profile';
 const SESSION_ALIVE_KEY = 'ocean_session_alive';
 

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
+import { startGuestSession } from '@/services/api/authStorage';
 import { COLORS } from '@/shared/theme/colors';
 import { SPACING } from '@/shared/theme/spacing';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
@@ -126,6 +127,21 @@ export const RegisterScreen: React.FC = () => {
 					<Button title="S'inscrire" onPress={handleRegister} color={COLORS.primary} />
 				)}
 
+				<View style={styles.guestRow}>
+					<View style={styles.guestDivider} />
+					<Text style={styles.guestDividerText}>ou</Text>
+					<View style={styles.guestDivider} />
+				</View>
+				<Pressable
+					onPress={() => { startGuestSession(); router.replace('/(main)/landing' as Href); }}
+					style={({ hovered, pressed }: any) => [
+						styles.guestBtn,
+						(hovered || pressed) && styles.guestBtnActive,
+					]}
+				>
+					<Text style={styles.guestBtnText}>Continuer en invité</Text>
+				</Pressable>
+
 				<View style={styles.switchContainer}>
 					<Text style={styles.switchText}>Vous avez déjà un compte ? </Text>
 					<Pressable onPress={() => router.replace('/(auth)/login' as Href)}>
@@ -160,4 +176,16 @@ const styles = StyleSheet.create({
 	checkboxChecked: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
 	policyText: { ...TYPOGRAPHY.body, color: COLORS.text.primary, fontSize: 13, flex: 1, lineHeight: 18 },
 	policyLink: { color: COLORS.primary, textDecorationLine: 'underline', fontWeight: '600' },
+
+	guestRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md, marginBottom: SPACING.sm },
+	guestDivider: { flex: 1, height: 1, backgroundColor: COLORS.border },
+	guestDividerText: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6 },
+	guestBtn: {
+		borderWidth: 1, borderColor: COLORS.border, borderRadius: 6,
+		backgroundColor: COLORS.background.main,
+		paddingVertical: 10, paddingHorizontal: SPACING.md,
+		alignItems: 'center',
+	},
+	guestBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.background.card },
+	guestBtnText: { ...TYPOGRAPHY.body, color: COLORS.text.primary, fontWeight: '600', fontSize: 13 },
 });

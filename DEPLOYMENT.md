@@ -369,7 +369,38 @@ cd frontend && npx expo start -c --web
 # OU si systemd : systemctl --user restart expo
 ```
 
-## 8. Dépannage
+## 8. Mettre à jour CVAT
+
+La source CVAT est **figée dans ce repo** (dossier `cvat-core/`, ~120 Mo). Cela garantit que tout cloneur récupère la version exacte testée avec le reste du code. La customisation Ocean passe **uniquement** par `cvat-extras/ocean.py` et `nginx/`, jamais par des modifications à `cvat-core/`.
+
+Pour mettre à jour vers une nouvelle version CVAT :
+
+```bash
+# 1. Sauvegarder la base CVAT et le volume vidéos
+docker exec $(docker compose ps -q postgres) pg_dump -U ocean ocean_labelling \
+  | gzip > /backup/pre-cvat-upgrade-$(date +%F).sql.gz
+
+# 2. Récupérer la nouvelle version CVAT
+rm -rf cvat-core
+git clone --depth 1 -b <tag_cvat_cible> https://github.com/cvat-ai/cvat.git cvat-core
+rm -rf cvat-core/.git
+
+# 3. Rebuild les images CVAT et redémarrer
+docker compose build cvat_server cvat_ui
+docker compose up -d --force-recreate cvat_server cvat_ui
+
+# 4. Vérifier les migrations CVAT (s'exécutent automatiquement au démarrage du container)
+docker compose logs cvat_server | grep -i "migrat\|error" | tail -50
+
+# 5. Smoke test : login admin, accès panneau admin, upload média
+# 6. Si OK, commit la nouvelle version
+git add cvat-core/
+git commit -m "chore: mise à jour CVAT vers <tag_cvat_cible>"
+```
+
+> ⚠️ Avant toute mise à jour CVAT, **lire les release notes** de la version cible. Les changements de schéma DB ou d'API peuvent casser app-api. Tester d'abord sur une instance de dev.
+
+## 9. Dépannage
 
 | Symptôme | Cause probable | Correctif |
 |---|---|---|

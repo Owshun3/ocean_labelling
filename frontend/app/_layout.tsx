@@ -9,7 +9,7 @@ import { usePublicSettings } from '@/shared/hooks/usePublicSettings';
 import { MaintenanceScreen } from '@/features/maintenance/MaintenanceScreen';
 import { ToastHost } from '@/shared/toast/Toast';
 
-type Target = 'pass' | '/(auth)/login' | '/(main)' | '/(main)/welcome';
+type Target = 'pass' | '/(auth)/login' | '/(main)' | '/(main)/welcome' | '/(main)/landing';
 
 function decide(segments: string[]): Target {
 	const alive = isSessionAlive();
@@ -20,6 +20,17 @@ function decide(segments: string[]): Target {
 	}
 
 	const profile = getUserProfile();
+
+	// Mode invité (guest) : accès limité à la page d'accueil + politique de
+	// confidentialité. Toute autre route est rabattue sur /landing. Le guest
+	// n'a aucune session backend, c'est un simple flag client.
+	if (profile?.appRole === 'guest') {
+		if (inAuthGroup) return '/(main)/landing';
+		const isLandingRoute = segments[0] === '(main)' && segments[1] === 'landing';
+		const isPrivacyRoute = segments[0] === '(main)' && segments[1] === 'privacy';
+		return (isLandingRoute || isPrivacyRoute) ? 'pass' : '/(main)/landing';
+	}
+
 	const hasSeenWelcome = profile?.hasSeenWelcome ?? true;
 
 	if (!hasSeenWelcome) {

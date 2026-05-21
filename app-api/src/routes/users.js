@@ -434,7 +434,11 @@ router.patch('/:id/active', requireAdmin, async (req, res) => {
   }
 });
 
-const ASSIGNABLE_ROLES = ['moderator', 'curator', 'chercheur', 'annotator', 'guest'];
+// Le rôle 'guest' est réservé à la session d'invité non-authentifiée (front uniquement,
+// aucun compte CVAT/app-api associé). L'attribuer à un compte réel ferait perdre l'accès
+// à ses données puisque toutes les vérifications de permission le traitent comme un visiteur
+// anonyme. On bloque donc explicitement son assignment ici.
+const ASSIGNABLE_ROLES = ['moderator', 'curator', 'chercheur', 'annotator'];
 
 router.patch('/:id/role', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);

@@ -13,16 +13,18 @@ interface NavRoute {
 	roles: string[];
 }
 
+// Le rôle 'guest' n'a accès qu'à /landing et /privacy (gate dans app/_layout.tsx).
+// Aucune entrée de nav n'a donc lieu d'être affichée pour les invités.
 const NAV_ROUTES: NavRoute[] = [
-	{ name: 'Accueil',         path: '/(main)'           as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'] },
+	{ name: 'Accueil',         path: '/(main)'           as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator'] },
 	{ name: 'Mes Médias',      path: '/(main)/media'     as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator'] },
 	{ name: 'Annotation',      path: '/(main)/studio/select' as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator'] },
 	{ name: 'Curation',        path: '/(main)/curator'    as Href, roles: ['admin', 'moderator', 'curator', 'chercheur'] },
 	{ name: 'Modération',      path: '/(main)/moderation' as Href, roles: ['admin', 'moderator'] },
 	{ name: 'Mes exports',     path: '/(main)/chercheur/export-requests' as Href, roles: ['chercheur'] },
 	{ name: 'Administration',  path: '/(main)/admin'     as Href, roles: ['admin'] },
-	{ name: 'Besoin d\'aide ?', path: '/(main)/help'     as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'] },
-	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator', 'guest'] },
+	{ name: 'Besoin d\'aide ?', path: '/(main)/help'     as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator'] },
+	{ name: 'Mon Profil',      path: '/(main)/profile'   as Href, roles: ['admin', 'moderator', 'curator', 'chercheur', 'annotator'] },
 ];
 
 import { APP_API_BASE } from '@/services/api/runtimeUrls';

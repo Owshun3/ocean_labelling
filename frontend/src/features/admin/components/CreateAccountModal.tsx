@@ -5,8 +5,9 @@ import { COLORS } from '@/shared/theme/colors';
 import { TYPOGRAPHY } from '@/shared/theme/typography';
 import { SPACING } from '@/shared/theme/spacing';
 
+// 'guest' exclu : c'est un rôle de session anonyme côté front, sans compte CVAT/app-api.
+// L'attribuer à un compte réel ferait perdre l'accès aux données associées.
 const ASSIGNABLE_ROLES: { value: AppRole; label: string }[] = [
-	{ value: 'guest',     label: 'Invité' },
 	{ value: 'annotator', label: 'Annotateur' },
 	{ value: 'chercheur', label: 'Chercheur' },
 	{ value: 'curator',   label: 'Curateur' },

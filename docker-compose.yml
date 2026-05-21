@@ -1,16 +1,24 @@
 name: cvat
 
+# CVAT's docker-compose.override.yml est dans son .gitignore (vocation locale-dev),
+# on ne peut donc pas le tracker. On l'évite : son contenu (CORS + ALLOWED_HOSTS
+# + port 8000) est inliné directement dans la section cvat_server ci-dessous.
 include:
   - path:
       - cvat-core/docker-compose.yml
-      - cvat-core/docker-compose.override.yml
 
 services:
   cvat_server:
+    ports:
+      # Accès CVAT direct exposé sur 8000 — utile en dev. En prod, le firewall
+      # doit fermer ce port (tout passe par le gateway sur 8888/443).
+      - "8000:8080"
     environment:
       DJANGO_SETTINGS_MODULE: 'cvat.settings.ocean'
+      CORS_ALLOW_ALL_ORIGINS: 'True'
+      ALLOWED_HOSTS: '*'
       # Origines acceptées par Django CSRF. Défaut localhost pour le dev local —
-      # surchargée via .env sur la VM (ex : http://10.20.30.40:8081,http://10.20.30.40:8888).
+      # surchargée via .env sur la VM (ex : CSRF_TRUSTED_ORIGINS=https://<domaine>).
       CSRF_TRUSTED_ORIGINS: '${CSRF_TRUSTED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,http://localhost:8888,http://127.0.0.1:8888}'
     volumes:
       - ./cvat-extras/ocean.py:/home/django/cvat/settings/ocean.py:ro

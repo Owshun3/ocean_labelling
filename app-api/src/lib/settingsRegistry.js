@@ -58,6 +58,26 @@ Les mots de passe sont hachés. Les cookies de session sont HttpOnly, Secure (en
 
 Le contenu de cette page peut être mis à jour par l'administrateur. La date de dernière mise à jour est affichée en bas de page.`;
 
+const DEFAULT_LANDING_BODY = `## Notre mission
+
+Cette plateforme outille la collecte et l'annotation collaborative de données photo et vidéo sur la biodiversité polynésienne. Les données validées par nos curators constituent des jeux de données scientifiques exploitables par les chercheurs en biologie marine et terrestre.
+
+## Comment ça marche
+
+- **Téléversement** : les contributeurs déposent des photos ou vidéos d'espèces.
+- **Modération** : une équipe vérifie la pertinence et la qualité du contenu.
+- **Annotation** : plusieurs annotateurs tracent indépendamment des boîtes englobantes autour des espèces visibles.
+- **Curation** : un expert sélectionne la meilleure annotation parmi celles proposées.
+- **Export scientifique** : les jeux de données validés sont mis à disposition de la recherche.
+
+## Qui peut contribuer
+
+Toute personne souhaitant participer à la documentation de la biodiversité peut créer un compte gratuitement. Aucune expertise préalable n'est requise pour annoter — l'interface guide chaque étape, et les contributions sont systématiquement validées par un curator.
+
+## En tant qu'invité
+
+Tu peux découvrir le projet et son objectif sans créer de compte. Pour contribuer (téléverser, annoter, demander un export), il te faut un compte personnel. **[Crée ton compte](register)** ou [connecte-toi](login) si tu en as déjà un.`;
+
 const REGISTRY = [
   {
     key: 'platform.name', type: 'string', default: 'Ora te Fenua !', is_public: true,
@@ -156,6 +176,19 @@ const REGISTRY = [
     default: DEFAULT_PRIVACY_POLICY,
   },
 
+  {
+    key: 'landing.welcome_title', type: 'string', is_public: true,
+    group_name: 'landing', label: 'Titre de la page d\'accueil invité',
+    description: 'Titre principal affiché sur la page de bienvenue pour les visiteurs en mode invité.',
+    default: 'Bienvenue sur notre plateforme d\'annotation collaborative',
+  },
+  {
+    key: 'landing.body', type: 'string', is_public: true,
+    group_name: 'landing', label: 'Texte de présentation invité',
+    description: 'Texte d\'introduction à la plateforme, ses objectifs et l\'annotation collaborative. Markdown léger : titres ##, listes -, gras **mot**, liens [texte](url).',
+    default: DEFAULT_LANDING_BODY,
+  },
+
   // Apparence des rangs (libellé + couleur ajustables sans redéploiement) ;
   // les seuils restent figés dans frontend/src/shared/ranks.ts.
   ...rankAppearanceEntries(),
@@ -198,6 +231,7 @@ const GROUP_LABELS = {
   upload:      'Téléversement',
   policies:    'Politiques',
   legal:       'Mentions légales',
+  landing:     'Page d\'accueil invité',
   ranks:       'Apparence des rangs',
 };
 

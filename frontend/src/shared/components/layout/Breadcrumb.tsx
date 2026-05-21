@@ -24,6 +24,7 @@ const STATIC_LABELS: Record<string, string> = {
 	'export-requests': 'Mes exports',
 	health:            'État système',
 	help:              'Besoin d\'aide ?',
+	landing:           'Accueil',
 	media:             'Mes Médias',
 	moderation:        'Modération',
 	password:          'Mot de passe',

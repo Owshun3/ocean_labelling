@@ -22,8 +22,11 @@ build/
 .DS_Store
 Thumbs.db
 
-# --- CVAT (boîte noire — ne jamais modifier) ---
-cvat-core/
+# --- CVAT ---
+# La source CVAT (cvat-core/) est figée dans ce repo pour garantir une
+# version reproductible. Procédure de mise à jour : voir DEPLOYMENT.md
+# section « Mettre à jour CVAT ». Ne jamais modifier le contenu de
+# cvat-core/ — la customisation passe par cvat-extras/ et nginx/.
 
 # --- Claude AI (état local, non partageable) ---
 .claude/
@@ -42,13 +45,16 @@ PRODUCTION.md
 *.sqlite
 *.sqlite3
 
-# --- Dumps & backups DB (jamais commit, peuvent être volumineux et/ou contenir des secrets utilisateurs) ---
-*.sql
-*.dump
-*.bak
-*.backup
-backup_*
-backup-*
+# --- Dumps & backups DB (jamais commit — volumineux et peuvent contenir des secrets) ---
+# Patterns restreints à la racine et au dossier dumps/ pour ne pas capturer
+# accidentellement des fichiers SQL/docs présents dans cvat-core/.
+/*.sql
+/*.dump
+/*.bak
+/*.backup
+/backup_*
+/backup-*
+/dumps/
 
 # --- Fichiers temporaires éditeur ---
 *.swp

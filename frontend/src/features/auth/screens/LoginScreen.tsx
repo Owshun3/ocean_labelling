@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import axios from 'axios';
 import { CvatAuthService } from '@/services/api/CvatAuthService';
+import { startGuestSession } from '@/services/api/authStorage';
 import { consumeBanInfo, consumeSessionExpired, formatRemaining, BanSessionInfo, SessionExpiredInfo } from '@/services/api/banInterceptor';
 import { usePublicSettings } from '@/shared/hooks/usePublicSettings';
 import { COLORS } from '@/shared/theme/colors';
@@ -181,6 +182,21 @@ export const LoginScreen: React.FC = () => {
 					<Button title="Se connecter" onPress={handleLogin} color={COLORS.primary} />
 				)}
 
+				<View style={styles.guestRow}>
+					<View style={styles.guestDivider} />
+					<Text style={styles.guestDividerText}>ou</Text>
+					<View style={styles.guestDivider} />
+				</View>
+				<Pressable
+					onPress={() => { startGuestSession(); router.replace('/(main)/landing' as Href); }}
+					style={({ hovered, pressed }: any) => [
+						styles.guestBtn,
+						(hovered || pressed) && styles.guestBtnActive,
+					]}
+				>
+					<Text style={styles.guestBtnText}>Continuer en invité</Text>
+				</Pressable>
+
 				<View style={styles.switchContainer}>
 					<Text style={styles.switchText}>Vous n'avez pas de compte ? </Text>
 					<Pressable onPress={() => router.replace('/(auth)/register' as Href)}>
@@ -244,5 +260,17 @@ const styles = StyleSheet.create({
 	contactLine: { fontSize: 12, color: COLORS.text.secondary },
 	switchContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.xl, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
 	switchText: { ...TYPOGRAPHY.body, color: COLORS.text.secondary },
-	link: { ...TYPOGRAPHY.body, color: COLORS.primary, fontWeight: 'bold' }
+	link: { ...TYPOGRAPHY.body, color: COLORS.primary, fontWeight: 'bold' },
+
+	guestRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md, marginBottom: SPACING.sm },
+	guestDivider: { flex: 1, height: 1, backgroundColor: COLORS.border },
+	guestDividerText: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6 },
+	guestBtn: {
+		borderWidth: 1, borderColor: COLORS.border, borderRadius: 6,
+		backgroundColor: COLORS.background.main,
+		paddingVertical: 10, paddingHorizontal: SPACING.md,
+		alignItems: 'center',
+	},
+	guestBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.background.card },
+	guestBtnText: { ...TYPOGRAPHY.body, color: COLORS.text.primary, fontWeight: '600', fontSize: 13 },
 });
