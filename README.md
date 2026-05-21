@@ -87,6 +87,58 @@ Rôles (du moins privilégié au plus) :
 - **Linux** ou **macOS** (testé sur Linux, WSL2 OK). Windows natif non testé.
 - Ports libres : `8888` (gateway), `8081` (Expo Metro). Le port `8080` est utilisé par Traefik CVAT en interne — **ne pas l'exposer publiquement**.
 
+#### Installer les pré-requis (si machine vierge)
+
+<details>
+<summary><strong>Ubuntu / Debian</strong></summary>
+
+```bash
+# Docker Engine + plugin Compose v2 (script officiel)
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+newgrp docker   # ou se déconnecter / reconnecter
+
+# Node.js 20 via nvm (recommandé — gère plusieurs versions, isolé du système)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.bashrc
+nvm install 20
+nvm use 20
+```
+</details>
+
+<details>
+<summary><strong>macOS (Homebrew)</strong></summary>
+
+```bash
+brew install --cask docker    # Docker Desktop (inclut Compose v2)
+brew install node@20
+brew link --overwrite node@20
+```
+
+Lancer Docker Desktop une fois depuis Spotlight pour démarrer le daemon.
+</details>
+
+<details>
+<summary><strong>Windows (WSL2)</strong></summary>
+
+1. Activer **WSL2** : PowerShell admin → `wsl --install` → redémarrer.
+2. Installer **Docker Desktop for Windows** depuis [docker.com](https://docs.docker.com/desktop/install/windows-install/). Il utilise WSL2 comme backend, fournit Docker Engine + Compose v2.
+3. Ouvrir la distribution WSL2 (Ubuntu par défaut) et suivre les instructions **Ubuntu / Debian** ci-dessus pour Node.js.
+
+Travailler depuis le terminal WSL2, pas depuis PowerShell — toutes les commandes du README supposent un shell Unix.
+</details>
+
+#### Vérifier l'installation
+
+```bash
+docker --version            # ≥ 24.x
+docker compose version      # v2.x.x
+node --version              # ≥ v20
+npm --version               # ≥ 10
+```
+
+Si une commande échoue avec `command not found`, l'installation correspondante a un souci — reprendre la section OS au-dessus.
+
 ### Étapes
 
 ```bash
