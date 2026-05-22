@@ -296,16 +296,22 @@ export const StudioCanvas = forwardRef<StudioCanvasHandle, Props>(({
 
 	const composedGesture = useMemo(() => Gesture.Simultaneous(pinchGesture, panGesture), [pinchGesture, panGesture]);
 
-	const onWheelWeb = Platform.OS === 'web'
-		? (e: any) => {
-			e?.preventDefault?.();
-			const rect = (e?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect?.();
-			const localX = rect ? e.clientX - rect.left : size.width / 2;
-			const localY = rect ? e.clientY - rect.top  : size.height / 2;
+	const containerRef = useRef<View>(null);
+	useEffect(() => {
+		if (Platform.OS !== 'web') return;
+		const node = containerRef.current as unknown as HTMLDivElement | null;
+		if (!node) return;
+		const handler = (e: WheelEvent) => {
+			e.preventDefault();
+			const rect = node.getBoundingClientRect();
+			const localX = e.clientX - rect.left;
+			const localY = e.clientY - rect.top;
 			const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
 			zoomTo(stageScale * factor, { x: localX, y: localY });
-		}
-		: undefined;
+		};
+		node.addEventListener('wheel', handler, { passive: false });
+		return () => node.removeEventListener('wheel', handler);
+	}, [zoomTo, stageScale]);
 
 	const stroke = (s: StudioShape) => s.status === 'saved' ? COLORS.status.validated : COLORS.warning;
 	const strokeWidth = 1.25 / (fit.scale * stageScale);
@@ -313,12 +319,12 @@ export const StudioCanvas = forwardRef<StudioCanvasHandle, Props>(({
 
 	return (
 		<View
+			ref={containerRef}
 			style={styles.container}
 			onLayout={(e) => {
 				const { width, height } = e.nativeEvent.layout;
 				setSize({ width, height });
 			}}
-			{...(Platform.OS === 'web' ? { onWheel: onWheelWeb } as any : {})}
 		>
 			{loading && (
 				<View style={styles.overlay} pointerEvents="none">
