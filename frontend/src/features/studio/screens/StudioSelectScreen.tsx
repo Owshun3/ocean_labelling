@@ -19,7 +19,7 @@ const COMMUNITY_FILTERS: FilterField[] = [
 		{ value: 'image',       label: 'Image' },
 		{ value: 'video_frame', label: 'Frame vidéo' },
 	] },
-	{ kind: 'bool',  key: 'started', label: 'Engagement', trueLabel: 'Déjà commencé', falseLabel: 'Vierge' },
+	{ kind: 'bool',  key: 'started', label: 'Déjà annoté', trueLabel: 'Déjà annoté par moi', falseLabel: 'Pas encore annoté par moi' },
 	{ kind: 'date-range', key: 'created', label: 'Date de dépôt' },
 ];
 
@@ -37,7 +37,7 @@ const COMMUNITY_SORTS: SortOption[] = [
 const COMMUNITY_EXTRACTORS: FieldExtractors<FeedTask> = {
 	name:                   (t) => t.name,
 	source:                 (t) => t.source_kind ?? 'image',
-	started:                (t) => (t.annotators_count ?? 0) > 0,
+	started:                (t) => !!t.i_annotated,
 	created:                (t) => t.created_date,
 	completed_count:        (t) => t.completed_count,
 	created_date:           (t) => t.created_date,

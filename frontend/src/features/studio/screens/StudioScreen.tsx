@@ -8,6 +8,7 @@ import { SPACING } from '@/shared/theme/spacing';
 import { StudioService } from '@/services/api/StudioService';
 import { StudioCanvas, StudioCanvasHandle } from '../components/StudioCanvas';
 import { ValidationPanel } from '../components/ValidationPanel';
+import { BboxListPanel } from '../components/BboxListPanel';
 import { useInitialShapes } from '../hooks/useInitialShapes';
 import { StudioShape, StudioTool } from '../types';
 
@@ -30,14 +31,19 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 
 	useEffect(() => {
 		if (initial.loaded && !initialized) {
+			if (initial.curatorLocked) {
+				toast.error('Ce média a déjà été validé par un curator. L\'annotation n\'est plus possible.');
+				router.replace('/(main)/studio/select' as Href);
+				return;
+			}
 			setShapes(initial.shapes);
 			setSelectedId(initial.shapes[0]?.id ?? null);
 			setInitialized(true);
 		}
-	}, [initial.loaded, initial.shapes, initialized]);
+	}, [initial.loaded, initial.shapes, initial.curatorLocked, initialized, router]);
 
 	const addShape = useCallback((shape: StudioShape) => {
-		setShapes([shape]);
+		setShapes((prev) => [...prev, shape]);
 		setSelectedId(shape.id);
 	}, []);
 
@@ -50,11 +56,15 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 		setSelectedId((cur) => (cur === id ? null : cur));
 	}, []);
 
+	const saveShape = useCallback((id: string) => {
+		setShapes((prev) => prev.map((s) => (s.id === id && s.speciesName ? { ...s, status: 'saved' } : s)));
+	}, []);
+
 	const handleValidate = useCallback(async () => {
 		if (submitting) return;
 		const missing = shapes.filter((s) => !s.speciesName).length;
 		if (missing > 0) {
-			toast.error(`${missing} rectangle(s) sans espèce — renseigne-les avant de soumettre.`);
+			toast.error(`${missing} rectangle(s) sans espèce. Renseigne-les avant de soumettre.`);
 			return;
 		}
 		setSubmitting(true);
@@ -64,7 +74,17 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 			toast.success('Annotation soumise.');
 			router.replace('/(main)/studio/select' as Href);
 		} catch (err: any) {
-			const detail = err?.response?.data?.error
+			const status = err?.response?.status;
+			const errCode = err?.response?.data?.error;
+			if (status === 409 && errCode === 'curator_locked') {
+				const msg = err?.response?.data?.message
+					?? 'Ce média vient d\'être validé par un curator. Tes annotations en cours ne seront pas conservées.';
+				toast.error(msg);
+				setSubmitting(false);
+				router.replace('/(main)/studio/select' as Href);
+				return;
+			}
+			const detail = errCode
 				?? err?.response?.data?.detail
 				?? err?.message
 				?? 'Validation impossible.';
@@ -122,21 +142,20 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 					</Pressable>
 				</View>
 
-				{shapes.length > 0 ? (
-					<Pressable
-						onPress={() => shapes[0] && deleteShape(shapes[0].id)}
-						style={({ hovered }: any) => [styles.deleteBtn, hovered && styles.deleteBtnHover]}
-					>
-						<Text style={styles.deleteBtnText}>Effacer</Text>
-					</Pressable>
-				) : null}
-
 				<Text style={styles.shortcutHint}>
-					Échap · annuler{'\n'}
-					Suppr · effacer{'\n'}
-					+/− · zoom · 0 · ajuster
+					Échap · désélectionner{'\n'}
+					Suppr · effacer la boîte{'\n'}
+					+/− · zoom · 0 · ajuster{'\n'}
+					R · rect  V · sélect  P · pan
 				</Text>
 			</View>
+
+			<BboxListPanel
+				shapes={shapes}
+				selectedId={selectedId}
+				onSelect={setSelectedId}
+				onDelete={deleteShape}
+			/>
 
 			<View style={styles.canvasColumn}>
 				<StudioCanvas
@@ -157,6 +176,7 @@ export const StudioScreen: React.FC<Props> = ({ taskId, jobId }) => {
 				selectedShape={shapes.find((s) => s.id === selectedId) ?? null}
 				submitting={submitting}
 				onUpdateShape={updateShape}
+				onSaveShape={saveShape}
 				onValidate={handleValidate}
 			/>
 		</View>
@@ -234,18 +254,6 @@ const styles = StyleSheet.create({
 	zoomResetText: { fontSize: 11, color: COLORS.text.primary, fontWeight: '600' },
 
 	shapesTitle: { fontSize: 11, fontWeight: '700', color: COLORS.text.secondary, textTransform: 'uppercase' },
-
-	deleteBtn: {
-		marginTop: SPACING.md,
-		paddingVertical: 6,
-		borderRadius: 6,
-		borderWidth: 1,
-		borderColor: COLORS.danger,
-		backgroundColor: COLORS.background.main,
-		alignItems: 'center',
-	},
-	deleteBtnHover:   { backgroundColor: `${COLORS.danger}18` },
-	deleteBtnText:    { fontSize: 11, color: COLORS.danger, fontWeight: '600' },
 
 	shortcutHint: { fontSize: 10, color: COLORS.text.placeholder, marginTop: 'auto', lineHeight: 14 },
 

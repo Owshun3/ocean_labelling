@@ -76,6 +76,14 @@ async function ensureJobAccess(jobId, cvatUser, token) {
   return { job };
 }
 
+async function isTaskCuratorLocked(taskId) {
+  const { rows } = await pool.query(
+    'SELECT curator_validated_at FROM media_moderation WHERE cvat_task_id = $1',
+    [taskId],
+  );
+  return rows.length > 0 && rows[0].curator_validated_at !== null;
+}
+
 router.post('/labels/sync', requireAuth, async (req, res) => {
   const taskId = Number(req.body?.task_id);
   const names  = Array.isArray(req.body?.names)
@@ -249,12 +257,12 @@ router.get('/feed', requireAuth, async (req, res) => {
 
       if (row.uploader_id === me) {
         own.push(summary);
-      } else if (row.status === 'validated') {
+      } else if (row.status === 'validated' && !row.curator_validated_at) {
         const myShapes = myShapesCounts.get(row.cvat_task_id) ?? 0;
         const myJobDone = myAssigned?.state === 'completed';
-        if (myShapes > 0 || myJobDone) continue;
-        if (myAssigned || freeJobs.length > 0) {
-          community.push(summary);
+        const iAnnotated = myShapes > 0 || myJobDone;
+        if (myAssigned || freeJobs.length > 0 || iAnnotated) {
+          community.push({ ...summary, i_annotated: iAnnotated });
           takenAtByTaskId.set(row.cvat_task_id, row.taken_at);
         }
       }
@@ -322,9 +330,10 @@ router.get('/jobs/:jobId/annotations', requireAuth, async (req, res) => {
     const token = await getAdminToken();
     const { job } = await ensureJobAccess(jobId, req.cvatUser, token);
 
-    const [annotResp, labelsResp] = await Promise.all([
+    const [annotResp, labelsResp, curatorLocked] = await Promise.all([
       cvatGet(`/jobs/${jobId}/annotations`, token),
       cvatGet(`/labels?task_id=${job.task_id}&page_size=200`, token),
+      isTaskCuratorLocked(job.task_id),
     ]);
 
     const labelById = new Map();
@@ -338,6 +347,7 @@ router.get('/jobs/:jobId/annotations', requireAuth, async (req, res) => {
         label_name: labelById.get(s.label_id) ?? null,
       })),
       tracks:  annotResp.data?.tracks ?? [],
+      curator_locked: curatorLocked,
     });
   } catch (err) {
     if (err.statusCode === 403) return res.status(403).json({ error: err.message });
@@ -350,7 +360,13 @@ router.put('/jobs/:jobId/annotations', requireAuth, async (req, res) => {
   if (!Number.isFinite(jobId)) return res.status(400).json({ error: 'invalid jobId' });
   try {
     const token = await getAdminToken();
-    await ensureJobAccess(jobId, req.cvatUser, token);
+    const { job } = await ensureJobAccess(jobId, req.cvatUser, token);
+    if (job.task_id && await isTaskCuratorLocked(job.task_id)) {
+      return res.status(409).json({
+        error: 'curator_locked',
+        message: 'Ce média a été validé par un curator. Tes nouvelles annotations ne peuvent plus être enregistrées.',
+      });
+    }
     const putResp = await cvatPut(`/jobs/${jobId}/annotations`, req.body, token);
     require('../lib/curationGate').recomputeFromJob(jobId).catch(() => {});
     res.json(putResp.data);

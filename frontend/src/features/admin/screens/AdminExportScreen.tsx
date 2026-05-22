@@ -371,6 +371,7 @@ export const AdminExportScreen: React.FC = () => {
 							<Text style={styles.previewCount}>{preview.count}</Text>
 							<Text style={styles.previewLabel}>item(s) sélectionné(s)</Text>
 							<View style={styles.previewBreakdown}>
+								<Row label="Annotations totales" value={preview.annotation_count} />
 								<Row label="Photos"             value={preview.breakdown.image_count} />
 								<Row label="Frames vidéo"       value={preview.breakdown.frame_count} />
 								<Row label="Espèces distinctes" value={preview.breakdown.distinct_species} />

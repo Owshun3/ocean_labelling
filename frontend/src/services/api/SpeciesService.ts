@@ -64,6 +64,12 @@ export interface SpeciesEditPayload {
 	tags?: string[];
 }
 
+export interface DuplicateCheck {
+	scientific_match:  Species | null;
+	usage_matches:     Species[];
+	polynesian_matches: Species[];
+}
+
 export interface SpeciesEditRequestRow {
 	id: number;
 	species_id: number;
@@ -98,6 +104,11 @@ export class SpeciesService {
 	async searchByField(field: SpeciesSearchField, q: string): Promise<Species[]> {
 		const resp = await speciesClient.get<{ results: Species[] }>('/search', { params: { field, q } });
 		return resp.data.results;
+	}
+
+	async checkDuplicates(input: { scientific_name?: string; usage_name?: string; polynesian_name?: string; exclude_id?: number }): Promise<DuplicateCheck> {
+		const resp = await speciesClient.post<DuplicateCheck>('/check-duplicates', input);
+		return resp.data;
 	}
 
 	async createFull(payload: SpeciesFullInput): Promise<Species> {

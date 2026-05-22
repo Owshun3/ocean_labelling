@@ -144,7 +144,9 @@ const REGISTRY = [
   {
     key: 'upload_max_bytes', type: 'int', default: '209715200', is_public: false,
     group_name: 'upload', label: 'Taille maximale par lot (Mo)',
-    description: 'Limite globale par téléversement, en mégaoctets.',
+    description: 'Limite globale par téléversement, en mégaoctets. Plafond technique côté serveur : 1024 Mo (NGINX client_max_body_size). Au-delà, NGINX rejette directement en 413 avant que app-api ne voie la requête.',
+    max: 1024 * 1024 * 1024,
+    max_error: 'la limite réelle côté serveur est de 1024 Mo (NGINX client_max_body_size). Pour dépasser, augmenter d\'abord cette valeur dans nginx/nginx.conf et redémarrer le gateway.',
   },
 
   {
@@ -258,7 +260,7 @@ function validateForType(type, raw, meta) {
       throw new Error(`valeur minimum : ${meta.min}`);
     }
     if (meta && Number.isInteger(meta.max) && n > meta.max) {
-      throw new Error(`valeur maximum : ${meta.max}`);
+      throw new Error(meta.max_error || `valeur maximum : ${meta.max}`);
     }
     return String(n);
   }

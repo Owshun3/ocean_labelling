@@ -13,7 +13,8 @@ Procédure générique de mise en production d'une instance Ora te Fenua. Ce doc
 5. [Faire tourner Expo en permanence](#5-faire-tourner-expo-en-permanence)
 6. [Sauvegardes et rotation des secrets](#6-sauvegardes-et-rotation-des-secrets)
 7. [Mise à jour après `git pull`](#7-mise-à-jour-après-git-pull)
-8. [Dépannage](#8-dépannage)
+8. [Mettre à jour CVAT](#8-mettre-à-jour-cvat)
+9. [Dépannage](#9-dépannage)
 
 ---
 

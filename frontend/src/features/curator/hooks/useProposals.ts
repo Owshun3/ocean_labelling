@@ -10,18 +10,20 @@ interface State {
 export function useProposals(taskId: number): State & { reload: () => void } {
 	const [state, setState] = useState<State>({ data: null, loading: true, error: null });
 
-	const load = useCallback(() => {
+	const fetchOnce = useCallback((soft: boolean) => {
 		const service = new CuratorService();
-		setState({ data: null, loading: true, error: null });
+		if (!soft) setState({ data: null, loading: true, error: null });
 		service.getProposals(taskId)
-			.then((data) => setState({ data, loading: false, error: null }))
-			.catch((err) => setState({
-				data: null, loading: false,
+			.then((data) => setState((prev) => ({ data, loading: false, error: null })))
+			.catch((err) => setState((prev) => ({
+				data: soft ? prev.data : null,
+				loading: false,
 				error: err?.response?.data?.error ?? err?.message ?? 'Chargement impossible.',
-			}));
+			})));
 	}, [taskId]);
 
-	useEffect(() => { load(); }, [load]);
+	useEffect(() => { fetchOnce(false); }, [fetchOnce]);
 
-	return { ...state, reload: load };
+	const reload = useCallback(() => fetchOnce(true), [fetchOnce]);
+	return { ...state, reload };
 }

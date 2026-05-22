@@ -592,6 +592,191 @@ router.post('/tasks/:taskId/certify', requireCuratorOrAbove, async (req, res) =>
   }
 });
 
+router.post('/tasks/:taskId/certify-all', requireCuratorOrAbove, async (req, res) => {
+  const taskId = Number(req.params.taskId);
+  if (!Number.isFinite(taskId)) return res.status(400).json({ error: 'invalid taskId' });
+
+  const body = req.body || {};
+  const jobId = Number(body.cvat_job_id);
+  const certifications = Array.isArray(body.certifications) ? body.certifications : null;
+
+  if (!Number.isFinite(jobId)) return res.status(400).json({ error: 'cvat_job_id required' });
+  if (!certifications) return res.status(400).json({ error: 'certifications array required (peut être vide)' });
+
+  for (let i = 0; i < certifications.length; i++) {
+    const c = certifications[i];
+    if (!['review', 'create'].includes(c?.mode)) return res.status(400).json({ error: `cert[${i}].mode must be 'review' or 'create'` });
+    if (!c.shape || !Array.isArray(c.shape.points) || c.shape.points.length < 4) {
+      return res.status(400).json({ error: `cert[${i}].shape.points required (4 numbers)` });
+    }
+    const sp = c.species || {};
+    if (!sp.scientific_name || !sp.usage_name || !sp.polynesian_name) {
+      return res.status(400).json({ error: `cert[${i}].species.scientific_name, usage_name, polynesian_name required` });
+    }
+  }
+
+  const { validateTags } = require('../lib/speciesTagValidation');
+  for (let i = 0; i < certifications.length; i++) {
+    const tagsCandidate = Array.isArray(certifications[i].species?.tags)
+      ? certifications[i].species.tags.filter((t) => typeof t === 'string')
+      : [];
+    const check = await validateTags(tagsCandidate);
+    if (!check.ok) return res.status(400).json({ error: `cert[${i}]: ${check.error}` });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const lockResult = await client.query(
+      `SELECT curator_validated_at, curator_validated_by
+       FROM media_moderation
+       WHERE cvat_task_id = $1
+       FOR UPDATE`,
+      [taskId],
+    );
+    if (lockResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: 'Média introuvable en modération.' });
+    }
+    if (lockResult.rows[0].curator_validated_at) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(409).json({
+        error: 'Ce média vient d\'être certifié par un autre curator. Recharge la page.',
+        already_certified_by: lockResult.rows[0].curator_validated_by,
+        already_certified_at: lockResult.rows[0].curator_validated_at,
+      });
+    }
+
+    const token = await getAdminToken();
+    const speciesBySciName = new Map();
+    const labelBySpeciesId = new Map();
+
+    for (const c of certifications) {
+      const sciKey = String(c.species.scientific_name).trim().toLowerCase();
+      if (speciesBySciName.has(sciKey)) continue;
+      const speciesRow = await upsertSpeciesFull(client, {
+        scientific_name: c.species.scientific_name,
+        usage_name:      c.species.usage_name,
+        polynesian_name: c.species.polynesian_name,
+        tags:            Array.isArray(c.species.tags) ? c.species.tags : [],
+        source_name:     c.species.source_name,
+        proposed_by:     req.cvatUser.id,
+      });
+      speciesBySciName.set(sciKey, speciesRow);
+    }
+
+    const existingLabelsResp = await cvatGet(`/labels?task_id=${taskId}&page_size=200`, token);
+    const existingLabels = existingLabelsResp.data?.results ?? [];
+    const labelsByName = new Map(existingLabels.map((l) => [l.name, l.id]));
+
+    const missingLabels = [];
+    for (const speciesRow of speciesBySciName.values()) {
+      if (!labelsByName.has(speciesRow.name)) missingLabels.push({ name: speciesRow.name });
+    }
+    if (missingLabels.length > 0) {
+      await cvatPatch(`/tasks/${taskId}`, { labels: missingLabels }, token);
+      const refreshed = await cvatGet(`/labels?task_id=${taskId}&page_size=200`, token);
+      for (const l of (refreshed.data?.results ?? [])) labelsByName.set(l.name, l.id);
+    }
+    for (const speciesRow of speciesBySciName.values()) {
+      const labelId = labelsByName.get(speciesRow.name);
+      if (!labelId) throw new Error(`Impossible de résoudre label_id pour ${speciesRow.name}`);
+      labelBySpeciesId.set(speciesRow.id, labelId);
+    }
+
+    const existingAnn = await cvatGet(`/jobs/${jobId}/annotations`, token);
+    const cvatShapes = certifications.map((c) => {
+      const sciKey = String(c.species.scientific_name).trim().toLowerCase();
+      const speciesRow = speciesBySciName.get(sciKey);
+      return {
+        type:      'rectangle',
+        points:    c.shape.points,
+        frame:     0,
+        label_id:  labelBySpeciesId.get(speciesRow.id),
+        occluded:  false,
+        outside:   false,
+        z_order:   0,
+        rotation:  0,
+        group:     0,
+        source:    'manual',
+        attributes: [],
+      };
+    });
+    const fullState = {
+      version: existingAnn.data?.version ?? 0,
+      tags:    existingAnn.data?.tags ?? [],
+      shapes:  cvatShapes,
+      tracks:  existingAnn.data?.tracks ?? [],
+    };
+    const putResp = await cvatPut(`/jobs/${jobId}/annotations`, fullState, token);
+    const writtenShapes = putResp.data?.shapes ?? [];
+
+    const insertedIds = [];
+    for (let i = 0; i < certifications.length; i++) {
+      const c = certifications[i];
+      const sciKey = String(c.species.scientific_name).trim().toLowerCase();
+      const speciesRow = speciesBySciName.get(sciKey);
+      const curatorComment = typeof c.comment === 'string' ? c.comment.trim().slice(0, 2000) : '';
+
+      const certInsert = await client.query(
+        `INSERT INTO curator_certifications
+           (cvat_task_id, cvat_job_id, curator_id, mode,
+            chosen_bbox_annotator_id, chosen_bbox_data, rejected_proposals,
+            species_id, curator_comment)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id, certified_at`,
+        [
+          taskId, jobId, req.cvatUser.id, c.mode,
+          c.chosen_bbox_annotator_id ?? null,
+          JSON.stringify({ points: c.shape.points }),
+          c.rejected_proposals ? JSON.stringify(c.rejected_proposals) : null,
+          speciesRow.id,
+          curatorComment || null,
+        ],
+      );
+      insertedIds.push(certInsert.rows[0].id);
+
+      if (curatorComment && writtenShapes[i]?.id) {
+        await client.query(
+          `INSERT INTO annotation_comments
+             (cvat_job_id, cvat_shape_client_id, author_id, comment, is_curator_comment)
+           VALUES ($1, $2, $3, $4, TRUE)`,
+          [jobId, writtenShapes[i].id, req.cvatUser.id, curatorComment],
+        );
+      }
+    }
+
+    const upd = await client.query(
+      `UPDATE media_moderation
+       SET curator_validated_at = NOW(), curator_validated_by = $1
+       WHERE cvat_task_id = $2 AND curator_validated_at IS NULL`,
+      [req.cvatUser.id, taskId],
+    );
+    if (upd.rowCount === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(409).json({ error: 'Ce média a été certifié entre-temps.' });
+    }
+
+    await client.query('COMMIT');
+
+    res.json({
+      ok: true,
+      certification_count: insertedIds.length,
+      certification_ids: insertedIds,
+      certified_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    res.status(err.response?.status ?? 500).json({ error: err.response?.data ?? err.message });
+  } finally {
+    client.release();
+  }
+});
+
 async function upsertSpeciesFull(client, { scientific_name, usage_name, polynesian_name, tags, source_name, proposed_by }) {
   const sName  = scientific_name.trim();
   const uName  = usage_name.trim();
