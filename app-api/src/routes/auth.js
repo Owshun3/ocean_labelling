@@ -23,6 +23,8 @@ function buildCookieOptions(remember) {
 }
 
 router.post('/login', async (req, res) => {
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
   const username = typeof req.body?.username === 'string' ? req.body.username : '';
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
   const remember = req.body?.remember_me === true;
