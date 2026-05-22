@@ -117,7 +117,7 @@ export const StudioCertifiedViewScreen: React.FC<Props> = ({ taskId }) => {
 							{new Date(certification.certified_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
 						</Text>
 						<Text style={styles.dim}>
-							Mode : {certification.mode === 'review' ? 'bbox annotateur retenue' : 'bbox tracée par le curator'}
+							Mode : {certification.mode === 'review' ? 'boîte annotateur retenue' : 'boîte tracée par le curator'}
 						</Text>
 					</View>
 

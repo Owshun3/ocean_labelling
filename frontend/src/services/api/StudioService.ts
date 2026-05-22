@@ -73,6 +73,7 @@ export interface FeedTask {
 	annotation_state:  AnnotationState;
 	source_kind?:      FeedSourceKind;
 	already_contested?: boolean;
+	i_annotated?:      boolean;
 }
 
 export interface StudioFeed {
@@ -139,23 +140,19 @@ export class StudioService {
 		const existingResp = await studioClient.get<CvatAnnotationState>(`/jobs/${jobId}/annotations`);
 		const existing = existingResp.data;
 
-		const cvatShapes: CvatShape[] = shapes.map((s) => {
-			const shape: CvatShape = {
-				type: 'rectangle',
-				points: [s.x, s.y, s.x + s.width, s.y + s.height],
-				frame: frameNumber,
-				label_id: labelByName[s.speciesName!],
-				occluded: false,
-				outside: false,
-				z_order: 0,
-				rotation: 0,
-				group: 0,
-				source: 'manual',
-				attributes: [],
-			};
-			if (s.cvatClientId) (shape as any).id = s.cvatClientId;
-			return shape;
-		});
+		const cvatShapes: CvatShape[] = shapes.map((s) => ({
+			type: 'rectangle',
+			points: [s.x, s.y, s.x + s.width, s.y + s.height],
+			frame: frameNumber,
+			label_id: labelByName[s.speciesName!],
+			occluded: false,
+			outside: false,
+			z_order: 0,
+			rotation: 0,
+			group: 0,
+			source: 'manual',
+			attributes: [],
+		}));
 
 		const fullState: CvatAnnotationState = {
 			version: existing.version ?? 0,
@@ -168,19 +165,20 @@ export class StudioService {
 		const returnedShapes = putResp.data.shapes ?? [];
 
 		const cvatIdByLocalId = new Map<string, number>();
+		const availableIds = new Set(returnedShapes.map((rs) => rs.id).filter((id): id is number => typeof id === 'number'));
 		for (const local of shapes) {
-			let match: CvatShape | undefined;
-			if (local.cvatClientId) {
-				match = returnedShapes.find((rs) => rs.id === local.cvatClientId);
+			const expected = [local.x, local.y, local.x + local.width, local.y + local.height];
+			const expectedLabel = labelByName[local.speciesName!];
+			const match = returnedShapes.find(
+				(rs) => rs.id !== undefined
+					&& availableIds.has(rs.id)
+					&& rs.label_id === expectedLabel
+					&& pointsClose(rs.points, expected),
+			);
+			if (match?.id) {
+				cvatIdByLocalId.set(local.id, match.id);
+				availableIds.delete(match.id);
 			}
-			if (!match) {
-				const expected = [local.x, local.y, local.x + local.width, local.y + local.height];
-				const expectedLabel = labelByName[local.speciesName!];
-				match = returnedShapes.find(
-					(rs) => rs.label_id === expectedLabel && pointsClose(rs.points, expected),
-				);
-			}
-			if (match?.id) cvatIdByLocalId.set(local.id, match.id);
 		}
 
 		const newlyCreated = shapes.filter((s) => !s.cvatClientId);

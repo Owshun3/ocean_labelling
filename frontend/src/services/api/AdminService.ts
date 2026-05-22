@@ -421,6 +421,7 @@ export interface ExportFilters {
 
 export interface ExportPreview {
 	count: number;
+	annotation_count: number;
 	breakdown: {
 		image_count: number;
 		frame_count: number;

@@ -71,12 +71,7 @@ function buildWhere(filters) {
 
 const FROM_JOIN = `
   FROM media_moderation mm
-  JOIN LATERAL (
-    SELECT * FROM curator_certifications c
-    WHERE c.cvat_task_id = mm.cvat_task_id
-    ORDER BY c.certified_at DESC
-    LIMIT 1
-  ) cc ON TRUE
+  JOIN curator_certifications cc ON cc.cvat_task_id = mm.cvat_task_id
   LEFT JOIN species        s  ON s.id = cc.species_id
   LEFT JOIN media_metadata md ON md.cvat_task_id = mm.cvat_task_id
 `;
@@ -92,16 +87,27 @@ function bboxFromChosen(chosen) {
 
 async function computePreview(filters) {
   const { sql, params } = buildWhere(filters);
-  const { rows } = await pool.query(`SELECT COUNT(*)::int AS n ${FROM_JOIN} ${sql}`, params);
+  const { rows } = await pool.query(
+    `SELECT
+       COUNT(DISTINCT mm.cvat_task_id)::int AS n,
+       COUNT(*)::int                        AS annotation_count
+     ${FROM_JOIN} ${sql}`,
+    params,
+  );
   const breakdownQ = await pool.query(`
     SELECT
-      SUM(CASE WHEN md.source_video_id IS NULL     THEN 1 ELSE 0 END)::int AS image_count,
-      SUM(CASE WHEN md.source_video_id IS NOT NULL THEN 1 ELSE 0 END)::int AS frame_count,
-      COUNT(DISTINCT s.id)::int                                            AS distinct_species,
-      COUNT(DISTINCT mm.uploader_id)::int                                  AS distinct_uploaders
+      COUNT(DISTINCT mm.cvat_task_id) FILTER (WHERE md.source_video_id IS NULL)::int     AS image_count,
+      COUNT(DISTINCT mm.cvat_task_id) FILTER (WHERE md.source_video_id IS NOT NULL)::int AS frame_count,
+      COUNT(DISTINCT s.id)::int                                                          AS distinct_species,
+      COUNT(DISTINCT mm.uploader_id)::int                                                AS distinct_uploaders
     ${FROM_JOIN} ${sql}
   `, params);
-  return { count: rows[0].n, breakdown: breakdownQ.rows[0], filters };
+  return {
+    count: rows[0].n,
+    annotation_count: rows[0].annotation_count,
+    breakdown: breakdownQ.rows[0],
+    filters,
+  };
 }
 
 async function streamExportZip(res, filters, actor, originContext = 'admin') {
@@ -124,7 +130,10 @@ async function streamExportZip(res, filters, actor, originContext = 'admin') {
 
   let rows;
   try {
-    const result = await pool.query(`${SELECT} ${FROM_JOIN} ${sql} ORDER BY mm.curator_validated_at ASC`, params);
+    const result = await pool.query(
+      `${SELECT} ${FROM_JOIN} ${sql} ORDER BY mm.curator_validated_at ASC, mm.cvat_task_id ASC, cc.certified_at ASC`,
+      params,
+    );
     rows = result.rows;
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -145,38 +154,47 @@ async function streamExportZip(res, filters, actor, originContext = 'admin') {
     });
   });
 
-  const items = rows.map((r) => {
+  const itemsByTaskId = new Map();
+  for (const r of rows) {
+    const taskId = r.cvat_task_id;
+    let item = itemsByTaskId.get(taskId);
+    if (!item) {
+      const itemAttrs = filters.include_metadata ? {
+        cvat_task_id: r.cvat_task_id, uploader_id: r.uploader_id,
+        curator_validated_at: r.curator_validated_at,
+        gps_latitude: r.gps_latitude, gps_longitude: r.gps_longitude,
+        taken_at: r.taken_at, camera_make: r.camera_make, camera_model: r.camera_model,
+        source_video_id: r.source_video_id, source_frame_time_ms: r.source_frame_time_ms,
+      } : {};
+      item = {
+        id: `task_${taskId}`, subset: 'default',
+        annotations: [],
+        image: {
+          path: `images/task_${taskId}.jpg`,
+          size: r.image_height && r.image_width ? [r.image_height, r.image_width] : [0, 0],
+        },
+        attr: itemAttrs,
+      };
+      itemsByTaskId.set(taskId, item);
+    }
     const bbox = bboxFromChosen(r.chosen_bbox_data);
-    const annotation = bbox ? {
-      id: r.certification_id, type: 'bbox',
-      label_id: r.species_id !== null ? labelIndex.get(r.species_id) : -1,
-      group: 0, z_order: 0,
-      attributes: {
-        certified_at: r.certified_at, mode: r.mode,
-        curator_id: r.curator_id, curator_comment: r.curator_comment || '',
-        species_id: r.species_id,
-        usage_name: r.usage_name || '', polynesian_name: r.polynesian_name || '',
-        tags: r.species_tags || [],
-      },
-      bbox,
-    } : null;
-    const itemAttrs = filters.include_metadata ? {
-      cvat_task_id: r.cvat_task_id, uploader_id: r.uploader_id,
-      curator_validated_at: r.curator_validated_at,
-      gps_latitude: r.gps_latitude, gps_longitude: r.gps_longitude,
-      taken_at: r.taken_at, camera_make: r.camera_make, camera_model: r.camera_model,
-      source_video_id: r.source_video_id, source_frame_time_ms: r.source_frame_time_ms,
-    } : {};
-    return {
-      id: `task_${r.cvat_task_id}`, subset: 'default',
-      annotations: annotation ? [annotation] : [],
-      image: {
-        path: `images/task_${r.cvat_task_id}.jpg`,
-        size: r.image_height && r.image_width ? [r.image_height, r.image_width] : [0, 0],
-      },
-      attr: itemAttrs,
-    };
-  });
+    if (bbox) {
+      item.annotations.push({
+        id: r.certification_id, type: 'bbox',
+        label_id: r.species_id !== null ? labelIndex.get(r.species_id) : -1,
+        group: 0, z_order: 0,
+        attributes: {
+          certified_at: r.certified_at, mode: r.mode,
+          curator_id: r.curator_id, curator_comment: r.curator_comment || '',
+          species_id: r.species_id,
+          usage_name: r.usage_name || '', polynesian_name: r.polynesian_name || '',
+          tags: r.species_tags || [],
+        },
+        bbox,
+      });
+    }
+  }
+  const items = Array.from(itemsByTaskId.values());
 
   const platformName = await getPlatformName();
   const datumaro = {
@@ -207,12 +225,12 @@ async function streamExportZip(res, filters, actor, originContext = 'admin') {
 
   archive.append(buildReadme(filters, items.length, platformName, originContext), { name: 'README.md' });
 
-  const itemById = new Map(items.map((it) => [it.id, it]));
   const token = await getAdminToken();
   let imageFailures = 0;
-  for (const r of rows) {
+  for (const item of items) {
+    const taskId = item.attr.cvat_task_id ?? Number(item.id.replace(/^task_/, ''));
     try {
-      const imgResp = await axios.get(`${CVAT}/tasks/${r.cvat_task_id}/data`, {
+      const imgResp = await axios.get(`${CVAT}/tasks/${taskId}/data`, {
         params: { type: 'frame', number: 0, quality: 'original' },
         headers: {
           Authorization: `Token ${token}`,
@@ -223,23 +241,29 @@ async function streamExportZip(res, filters, actor, originContext = 'admin') {
         timeout: 30_000,
       });
       const buf = Buffer.from(imgResp.data);
-      const item = itemById.get(`task_${r.cvat_task_id}`);
-      if (item && (!item.image.size[0] || !item.image.size[1])) {
+      if (!item.image.size[0] || !item.image.size[1]) {
         const dims = readJpegSize(buf);
         if (dims) item.image.size = [dims.height, dims.width];
       }
-      archive.append(buf, { name: `images/task_${r.cvat_task_id}.jpg` });
+      archive.append(buf, { name: `images/task_${taskId}.jpg` });
     } catch (err) {
       imageFailures += 1;
-      console.warn(`[export] image task ${r.cvat_task_id} failed:`, err.response?.status ?? err.message);
+      console.warn(`[export] image task ${taskId} failed:`, err.response?.status ?? err.message);
     }
   }
 
   archive.append(JSON.stringify(datumaro, null, 2), { name: 'annotations/default.json' });
   await archive.finalize();
 
+  const totalAnnotations = items.reduce((sum, it) => sum + it.annotations.length, 0);
   recordAction(actor.id, 'data.export', {
-    payload: { item_count: items.length, image_failures: imageFailures, filters, origin: originContext },
+    payload: {
+      item_count: items.length,
+      annotation_count: totalAnnotations,
+      image_failures: imageFailures,
+      filters,
+      origin: originContext,
+    },
   });
 }
 

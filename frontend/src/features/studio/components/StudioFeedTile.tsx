@@ -15,11 +15,20 @@ interface Props {
 	onContest?: (task: FeedTask) => void;
 }
 
-const STATE_BADGE: Record<FeedTask['annotation_state'], { label: string; color: string }> = {
+type BadgeSpec = { label: string; color: string };
+
+const STATE_BADGE: Record<FeedTask['annotation_state'], BadgeSpec> = {
 	not_annotated:     { label: 'NON ANNOTÉ',     color: COLORS.text.secondary },
 	annotated:         { label: 'ANNOTÉ',         color: COLORS.primary },
 	curator_validated: { label: 'VALIDÉ',         color: COLORS.success },
 };
+
+function badgeFor(task: FeedTask): BadgeSpec {
+	if (task.annotation_state === 'curator_validated') return STATE_BADGE.curator_validated;
+	if (task.annotation_state === 'annotated')         return STATE_BADGE.annotated;
+	if (task.i_annotated)                              return STATE_BADGE.annotated;
+	return STATE_BADGE.not_annotated;
+}
 
 export const StudioFeedTile: React.FC<Props> = ({ task, disabled, onOpen, onContest }) => {
 	const lastClickRef = useRef(0);
@@ -40,7 +49,7 @@ export const StudioFeedTile: React.FC<Props> = ({ task, disabled, onOpen, onCont
 		: '—';
 
 	const isValidated = task.annotation_state === 'curator_validated';
-	const badge = STATE_BADGE[task.annotation_state];
+	const badge = badgeFor(task);
 
 	return (
 		<View style={[styles.tile, disabled && styles.tileDisabled]}>

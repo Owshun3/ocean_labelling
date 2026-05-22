@@ -148,6 +148,31 @@ export interface CertifyResult {
   cvat_shape_id: number | null;
 }
 
+export interface CertifyAllPayload {
+  cvat_job_id: number;
+  certifications: Array<{
+    mode: 'review' | 'create';
+    shape: { points: number[] };
+    species: {
+      scientific_name: string;
+      usage_name: string;
+      polynesian_name: string;
+      tags?: string[];
+      source_name?: string;
+    };
+    chosen_bbox_annotator_id?: number | null;
+    rejected_proposals?: Array<{ annotator_id: number; cvat_shape_id: number; label_name: string | null }>;
+    comment?: string;
+  }>;
+}
+
+export interface CertifyAllResult {
+  ok: boolean;
+  certification_count: number;
+  certification_ids: number[];
+  certified_at: string;
+}
+
 export class CuratorService {
   async getTasks(): Promise<CuratorTasksResponse> {
     const resp = await curatorClient.get<CuratorTasksResponse>('/tasks');
@@ -191,6 +216,11 @@ export class CuratorService {
 
   async getProposals(taskId: number): Promise<ProposalsPayload> {
     const resp = await curatorClient.get<ProposalsPayload>(`/tasks/${taskId}/proposals`);
+    return resp.data;
+  }
+
+  async certifyAll(taskId: number, payload: CertifyAllPayload): Promise<CertifyAllResult> {
+    const resp = await curatorClient.post<CertifyAllResult>(`/tasks/${taskId}/certify-all`, payload);
     return resp.data;
   }
 

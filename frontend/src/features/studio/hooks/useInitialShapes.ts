@@ -5,14 +5,15 @@ import { StudioShape } from '../types';
 interface State {
 	shapes: StudioShape[];
 	loaded: boolean;
+	curatorLocked: boolean;
 }
 
 export function useInitialShapes(jobId: number): State {
-	const [state, setState] = useState<State>({ shapes: [], loaded: false });
+	const [state, setState] = useState<State>({ shapes: [], loaded: false, curatorLocked: false });
 
 	useEffect(() => {
 		let cancelled = false;
-		setState({ shapes: [], loaded: false });
+		setState({ shapes: [], loaded: false, curatorLocked: false });
 
 		studioClient
 			.get(`/jobs/${jobId}/annotations`)
@@ -33,10 +34,10 @@ export function useInitialShapes(jobId: number): State {
 							speciesName: s.label_name ?? '?',
 						};
 					});
-				setState({ shapes, loaded: true });
+				setState({ shapes, loaded: true, curatorLocked: !!resp.data?.curator_locked });
 			})
 			.catch(() => {
-				if (!cancelled) setState({ shapes: [], loaded: true });
+				if (!cancelled) setState({ shapes: [], loaded: true, curatorLocked: false });
 			});
 
 		return () => { cancelled = true; };

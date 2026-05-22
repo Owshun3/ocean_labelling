@@ -91,6 +91,56 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/check-duplicates', requireCuratorOrAbove, async (req, res) => {
+  const body = req.body || {};
+  const sci = typeof body.scientific_name === 'string' ? body.scientific_name.trim().toLowerCase() : '';
+  const usa = typeof body.usage_name      === 'string' ? body.usage_name.trim().toLowerCase()      : '';
+  const pol = typeof body.polynesian_name === 'string' ? body.polynesian_name.trim().toLowerCase() : '';
+  const excludeId = Number.isInteger(body.exclude_id) && body.exclude_id > 0 ? body.exclude_id : null;
+
+  try {
+    const params = [];
+    const conditions = [];
+    if (sci) { params.push(sci); conditions.push(`LOWER(COALESCE(scientific_name, '')) = $${params.length}`); }
+    if (usa) { params.push(usa); conditions.push(`LOWER(COALESCE(usage_name, ''))      = $${params.length}`); }
+    if (pol) { params.push(pol); conditions.push(`LOWER(COALESCE(polynesian_name, '')) = $${params.length}`); }
+    if (conditions.length === 0) {
+      return res.json({ scientific_match: null, usage_matches: [], polynesian_matches: [] });
+    }
+    let where = `WHERE (${conditions.join(' OR ')})`;
+    if (excludeId !== null) {
+      params.push(excludeId);
+      where += ` AND id <> $${params.length}`;
+    }
+    const { rows } = await pool.query(`
+      SELECT id, name, scientific_name, usage_name, polynesian_name, tags,
+             description, description_source, status, usage_count
+      FROM species
+      ${where}
+      LIMIT 20
+    `, params);
+
+    let scientificMatch = null;
+    const usageMatches = [];
+    const polynesianMatches = [];
+    for (const r of rows) {
+      const sciLow = (r.scientific_name || '').toLowerCase();
+      const usaLow = (r.usage_name      || '').toLowerCase();
+      const polLow = (r.polynesian_name || '').toLowerCase();
+      if (sci && sciLow === sci && !scientificMatch) scientificMatch = r;
+      if (usa && usaLow === usa) usageMatches.push(r);
+      if (pol && polLow === pol) polynesianMatches.push(r);
+    }
+    res.json({
+      scientific_match: scientificMatch,
+      usage_matches:    usageMatches,
+      polynesian_matches: polynesianMatches,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/search', requireAuth, async (req, res) => {
   const field = String(req.query.field || '').trim();
   const q     = String(req.query.q || '').trim();
