@@ -236,6 +236,31 @@ sudo docker run --rm -it \
 
 Certbot affiche un record TXT à publier dans la zone DNS. Le renouvellement est manuel tous les 90 jours.
 
+### Variante certificat auto-signé (test interne, sans DNS public)
+
+Si le domaine n'est résolu QUE par un DNS interne (typique LAN université sans publication publique) :  Let's Encrypt ne peut pas valider et la PKI interne UPF n'est pas disponible. Un certificat auto-signé permet quand même d'activer HTTPS pour tester l'application en interne (login Secure cookies, upload image en secure context).
+
+```bash
+mkdir -p nginx/certs
+
+openssl req -x509 -nodes -newkey rsa:2048 \
+  -keyout nginx/certs/<domaine>.key \
+  -out    nginx/certs/<domaine>.crt \
+  -subj "/CN=<domaine>" \
+  -addext "subjectAltName=DNS:<domaine>,IP:<ip>" \
+  -days 365
+
+chmod 600 nginx/certs/<domaine>.key
+```
+
+Activer la config NGINX HTTPS comme en §4.3 (remplacer `YOUR_DOMAIN.TLD` dans `nginx/nginx-https.conf` par `<domaine>`, copier sur `nginx.conf`, `docker compose restart gateway`).
+
+⚠ **Précautions auto-signé** :
+- Les navigateurs affichent un avertissement « connexion non privée » au premier accès. L'utilisateur doit cliquer « Avancé » → « Continuer ». Une fois l'exception accordée, les visites suivantes sont silencieuses.
+- **HSTS doit rester désactivé** tant qu'on est en auto-signé. Le template `nginx-https.conf` le commente déjà. Sinon, après acceptation du warning + envoi de HSTS, le navigateur refuse définitivement tout futur bypass.
+- Les certs `.crt` / `.key` ne doivent **jamais** être commit. Le `.gitignore` du repo les exclut.
+- À remplacer par un vrai certificat (Let's Encrypt ou PKI interne) dès que disponible. La transition est triviale : juste écraser `.crt` / `.key` + décommenter HSTS dans `nginx.conf` + reload gateway.
+
 ## 5. Faire tourner Expo en permanence
 
 Tant que le frontend n'est pas en bundle statique, Expo Metro doit tourner en arrière-plan. Deux options.

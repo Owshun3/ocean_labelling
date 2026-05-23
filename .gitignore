@@ -60,3 +60,10 @@ PRODUCTION.md
 *.swp
 *.swo
 *~
+
+# --- Certificats TLS ---
+# Générés localement par 'openssl req -x509 ...' (auto-signé) ou Certbot
+# (Let's Encrypt). NE JAMAIS commit : la clé privée doit rester côté serveur.
+nginx/certs/*.crt
+nginx/certs/*.key
+nginx/certs/*.pem

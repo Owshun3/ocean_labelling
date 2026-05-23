@@ -318,6 +318,7 @@ Détails et cas particuliers : [DEPLOYMENT.md](DEPLOYMENT.md#7-mise-à-jour-apr�
 | **Reverse proxy** | NGINX | Bloque accès direct UI CVAT, gère HTTPS, cache statique |
 | **Export scientifique** | Format Datumaro 1.0 | Standard CV/ML, supporté nativement par CVAT et la plupart des frameworks |
 | **Auth** | Session cookie HttpOnly UUID | Pas de JWT côté client (XSS-safe), CVAT token caché côté serveur |
+| **Anti-brute-force** | Lockout per-account, server-side (table `login_lockouts`) | 5 échecs consécutifs → 30 s avant la prochaine tentative. Compteur reset au succès. Voir [app-api/src/lib/loginLockout.js](app-api/src/lib/loginLockout.js) |
 
 ---
 
