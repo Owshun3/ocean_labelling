@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import axios from 'axios';
-import { CvatAuthService } from '@/services/api/CvatAuthService';
+import { CvatAuthService, LoginLockoutError } from '@/services/api/CvatAuthService';
 import { startGuestSession } from '@/services/api/authStorage';
 import { consumeBanInfo, consumeSessionExpired, formatRemaining, BanSessionInfo, SessionExpiredInfo } from '@/services/api/banInterceptor';
 import { usePublicSettings } from '@/shared/hooks/usePublicSettings';
@@ -25,6 +25,40 @@ type AccountStatus =
 	| { kind: 'banned'; reason: string | null; expires_at: string | null; banned_at: string | null }
 	| { kind: 'deactivated' };
 
+// Persistance localStorage du timer de lockout : si l'utilisateur recharge ou
+// change d'onglet, le timer reprend sans round-trip serveur. Le serveur reste
+// la SEULE source de vérité — si le user efface localStorage, la prochaine
+// tentative renverra 429 et on remettra le timer.
+const LOCKOUT_LS_PREFIX = 'login_lockout:';
+function readLockoutFromStorage(username: string): number | null {
+	if (!username || typeof window === 'undefined') return null;
+	try {
+		const raw = window.localStorage.getItem(LOCKOUT_LS_PREFIX + username.toLowerCase());
+		if (!raw) return null;
+		const until = Number(raw);
+		if (!Number.isFinite(until) || until <= Date.now()) return null;
+		return until;
+	} catch { return null; }
+}
+function writeLockoutToStorage(username: string, until: number | null): void {
+	if (!username || typeof window === 'undefined') return;
+	try {
+		const key = LOCKOUT_LS_PREFIX + username.toLowerCase();
+		if (until && until > Date.now()) window.localStorage.setItem(key, String(until));
+		else window.localStorage.removeItem(key);
+	} catch { /* quota / private mode */ }
+}
+function formatCountdown(ms: number): string {
+	const totalSec = Math.ceil(ms / 1000);
+	if (totalSec < 60) return `${totalSec}s`;
+	const min = Math.floor(totalSec / 60);
+	const sec = totalSec % 60;
+	if (min < 60) return `${min} min ${sec.toString().padStart(2, '0')}s`;
+	const h = Math.floor(min / 60);
+	const m = min % 60;
+	return `${h} h ${m.toString().padStart(2, '0')}`;
+}
+
 export const LoginScreen: React.FC = () => {
 	const [username, setUsername] = useState('');
 	const [password, setPassword] = useState('');
@@ -35,9 +69,30 @@ export const LoginScreen: React.FC = () => {
 	const [ban, setBan] = useState<BanState | null>(null);
 	const [deactivated, setDeactivated] = useState(false);
 	const [sessionExpired, setSessionExpired] = useState<SessionExpiredInfo | null>(null);
+	const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
 	const [, forceRerender] = useState(0);
 	const router = useRouter();
 	const settings = usePublicSettings();
+
+	// Quand le username change, charger le lockout persisté pour ce compte.
+	useEffect(() => {
+		setLockoutUntil(readLockoutFromStorage(username));
+	}, [username]);
+
+	// Tick chaque seconde tant qu'un lockout est actif (pour rafraîchir
+	// l'affichage du compte à rebours et lever automatiquement le blocage).
+	useEffect(() => {
+		if (!lockoutUntil) return;
+		const id = setInterval(() => {
+			if (Date.now() >= lockoutUntil) {
+				setLockoutUntil(null);
+				writeLockoutToStorage(username, null);
+			} else {
+				forceRerender((n) => n + 1);
+			}
+		}, 1000);
+		return () => clearInterval(id);
+	}, [lockoutUntil, username]);
 
 	useEffect(() => {
 		const banInfo: BanSessionInfo | null = consumeBanInfo();
@@ -76,6 +131,9 @@ export const LoginScreen: React.FC = () => {
 			setError("Les champs sont obligatoires.");
 			return;
 		}
+		// Garde-fou client : si un lockout est encore actif, refuser sans toucher
+		// au serveur (le serveur tranchera de toute façon avec un 429).
+		if (lockoutUntil && lockoutUntil > Date.now()) return;
 
 		setIsLoading(true);
 		setError(null);
@@ -85,8 +143,18 @@ export const LoginScreen: React.FC = () => {
 		try {
 			const authService = new CvatAuthService();
 			await authService.login(username, password, rememberMe);
+			// Login OK → nettoyer le lockout local s'il en restait un.
+			writeLockoutToStorage(username, null);
+			setLockoutUntil(null);
 			router.replace('/(main)' as Href);
 		} catch (err) {
+			if (err instanceof LoginLockoutError) {
+				const until = Date.now() + err.retryAfterMs;
+				setLockoutUntil(until);
+				writeLockoutToStorage(username, until);
+				setError(err.message);
+				return;
+			}
 			const status = await checkAccountStatus(username);
 			if (status.kind === 'banned') {
 				setBan({ username, reason: status.reason, expires_at: status.expires_at });
@@ -177,10 +245,25 @@ export const LoginScreen: React.FC = () => {
 					<Text style={styles.rememberLabel}>Se souvenir de moi (30 jours)</Text>
 				</Pressable>
 
+				{lockoutUntil && lockoutUntil > Date.now() ? (
+					<View style={styles.lockoutBox}>
+						<Text style={styles.lockoutTitle}>Trop de tentatives</Text>
+						<Text style={styles.lockoutMsg}>
+							Pour protéger ce compte, la connexion est temporairement bloquée.
+							Nouvelle tentative dans <Text style={styles.lockoutTimer}>{formatCountdown(lockoutUntil - Date.now())}</Text>.
+						</Text>
+					</View>
+				) : null}
+
 				{isLoading ? (
 					<ActivityIndicator size="large" color={COLORS.primary} />
 				) : (
-					<Button title="Se connecter" onPress={handleLogin} color={COLORS.primary} />
+					<Button
+						title="Se connecter"
+						onPress={handleLogin}
+						color={COLORS.primary}
+						disabled={!!(lockoutUntil && lockoutUntil > Date.now())}
+					/>
 				)}
 
 				<View style={styles.guestRow}>
@@ -230,6 +313,18 @@ const styles = StyleSheet.create({
 	banTitle: { ...TYPOGRAPHY.body, fontWeight: 'bold', color: COLORS.danger, marginBottom: SPACING.xs },
 	banLine: { ...TYPOGRAPHY.body, color: COLORS.text.primary },
 	banReason: { ...TYPOGRAPHY.caption, color: COLORS.text.secondary, marginTop: SPACING.xs, fontStyle: 'italic' },
+
+	lockoutBox: {
+		backgroundColor: COLORS.background.main,
+		borderWidth: 1,
+		borderColor: COLORS.warning,
+		borderRadius: 6,
+		padding: SPACING.md,
+		marginBottom: SPACING.md,
+	},
+	lockoutTitle: { ...TYPOGRAPHY.body, fontWeight: 'bold', color: COLORS.warning, marginBottom: SPACING.xs },
+	lockoutMsg: { ...TYPOGRAPHY.body, color: COLORS.text.primary, lineHeight: 20 },
+	lockoutTimer: { fontWeight: '700', color: COLORS.danger },
 	sessionExpiredBox: {
 		backgroundColor: COLORS.background.main,
 		borderWidth: 1,

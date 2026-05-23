@@ -17,6 +17,20 @@ const CVAT_ERROR_FR: Record<string, string> = {
 
 const tr = (msg: string) => CVAT_ERROR_FR[msg] ?? msg;
 
+// Erreur enrichie pour le rate-limit progressif côté login.
+// Le LoginScreen lit `retryAfterMs` pour afficher un timer ; les autres erreurs
+// (mauvais mdp simple, serveur down) restent des Error standards.
+export class LoginLockoutError extends Error {
+	public retryAfterMs: number;
+	public attempts: number;
+	constructor(message: string, retryAfterMs: number, attempts: number) {
+		super(message);
+		this.name = 'LoginLockoutError';
+		this.retryAfterMs = retryAfterMs;
+		this.attempts = attempts;
+	}
+}
+
 export class CvatAuthService {
 	private extractLoginError(error: any): never {
 		if (!error?.response) {
@@ -24,6 +38,11 @@ export class CvatAuthService {
 		}
 		const { status, data } = error.response;
 		const detail = data?.error ?? data?.non_field_errors?.[0] ?? data?.detail;
+		if (status === 429) {
+			const retryAfterMs = Number(data?.retry_after_ms) || 0;
+			const attempts = Number(data?.attempts) || 0;
+			throw new LoginLockoutError(detail ?? 'Trop de tentatives.', retryAfterMs, attempts);
+		}
 		if (status === 400 || status === 401) {
 			throw new Error(tr(detail ?? 'Unable to log in with provided credentials.'));
 		}

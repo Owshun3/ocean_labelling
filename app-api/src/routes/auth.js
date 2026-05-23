@@ -6,6 +6,7 @@ const {
   requireAuth, resolveCvatUser, dropSession,
   SESSION_COOKIE, IDLE_TIMEOUT_MS, ABSOLUTE_LIFETIME_MS, REMEMBER_LIFETIME_MS,
 } = require('../middleware/auth');
+const { getLockoutState, recordFailure, clearFailures } = require('../lib/loginLockout');
 
 const router = express.Router();
 const CVAT_API = process.env.CVAT_API_URL || 'http://cvat_server:8080/api';
@@ -23,14 +24,22 @@ function buildCookieOptions(remember) {
 }
 
 router.post('/login', async (req, res) => {
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-
   const username = typeof req.body?.username === 'string' ? req.body.username : '';
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
   const remember = req.body?.remember_me === true;
 
   if (!username || !password) {
     return res.status(400).json({ error: 'Identifiant et mot de passe requis.' });
+  }
+
+  // Verifier d'abord si le compte est verrouille (rate-limit progressif).
+  const lockoutState = await getLockoutState(username);
+  if (lockoutState.retryAfterMs > 0) {
+    return res.status(429).json({
+      error: 'Trop de tentatives. Compte verrouillé temporairement.',
+      retry_after_ms: lockoutState.retryAfterMs,
+      attempts: lockoutState.attempts,
+    });
   }
 
   let cvatToken;
@@ -45,11 +54,26 @@ router.post('/login', async (req, res) => {
     const status = err?.response?.status;
     const data   = err?.response?.data;
     if (status === 400 || status === 401) {
-      return res.status(401).json({ error: 'Identifiant ou mot de passe incorrect.' });
+      // Echec credentials -> incrementer compteur et eventuellement bloquer.
+      const after = await recordFailure(username);
+      if (after.retryAfterMs > 0) {
+        return res.status(429).json({
+          error: 'Trop de tentatives. Compte verrouillé temporairement.',
+          retry_after_ms: after.retryAfterMs,
+          attempts: after.attempts,
+        });
+      }
+      return res.status(401).json({
+        error: 'Identifiant ou mot de passe incorrect.',
+        attempts: after.attempts,
+      });
     }
     console.warn('[auth] CVAT login failed:', { status, data, message: err.message });
     return res.status(502).json({ error: 'Serveur d\'authentification indisponible.' });
   }
+
+  // Login reussi -> reset le compteur.
+  await clearFailures(username).catch(() => { /* non-bloquant */ });
 
   let cvatUser;
   try {

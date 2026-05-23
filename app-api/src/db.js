@@ -370,6 +370,17 @@ async function _createSchema() {
     CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions (created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_admin_actions_actor   ON admin_actions (actor_id);
     CREATE INDEX IF NOT EXISTS idx_admin_actions_action  ON admin_actions (action);
+
+    -- Rate-limit progressif des login. Cle username (per-account, pas per-IP :
+    -- IP partagee LAN UPF inadaptee). Source de verite cote serveur, le client
+    -- n'affiche qu'un timer indicatif.
+    CREATE TABLE IF NOT EXISTS login_lockouts (
+      username        TEXT        PRIMARY KEY,
+      failed_attempts INTEGER     NOT NULL DEFAULT 0,
+      last_failed_at  TIMESTAMPTZ,
+      locked_until    TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_login_lockouts_locked_until ON login_lockouts(locked_until);
   `);
 
   const { ensureSchema: ensureSettingsSchema } = require('./lib/settingsRegistry');
