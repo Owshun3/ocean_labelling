@@ -1,4 +1,4 @@
-// Rate-limit progressif des tentatives de login, par username (per-account).
+// Rate-limit des tentatives de login, par username (per-account).
 //
 // Pourquoi pas per-IP : sur le LAN UPF les IPs sont partagees (NAT, salles TP),
 // per-IP genererait trop de faux positifs. Per-account = on bloque le compte
@@ -7,17 +7,16 @@
 // vu la petite echelle interne ; l'admin peut reset un compte via DELETE en BD
 // si besoin.
 //
-// Schedule : on n'enclenche pas de lockout dur sous 5 echecs (laisse le user
-// honnete se reprendre). A partir de 5, on bloque par paliers exponentiels.
+// Schedule plat : sous 5 echecs, pas de lockout (laisse le user honnete se
+// reprendre). A partir de 5, lockout fixe de 30s a chaque nouvel echec.
+// Pas de progression exponentielle : le user qui s'est fait locker une fois
+// repart a zero apres 30s, ne se sent pas penalise s'il revient demain.
 
 const { pool } = require('../db');
 
 const LOCKOUT_SCHEDULE = [
   // [seuil cumule de fails, duree du lockout]
-  [5,   30 * 1000],         // 30s
-  [10,  5  * 60 * 1000],    // 5 min
-  [15,  30 * 60 * 1000],    // 30 min
-  [20,  60 * 60 * 1000],    // 1h
+  [5, 30 * 1000],   // a partir de 5 echecs : 30s a chaque echec supplementaire
 ];
 
 function lockoutDurationFor(attempts) {
