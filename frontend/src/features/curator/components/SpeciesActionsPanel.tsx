@@ -83,7 +83,11 @@ export const SpeciesActionsPanel: React.FC<Props> = ({
 
 				<StatusPill status={status} />
 
-				{selectedGroup.species && selectedGroup.species.id !== 0 && draftValues ? (
+				{/* La fiche mini est masquée quand l'espèce est rejetée : on ne
+				    documente pas une espèce qu'on a dit absente de l'image. Pour
+				    les espèces "inconnues" (species null), la condition courante
+				    ne l'affiche déjà pas. */}
+				{status !== 'rejected' && selectedGroup.species && selectedGroup.species.id !== 0 && draftValues ? (
 					<SpeciesMiniSheet
 						species={selectedGroup.species}
 						speciesKey={selectedGroup.speciesKey}

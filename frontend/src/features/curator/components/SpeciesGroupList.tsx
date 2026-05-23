@@ -59,6 +59,15 @@ function ficheStateOf(g: SpeciesPreview, draft?: SpeciesDraftValues): FicheState
 	return complete ? 'filled' : 'todo';
 }
 
+// Quand l'espèce est rejetée par le curator (status='rejected'), le badge
+// "À remplir" / "Remplie" / "Certifiée" n'a plus de sens : on certifie pas une
+// espèce qu'on a dit absente. Surtout pour les espèces inconnues (species null,
+// pas de fiche a remplir cote panneau de droite), on affiche un simple
+// "Rejetée" pour ne pas pousser le curator a remplir une fiche inexistante.
+function rejectedSpeciesTagOverride(status: DecisionStatus): boolean {
+	return status === 'rejected';
+}
+
 export const SpeciesGroupList: React.FC<Props> = ({
 	proposedGroups, manualGroups, selectedSpeciesKey, statusOf, certCountOf, draftFor,
 	onSelect, onAddMissing, pendingCount, totalCount,
@@ -134,20 +143,27 @@ const GroupEntry: React.FC<{
 }> = ({ group, draft, status, certCount, selected, onPress }) => {
 	const sub = speciesSub(group, draft);
 	const fiche = ficheStateOf(group, draft);
+	const overrideRejected = rejectedSpeciesTagOverride(status);
 	return (
 		<Pressable
 			onPress={onPress}
 			style={[
 				styles.entry,
 				selected && styles.entrySelected,
-				fiche === 'todo' && styles.entryPending,
+				// Pas de "ToDo highlight" en rouge si l'espèce est rejetée — c'est
+				// précisément la décision opposée.
+				!overrideRejected && fiche === 'todo' && styles.entryPending,
 			]}
 		>
 			<View style={[styles.dot, { backgroundColor: dotColor(status) }]} />
 			<View style={styles.entryBody}>
 				<View style={styles.entryHeader}>
 					<Text style={styles.entryLabel} numberOfLines={1}>{speciesLabel(group, draft)}</Text>
-					{fiche === 'certified' ? (
+					{overrideRejected ? (
+						<View style={styles.rejectedTag}>
+							<Text style={styles.tagText}>Rejetée</Text>
+						</View>
+					) : fiche === 'certified' ? (
 						<View style={styles.certifiedTag}>
 							<Text style={styles.tagText}>Certifiée</Text>
 						</View>
@@ -229,6 +245,10 @@ const styles = StyleSheet.create({
 	pendingTag: {
 		paddingHorizontal: 5, paddingVertical: 1, borderRadius: 8,
 		backgroundColor: COLORS.warning,
+	},
+	rejectedTag: {
+		paddingHorizontal: 5, paddingVertical: 1, borderRadius: 8,
+		backgroundColor: COLORS.danger,
 	},
 	tagText: { color: COLORS.text.inverse, fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
 
