@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Button, Image, Pressable, StyleSheet, Animated, Easing } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, Href } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { useVideoUpload } from '../hooks/useVideoUpload';
 import { UploadConsentModal } from '../components/UploadConsentModal';
@@ -27,6 +28,8 @@ export const UploadScreen: React.FC = () => {
 	const initialAccepted = getUserProfile()?.hasAcceptedUploadTerms ?? false;
 	const [accepted, setAccepted] = useState(initialAccepted);
 	const [acceptSubmitting, setAcceptSubmitting] = useState(false);
+
+	const [quickConsent, setQuickConsent] = useState(false);
 
 	const handleAccept = async () => {
 		setAcceptSubmitting(true);
@@ -74,9 +77,27 @@ export const UploadScreen: React.FC = () => {
 					</Pressable>
 				</View>
 
+				{accepted ? (
+					<Pressable style={styles.quickConsentRow} onPress={() => setQuickConsent((v) => !v)}>
+						<View style={[styles.quickCheckbox, quickConsent && styles.quickCheckboxChecked]}>
+							{quickConsent ? <Ionicons name="checkmark" size={12} color={COLORS.text.inverse} /> : null}
+						</View>
+						<Text style={styles.quickConsentText}>
+							Je consens à ce que mes médias et leurs métadonnées soient utilisés selon la{' '}
+							<Text
+								style={styles.quickConsentLink}
+								onPress={(e: any) => { e?.stopPropagation?.(); router.push('/(main)/privacy' as Href); }}
+							>
+								politique de confidentialité
+							</Text>
+							.
+						</Text>
+					</Pressable>
+				) : null}
+
 				{mode === 'photos'
-					? <PhotosUpload maxBatchBytes={maxBatchBytes} router={router} />
-					: <VideosUpload maxBatchBytes={maxBatchBytes} router={router} />}
+					? <PhotosUpload maxBatchBytes={maxBatchBytes} router={router} quickConsent={quickConsent} />
+					: <VideosUpload maxBatchBytes={maxBatchBytes} router={router} quickConsent={quickConsent} />}
 			</View>
 			<UploadConsentModal
 				visible={!accepted}
@@ -88,7 +109,7 @@ export const UploadScreen: React.FC = () => {
 	);
 };
 
-const PhotosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBatchBytes, router }) => {
+const PhotosUpload: React.FC<{ maxBatchBytes: number; router: any; quickConsent: boolean }> = ({ maxBatchBytes, router, quickConsent }) => {
 	const [selectedImages, setSelectedImages] = useState<PickedFile[]>([]);
 	const { upload, isUploading, progress } = useMediaUpload();
 
@@ -122,7 +143,7 @@ const PhotosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 	const removeImage = (index: number) => setSelectedImages((prev) => prev.filter((_, i) => i !== index));
 
 	const handleUpload = async () => {
-		if (overLimit) return;
+		if (overLimit || !quickConsent) return;
 		try {
 			const taskIds = await upload(selectedImages);
 			if (taskIds.length > 0) {
@@ -186,7 +207,7 @@ const PhotosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 							title={`Téléverser ${selectedImages.length} fichier(s)`}
 							onPress={handleUpload}
 							color={COLORS.primary}
-							disabled={overLimit}
+							disabled={overLimit || !quickConsent}
 						/>
 					)}
 				</View>
@@ -195,7 +216,7 @@ const PhotosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 	);
 };
 
-const VideosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBatchBytes, router }) => {
+const VideosUpload: React.FC<{ maxBatchBytes: number; router: any; quickConsent: boolean }> = ({ maxBatchBytes, router, quickConsent }) => {
 	const [files, setFiles] = useState<PickedFile[]>([]);
 	const { upload, isUploading, progress } = useVideoUpload();
 
@@ -217,7 +238,7 @@ const VideosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 	const removeFile = (idx: number) => setFiles((prev) => prev.filter((_, i) => i !== idx));
 
 	const handleUpload = async () => {
-		if (overLimit) return;
+		if (overLimit || !quickConsent) return;
 		try {
 			const ids = await upload(files);
 			if (ids.length > 0) {
@@ -284,7 +305,7 @@ const VideosUpload: React.FC<{ maxBatchBytes: number; router: any }> = ({ maxBat
 							title={`Téléverser ${files.length} vidéo(s)`}
 							onPress={handleUpload}
 							color={COLORS.primary}
-							disabled={overLimit}
+							disabled={overLimit || !quickConsent}
 						/>
 					)}
 				</View>
@@ -312,6 +333,24 @@ const styles = StyleSheet.create({
 	modeBtnTextActive: { color: COLORS.text.inverse },
 
 	limitHint: { fontSize: 12, color: COLORS.text.secondary, marginBottom: SPACING.sm, textAlign: 'center' },
+
+	quickConsentRow: {
+		flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm,
+		padding: SPACING.sm,
+		marginBottom: SPACING.md,
+		borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
+		backgroundColor: COLORS.background.card,
+	},
+	quickCheckbox: {
+		width: 18, height: 18, borderRadius: 3,
+		borderWidth: 1, borderColor: COLORS.border,
+		backgroundColor: COLORS.background.main,
+		alignItems: 'center', justifyContent: 'center',
+		marginTop: 2,
+	},
+	quickCheckboxChecked: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+	quickConsentText: { fontSize: 13, color: COLORS.text.primary, flex: 1, lineHeight: 18 },
+	quickConsentLink: { color: COLORS.primary, textDecorationLine: 'underline', fontWeight: '600' },
 	limitHintStrong: { fontWeight: '700', color: COLORS.text.primary },
 	grid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, marginVertical: SPACING.xl },
 	thumbnailWrapper: { position: 'relative', width: 100, height: 100 },
