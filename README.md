@@ -330,6 +330,12 @@ Détails et cas particuliers : [DEPLOYMENT.md](DEPLOYMENT.md#7-mise-à-jour-apr�
 
 ---
 
+## Auteur
+
+- **Océan SHAN YAN** - développeur principal (stage L3 UPF, promotion 2026)
+- Email : [shanyanocean@gmail.com](mailto:shanyanocean@gmail.com)
+- LinkedIn : [Océan SHAN YAN](https://www.linkedin.com/in/océan-shan-yan)
+
 ## Contact
 
 - Pour les questions liées au projet (stage L3) : Sébastien CHABRIER (tuteur UPF) ou Bryan DALLEST.

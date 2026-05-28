@@ -66,6 +66,9 @@ export const Footer: React.FC = () => {
 					<Pressable onPress={() => router.push('/(main)/profile' as Href)}>
 						<Text style={styles.link}>Mon profil</Text>
 					</Pressable>
+					<Pressable onPress={() => router.push('/(main)/about' as Href)}>
+						<Text style={styles.link}>À propos</Text>
+					</Pressable>
 				</View>
 			</View>
 
@@ -73,9 +76,15 @@ export const Footer: React.FC = () => {
 				<Text style={styles.bottomText}>
 					{platformName} · v1 · construit avec CVAT et Expo Web
 				</Text>
-				<Pressable onPress={() => router.push('/(main)/privacy' as Href)} hitSlop={8}>
-					<Text style={styles.bottomLink}>Politique de confidentialité</Text>
-				</Pressable>
+				<View style={styles.bottomLinks}>
+					<Pressable onPress={() => router.push('/(main)/about' as Href)} hitSlop={8}>
+						<Text style={styles.bottomLink}>À propos</Text>
+					</Pressable>
+					<Text style={styles.bottomSeparator}>·</Text>
+					<Pressable onPress={() => router.push('/(main)/privacy' as Href)} hitSlop={8}>
+						<Text style={styles.bottomLink}>Politique de confidentialité</Text>
+					</Pressable>
+				</View>
 			</View>
 		</View>
 	);
@@ -143,10 +152,20 @@ const styles = StyleSheet.create({
 		color: COLORS.text.placeholder,
 		fontSize: 11,
 	},
+	bottomLinks: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: SPACING.sm,
+	},
 	bottomLink: {
 		...TYPOGRAPHY.caption,
 		color: COLORS.text.secondary,
 		fontSize: 11,
 		textDecorationLine: 'underline',
+	},
+	bottomSeparator: {
+		...TYPOGRAPHY.caption,
+		color: COLORS.text.placeholder,
+		fontSize: 11,
 	},
 });

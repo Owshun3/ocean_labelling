@@ -10,6 +10,7 @@ interface Crumb {
 }
 
 const STATIC_LABELS: Record<string, string> = {
+	about:             'À propos',
 	accounts:          'Gestion des comptes',
 	activity:          'Historique d\'activité',
 	admin:             'Administration',
